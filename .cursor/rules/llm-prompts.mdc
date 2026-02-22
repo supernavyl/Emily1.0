@@ -1,0 +1,36 @@
+---
+description: Rules for LLM prompt assembly and the prompt system
+globs: ["**/llm/**/*.py", "**/prompts/**"]
+alwaysApply: false
+---
+
+# Emily LLM & Prompt Rules
+
+## The Cardinal Rule
+ALL prompt strings are defined and assembled in `llm/prompt_builder.py` — the ONLY place prompts live. Hardcoded prompt strings in any other module are a bug and must be moved to prompt_builder.
+
+## Prompt Versioning
+- Every named prompt has a version tag (e.g., `_EMILY_SYSTEM_PROMPT_V1`)
+- When the self-improvement engine rewrites a prompt, the old version MUST be archived to `prompts/archive/<name>_<version>.txt` before the new version replaces it
+- Never silently overwrite a prompt — the archive is the audit trail
+
+## Prompt Assembly
+- Use `PromptBuilder` methods to compose prompts from modular sections
+- System prompt + persona + context + tools + user message = final prompt
+- Prompts must be assembled, not concatenated with f-strings across files
+- Include token budget awareness — trim context to fit the model's window
+
+## Model Fleet
+- Models are accessed through `llm/fleet.py` (LLMFleet) — never instantiate clients directly
+- Model tiers: nano (routing), fast (conversation), smart (reasoning), vision (multimodal), embedding
+- The router (`llm/router.py`) selects model tier based on complexity score — respect its decisions
+- Streaming responses go through `llm/streaming.py`
+
+## ReAct Loop
+- Non-trivial tasks use the ReAct++ loop: THOUGHT → PLAN → ACTION → OBSERVATION → CRITIQUE → REVISE → RESPOND
+- Implemented in `llm/react_loop.py` — tool calls are part of the loop, not separate
+- CriticAgent scores outputs — below 0.65 triggers silent retry
+
+## Structured Output
+- Use `llm/structured_output.py` for JSON-schema-constrained generation
+- Pydantic models define the expected output shape — never parse free-form text when structured output is available

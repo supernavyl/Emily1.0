@@ -1,0 +1,44 @@
+---
+description: Rules for Emily's Python backend source files
+globs: ["**/*.py", "!**/test_*.py", "!**/*_test.py", "!**/conftest.py", "!**/emily_chat/**"]
+alwaysApply: false
+---
+
+# Emily Python Backend Rules
+
+## Architecture
+- Emily is a multi-agent AI voice system. Code is organized into layers: perception, agents, llm, memory, plugins, voice, api, core
+- Agents inherit from `BaseAgent` (agents/base.py) and register in `agents/registry.py`
+- Tools inherit from `BaseTool` (plugins/base.py) with mandatory `execute()` and `dry_run()` methods
+- All prompts live in `llm/prompt_builder.py` — inline prompt strings anywhere else are bugs
+- Inter-agent communication uses `AgentBus` (core/bus.py) with structured Message envelopes
+
+## Style & Conventions
+- Type-annotate ALL function signatures — parameters and return types
+- Every function must have a docstring (Args, Returns, Raises sections for public APIs)
+- Use `from __future__ import annotations` for forward references
+- Prefer `dataclasses` or `pydantic` models over plain dicts for structured data
+- Never use mutable default arguments
+
+## Async & I/O
+- All route handlers, agent methods, and bus callbacks must be async
+- Never do blocking I/O inside an async function — use `asyncio.to_thread` or background tasks
+- ZeroMQ operations go through `zmq.asyncio` — never use sync zmq
+- Latency budget: STT < 300ms, LLM first token < 1s (fast_model), TTS first audio < 200ms
+
+## Error Handling
+- Use specific exception types, never bare `except:`
+- Log exceptions with `log.exception(...)` via structlog
+- API routes: raise `HTTPException` with structured `detail`
+- Agents: return error via `ToolResult.fail()` — never silently swallow failures
+
+## Imports
+- Group: stdlib, third-party, local — separated by blank lines
+- Use absolute imports for cross-module references
+- Lazy imports for optional heavy dependencies (torch, faster_whisper, etc.)
+
+## Security
+- PII scrubber must run before any disk write of user data
+- Tool sandbox (`bubblewrap`) for code execution — no network, path allowlist only
+- Audit log entries for all security-sensitive operations
+- Never log request bodies that may contain PII or credentials

@@ -1,0 +1,37 @@
+---
+description: Rules for Emily's memory system and schema changes
+globs: ["**/memory/**/*.py", "**/scripts/migrations/**"]
+alwaysApply: false
+---
+
+# Emily Memory System Rules
+
+## Architecture (5-Tier Pentagonal Memory)
+1. **Sensory Buffer** (ms-s) — RAM ring buffer for raw perception events
+2. **Working Memory** (s-min) — priority queue with token-budget trimming
+3. **Episodic Memory** (min-years) — SQLite + Qdrant embeddings for conversation episodes
+4. **Semantic Memory** (permanent) — Qdrant vectors + networkx knowledge graph
+5. **Procedural + Identity** (permanent) — JSON + Qdrant for skills and self-model
+
+## Access Patterns
+- All memory access goes through `MemoryManager` (memory/manager.py) — never call tier implementations directly from agents
+- MemoryManager routes reads/writes to the correct tier, handles cross-tier promotion (working → episodic), and enforces access control
+- RAG retrieval uses `HybridRetriever` attached via `set_retriever()` — BM25 + dense vectors + reranking
+
+## Schema Changes
+- ANY change to memory schemas (SQLite tables, Qdrant collections, knowledge graph structure) requires a migration script in `scripts/migrations/`
+- Migration scripts must be idempotent and reversible
+- Name format: `NNN_description.py` (e.g., `002_add_emotion_field.py`)
+- Test migrations against a populated test database before merging
+
+## Data Conventions
+- Episodes must include: session_id, timestamp, speaker, content, importance_score, embedding
+- Knowledge graph nodes must have: entity_id, entity_type, label, source
+- Knowledge graph edges must have: relation_type, confidence, source, timestamp
+- Importance scoring (0.0-1.0) determines episodic retention — MemoryAgent handles scoring
+
+## Consolidation
+- Memory consolidation runs during idle (P4 priority)
+- ReflectionAgent reviews recent episodes and promotes important ones
+- Near-duplicate semantic memories are merged, not duplicated
+- Emily's self-model updates happen here — track personality drift

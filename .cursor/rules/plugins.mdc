@@ -1,0 +1,43 @@
+---
+description: Rules for Emily's tool/plugin system
+globs: ["**/plugins/**/*.py"]
+alwaysApply: false
+---
+
+# Emily Plugin & Tool Rules
+
+## BaseTool Contract
+Every tool must subclass `BaseTool` from `plugins/base.py` and implement:
+- `name: str` — unique tool identifier
+- `description: str` — what the tool does (used in LLM tool-calling prompts)
+- `parameters: dict` — JSON Schema for input validation
+- `async execute(params, context) -> ToolResult` — the actual operation
+- `async dry_run(params) -> str` — explain what would happen without doing it (MANDATORY)
+
+## Required Metadata
+- `requires_approval: bool` — set True for destructive or sensitive operations (file writes, shell commands, process management, network requests)
+- `timeout_seconds: int` — maximum execution time before auto-cancellation
+- `rate_limit: RateLimit` — calls per minute/hour limits
+
+## File Organization
+- Built-in tools live in `plugins/builtin/`
+- Generated tools (created by ToolBuilderAgent) live in `plugins/generated/`
+- Generated tools are NEVER auto-loaded — they require explicit user approval before first use
+- One tool class per file, filename matches the tool name (snake_case)
+
+## Validation
+- Override `async validate(params) -> ValidationResult` for custom parameter checks
+- Always call `self.validate()` before execution (or use `safe_execute()` which does this)
+- Return `ValidationResult.fail("reason")` for invalid params, never raise exceptions in validate
+
+## Execution
+- Always use `ToolResult.ok(output)` and `ToolResult.fail(error)` — never return raw dicts
+- Catch and handle exceptions inside `execute()` — unhandled exceptions are caught by `safe_execute()` but should be avoided
+- Respect `context.sandbox_enabled` and `context.allowed_paths` for filesystem operations
+- Log tool invocations via structlog for the audit trail
+
+## Testing
+- Every tool must have at least one unit test in `tests/unit/`
+- Test both `execute()` and `dry_run()` methods
+- Test validation with both valid and invalid parameters
+- Mock external dependencies (HTTP, filesystem, subprocess) at the boundary

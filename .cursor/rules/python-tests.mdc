@@ -1,0 +1,44 @@
+---
+description: Rules for Emily's pytest test files
+globs: ["**/test_*.py", "**/*_test.py", "**/conftest.py"]
+alwaysApply: false
+---
+
+# Emily Test Rules (pytest)
+
+## Framework & Config
+- pytest + pytest-asyncio (auto mode — no need for `@pytest.mark.asyncio` on every test)
+- pytest-cov for coverage reporting
+- respx for mocking HTTP calls (not `unittest.mock` for HTTP)
+- time-machine for time-dependent tests (not `freezegun`, not `time.sleep()`)
+- hypothesis for property-based tests where applicable
+
+## Structure
+- Tests live under `tests/unit/` mirroring the source directory structure
+- Benchmarks live under `tests/benchmarks/`
+- `conftest.py` for shared fixtures — never import fixtures between test files directly
+- Group tests in classes only when they share meaningful setup; prefer module-level functions
+
+## Naming
+- Test functions: `test_<what>_<condition>_<expected_outcome>`
+- Example: `test_create_episode_duplicate_id_raises_conflict`
+- Fixture names should be nouns describing what they provide, not verbs
+
+## Writing Tests
+- Prefer `pytest.mark.parametrize` over copy-paste variations
+- Mock at the boundary (LLM fleet, Qdrant, ZeroMQ, filesystem) — don't mock internal helpers
+- Every test must have a single, clear assertion focus
+- Test async code with `async def test_*` — pytest-asyncio auto mode handles the rest
+- Use `respx` for mocking HTTP calls to external APIs and LLM endpoints
+
+## Fixtures
+- Use the narrowest scope: `function` > `module` > `session`
+- Provide `EmilySettings` fixtures with test-appropriate defaults
+- Memory fixtures should use in-memory backends, not SQLite files
+- Mark slow/integration tests with `@pytest.mark.integration`
+
+## What Not To Do
+- Never use `time.sleep()` — use `time-machine` to control time
+- Never assert on internal function call counts unless testing a contract
+- Never leave `print()` or `breakpoint()` in committed tests
+- Never test third-party library behavior (e.g., that ZeroMQ delivers messages)

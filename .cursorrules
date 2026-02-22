@@ -1,0 +1,17 @@
+EMILY SYSTEM RULES — read before every edit:
+
+1. Read ARCHITECTURE.md, COGNITIVE_MODEL.md, and DECISIONS.md before ANY architectural change.
+2. Append a dated entry to MEMORY_LOG.md after every significant change: what changed, why, what it affects.
+3. ALL prompts assembled in llm/prompt_builder.py only. Never inline. Inline prompt strings are a bug.
+4. ALL tool additions require: class in plugins/, dry_run() method, test in tests/unit/, README plugin table entry.
+5. Memory schema changes require a migration script in scripts/migrations/.
+6. Never add a dependency without first checking if an existing one already covers the need.
+7. Security module changes (security/) require explicit user approval before implementation.
+8. After implementing any agent, verify it registers correctly in agents/registry.py.
+9. Latency budget targets: STT < 300ms, LLM first token < 1s (fast_model), TTS first audio < 200ms.
+10. If Emily's self-improvement engine modifies a prompt, the old version must be archived in prompts/archive/.
+11. The system is named Emily. Never refer to her as NOVA, assistant, bot, or chatbot.
+12. All blocking I/O must use async or asyncio.to_thread. No sync calls in async context.
+13. Every function must have: type hints, docstring, at least one unit test.
+14. Phase > ~200 lines of new code: split and ask which half to implement first.
+15. Generated tools (plugins/generated/) are never auto-loaded at startup — require explicit user approval.

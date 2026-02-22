@@ -1,0 +1,59 @@
+{
+  "mcpServers": {
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp@latest"],
+      "description": "Live, version-accurate library docs — add 'use context7' to any prompt"
+    },
+    "playwright": {
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest"],
+      "description": "Browser automation for testing and web interaction"
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/home/supernovyl/Emily1.0"],
+      "description": "Read/write files — agent can explore and edit the project"
+    },
+    "postgres": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-postgres", "${DATABASE_URL}"],
+      "description": "Query DB from chat — inspect schemas, debug data (optional; set DATABASE_URL if you use Postgres)"
+    },
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"
+      },
+      "description": "Create PRs, read issues, manage branches from Cursor"
+    },
+    "brave-search": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+      "env": {
+        "BRAVE_API_KEY": "${BRAVE_API_KEY}"
+      },
+      "description": "Search for latest API docs, changelogs, error solutions in real time"
+    },
+    "memory": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-memory"],
+      "description": "Persistent knowledge graph — architectural decisions, preferences across sessions"
+    },
+    "sequential-thinking": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"],
+      "description": "Step-by-step reasoning for complex agent and LLM pipeline design"
+    },
+    "sentry": {
+      "command": "npx",
+      "args": ["-y", "mcp-sentry"],
+      "env": {
+        "SENTRY_AUTH_TOKEN": "${SENTRY_AUTH_TOKEN}",
+        "SENTRY_ORG": "${SENTRY_ORG}"
+      },
+      "description": "Pull production errors with stack traces — fix without leaving Cursor"
+    }
+  }
+}

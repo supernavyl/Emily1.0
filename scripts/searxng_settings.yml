@@ -1,0 +1,38 @@
+use_default_settings: true
+
+server:
+  limiter: false
+  image_proxy: false
+  secret_key: "emily_searxng_local_only_secret"
+
+search:
+  safe_search: 0
+  autocomplete: ""
+  default_lang: "en"
+
+outgoing:
+  request_timeout: 10.0
+  max_request_timeout: 15.0
+
+engines:
+  - name: google
+    engine: google
+    shortcut: g
+    use_mobile_ui: false
+
+  - name: duckduckgo
+    engine: duckduckgo
+    shortcut: ddg
+
+  - name: wikipedia
+    engine: wikipedia
+    shortcut: wp
+    language: en
+
+  - name: arxiv
+    engine: arxiv
+    shortcut: arxiv
+
+  - name: github
+    engine: github
+    shortcut: gh

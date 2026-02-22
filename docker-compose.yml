@@ -1,0 +1,107 @@
+version: "3.9"
+
+# Emily infrastructure services
+# These run alongside Emily (which runs bare-metal for GPU access).
+# Start with: docker compose up -d
+
+services:
+  qdrant:
+    image: qdrant/qdrant:v1.9.2
+    container_name: emily-qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"   # REST API
+      - "6334:6334"   # gRPC
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      QDRANT__SERVICE__GRPC_PORT: 6334
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  searxng:
+    image: searxng/searxng:latest
+    container_name: emily-searxng
+    restart: unless-stopped
+    ports:
+      - "8888:8080"
+    volumes:
+      - ./scripts/searxng_settings.yml:/etc/searxng/settings.yml:ro
+    environment:
+      SEARXNG_BASE_URL: "http://localhost:8888/"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    container_name: emily-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./scripts/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=30d"
+      - "--web.enable-lifecycle"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: emily-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: "emily_local_only"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: "http://localhost:3000"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./scripts/grafana_provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.57
+    container_name: emily-jaeger
+    restart: unless-stopped
+    ports:
+      - "16686:16686"  # UI
+      - "4317:4317"    # OTLP gRPC
+      - "4318:4318"    # OTLP HTTP
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:16686/"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  qdrant_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  default:
+    name: emily-network

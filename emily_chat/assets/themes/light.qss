@@ -1,0 +1,1064 @@
+/* ============================================================
+   Emily Chat — Light Theme
+   All colours use @variable tokens resolved by ThemeEngine.
+   ============================================================ */
+
+/* --- Global defaults ---------------------------------------- */
+
+QWidget {
+    background-color: @background;
+    color: @text_primary;
+    font-family: "Inter", "Segoe UI", "Helvetica Neue", sans-serif;
+    font-size: 14px;
+    border: none;
+}
+
+QMainWindow {
+    background-color: @background;
+}
+
+/* --- Title bar ---------------------------------------------- */
+
+#customTitleBar {
+    background-color: @surface;
+    border-bottom: 1px solid @border;
+}
+
+#titleBarTitle {
+    color: @text_secondary;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 1px;
+}
+
+#titleBtnMinimize,
+#titleBtnMaximize {
+    background: transparent;
+    color: @text_secondary;
+    border: none;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+#titleBtnMinimize:hover,
+#titleBtnMaximize:hover {
+    background-color: @surface_raised;
+    color: @text_primary;
+}
+
+#titleBtnClose {
+    background: transparent;
+    color: @text_secondary;
+    border: none;
+    border-radius: 4px;
+    font-size: 13px;
+}
+
+#titleBtnClose:hover {
+    background-color: @error_red;
+    color: #ffffff;
+}
+
+/* --- Central widget ----------------------------------------- */
+
+#centralWidget {
+    background-color: @background;
+}
+
+/* --- Splitter ----------------------------------------------- */
+
+#mainSplitter {
+    background-color: @background;
+}
+
+QSplitter::handle {
+    background-color: @border;
+}
+
+QSplitter::handle:horizontal {
+    width: 2px;
+}
+
+QSplitter::handle:hover {
+    background-color: @accent;
+}
+
+/* --- Side panels -------------------------------------------- */
+
+#leftPanel {
+    background-color: @surface;
+    border-right: 1px solid @border;
+}
+
+#rightPanel {
+    background-color: @surface;
+    border-left: 1px solid @border;
+}
+
+#centerPanel {
+    background-color: @background;
+}
+
+#placeholderLabel {
+    color: @text_muted;
+    font-size: 16px;
+    font-weight: 500;
+}
+
+/* --- Buttons ------------------------------------------------ */
+
+QPushButton {
+    background-color: @surface_raised;
+    color: @text_primary;
+    border: 1px solid @border;
+    border-radius: 6px;
+    padding: 6px 14px;
+}
+
+QPushButton:hover {
+    background-color: @accent;
+    border-color: @accent;
+    color: #ffffff;
+}
+
+QPushButton:pressed {
+    background-color: @accent_hover;
+}
+
+QPushButton:disabled {
+    background-color: @surface;
+    color: @text_muted;
+    border-color: @border;
+}
+
+/* --- Line edits --------------------------------------------- */
+
+QLineEdit {
+    background-color: @surface;
+    color: @text_primary;
+    border: 1px solid @border;
+    border-radius: 6px;
+    padding: 6px 10px;
+    selection-background-color: @accent;
+}
+
+QLineEdit:focus {
+    border-color: @accent;
+}
+
+/* --- Text edits --------------------------------------------- */
+
+QTextEdit, QPlainTextEdit {
+    background-color: @surface;
+    color: @text_primary;
+    border: 1px solid @border;
+    border-radius: 6px;
+    padding: 8px;
+    selection-background-color: @accent;
+}
+
+QTextEdit:focus, QPlainTextEdit:focus {
+    border-color: @accent;
+}
+
+/* --- Scroll bars -------------------------------------------- */
+
+QScrollBar:vertical {
+    background: transparent;
+    width: 8px;
+    margin: 0;
+}
+
+QScrollBar::handle:vertical {
+    background-color: @border;
+    border-radius: 4px;
+    min-height: 30px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background-color: @text_muted;
+}
+
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical,
+QScrollBar::add-page:vertical,
+QScrollBar::sub-page:vertical {
+    background: transparent;
+    height: 0;
+}
+
+QScrollBar:horizontal {
+    background: transparent;
+    height: 8px;
+    margin: 0;
+}
+
+QScrollBar::handle:horizontal {
+    background-color: @border;
+    border-radius: 4px;
+    min-width: 30px;
+}
+
+QScrollBar::handle:horizontal:hover {
+    background-color: @text_muted;
+}
+
+QScrollBar::add-line:horizontal,
+QScrollBar::sub-line:horizontal,
+QScrollBar::add-page:horizontal,
+QScrollBar::sub-page:horizontal {
+    background: transparent;
+    width: 0;
+}
+
+/* --- Menus -------------------------------------------------- */
+
+QMenu {
+    background-color: @surface;
+    color: @text_primary;
+    border: 1px solid @border;
+    border-radius: 8px;
+    padding: 4px;
+}
+
+QMenu::item {
+    padding: 6px 24px;
+    border-radius: 4px;
+}
+
+QMenu::item:selected {
+    background-color: @accent;
+    color: #ffffff;
+}
+
+QMenu::separator {
+    height: 1px;
+    background-color: @border;
+    margin: 4px 8px;
+}
+
+/* --- Tooltips ----------------------------------------------- */
+
+QToolTip {
+    background-color: @surface;
+    color: @text_primary;
+    border: 1px solid @border;
+    border-radius: 4px;
+    padding: 4px 8px;
+}
+
+/* --- Labels ------------------------------------------------- */
+
+QLabel {
+    background: transparent;
+    color: @text_primary;
+}
+
+/* ============================================================
+   Left Sidebar
+   ============================================================ */
+
+#newConversationBtn {
+    background-color: @accent;
+    color: #ffffff;
+    border: none;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 13px;
+}
+
+#newConversationBtn:hover {
+    background-color: @accent_hover;
+}
+
+#sidebarSearch {
+    background-color: @surface_raised;
+    color: @text_primary;
+    border: 1px solid @border;
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 12px;
+}
+
+#sidebarSearch:focus {
+    border-color: @accent;
+}
+
+#convListScroll {
+    background: transparent;
+    border: none;
+}
+
+/* --- Conversation items ------------------------------------- */
+
+#conversationItem {
+    background: transparent;
+    border-radius: 6px;
+    margin: 1px 6px;
+}
+
+#conversationItem:hover {
+    background-color: @surface_raised;
+}
+
+#conversationItem[selected="true"] {
+    background-color: @surface_raised;
+    border-left: 3px solid @accent;
+}
+
+#convItemTitle {
+    color: @text_primary;
+    font-size: 13px;
+    font-weight: 500;
+    background: transparent;
+}
+
+#convItemTime, #convItemMeta, #convItemCost {
+    color: @text_muted;
+    font-size: 11px;
+    background: transparent;
+}
+
+#convActionBtn {
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    font-size: 12px;
+    padding: 2px;
+    color: @text_muted;
+}
+
+#convActionBtn:hover {
+    background-color: @surface_raised;
+    color: @text_primary;
+}
+
+#convHoverActions {
+    background: transparent;
+}
+
+/* --- Date group headers ------------------------------------- */
+
+#dateGroupHeader {
+    background: transparent;
+    color: @text_muted;
+    border: none;
+    border-radius: 0;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    text-align: left;
+    padding-left: 12px;
+}
+
+#dateGroupHeader:hover {
+    color: @text_secondary;
+    background: transparent;
+}
+
+#dateGroupContainer {
+    background: transparent;
+}
+
+/* --- Skills section ----------------------------------------- */
+
+#skillsSection {
+    border-top: 1px solid @border;
+}
+
+#groupToggle {
+    background: transparent;
+    color: @text_muted;
+    border: none;
+    font-size: 10px;
+}
+
+#groupLabel {
+    color: @text_muted;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    background: transparent;
+}
+
+#skillItem {
+    background: transparent;
+    border-radius: 4px;
+}
+
+#skillItem:hover {
+    background-color: @surface_raised;
+}
+
+#skillItem[active="true"] {
+    background-color: @surface_raised;
+    border-left: 3px solid @accent;
+}
+
+#skillName {
+    color: @text_secondary;
+    font-size: 12px;
+    background: transparent;
+}
+
+#skillItem:hover #skillName {
+    color: @text_primary;
+}
+
+/* --- Footer ------------------------------------------------- */
+
+#sidebarFooterBtn {
+    background: transparent;
+    color: @text_muted;
+    border: none;
+    font-size: 11px;
+    padding: 2px 6px;
+}
+
+#sidebarFooterBtn:hover {
+    color: @text_secondary;
+}
+
+#sidebarVersion {
+    color: @text_muted;
+    font-size: 10px;
+    background: transparent;
+}
+
+/* ============================================================
+   Conversation Stream
+   ============================================================ */
+
+#conversationStream {
+    background: transparent;
+    border: none;
+}
+
+#conversationContainer {
+    background: transparent;
+}
+
+#userBubble {
+    background-color: @user_bubble;
+    border-radius: 12px;
+    border: none;
+    margin-left: 80px;
+}
+
+#userBubbleBody {
+    color: @text_primary;
+    font-size: 14px;
+    background: transparent;
+    padding: 4px;
+}
+
+#emilyBubble {
+    background-color: @emily_bubble;
+    border-radius: 12px;
+    border: 1px solid @border;
+    margin-right: 80px;
+}
+
+#emilyBubbleBody {
+    color: @text_primary;
+    font-size: 14px;
+    background: transparent;
+    padding: 4px;
+}
+
+#bubbleHeader {
+    color: @text_muted;
+    font-size: 11px;
+    background: transparent;
+}
+
+#thinkingChip {
+    color: @thinking_border;
+    font-size: 11px;
+    background-color: @thinking_bg;
+    border: 1px solid @thinking_border;
+    border-radius: 8px;
+    padding: 2px 8px;
+}
+
+#emptyState {
+    background: transparent;
+}
+
+#emptyStateAvatar {
+    background-color: @accent;
+    color: #ffffff;
+    font-size: 28px;
+    font-weight: 700;
+    border-radius: 32px;
+}
+
+#emptyStatePrompt {
+    color: @text_secondary;
+    font-size: 16px;
+    background: transparent;
+}
+
+/* ============================================================
+   Input Panel
+   ============================================================ */
+
+#inputPanel {
+    background-color: @surface;
+    border-top: 1px solid @border;
+}
+
+#inputTextArea {
+    background-color: @surface_raised;
+    color: @text_primary;
+    border: 1px solid @border;
+    border-radius: 12px;
+    padding: 8px 12px;
+    font-size: 14px;
+}
+
+#inputTextArea:focus {
+    border-color: @accent;
+}
+
+#sendBtn {
+    background-color: @accent;
+    color: #ffffff;
+    border: none;
+    border-radius: 18px;
+    font-size: 16px;
+    font-weight: 700;
+}
+
+#sendBtn:hover {
+    background-color: @accent_hover;
+}
+
+#sendBtn:disabled {
+    background-color: @surface_raised;
+    color: @text_muted;
+}
+
+#stopBtn {
+    background-color: @error_red;
+    color: #ffffff;
+    border: none;
+    border-radius: 18px;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+#stopBtn:hover {
+    background-color: #b91c1c;
+}
+
+/* ============================================================
+   Right Panel — Thinking + Metadata
+   ============================================================ */
+
+#thinkingSection {
+    background: transparent;
+}
+
+#thinkingSectionHeader {
+    color: @text_secondary;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    background: transparent;
+}
+
+#thinkingTimer {
+    color: @text_muted;
+    font-size: 11px;
+    background: transparent;
+}
+
+#thinkingTextArea {
+    background-color: @thinking_bg;
+    color: @text_secondary;
+    border: 1px solid @thinking_border;
+    border-radius: 6px;
+    font-family: "JetBrains Mono", "Fira Code", monospace;
+    font-size: 12px;
+    padding: 8px;
+}
+
+#rightPanelDivider {
+    background-color: @border;
+    border: none;
+}
+
+#metadataSection {
+    background: transparent;
+}
+
+#metadataSectionHeader {
+    color: @text_secondary;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    background: transparent;
+}
+
+#metadataKey {
+    color: @text_muted;
+    font-size: 12px;
+    background: transparent;
+}
+
+#metadataValue {
+    color: @text_primary;
+    font-size: 12px;
+    background: transparent;
+}
+
+/* ============================================================
+   Code Block Widget (Phase 11)
+   ============================================================ */
+
+#codeBlockFrame {
+    background-color: @code_bg;
+    border: 1px solid @code_border;
+    border-radius: 8px;
+    margin: 4px 0;
+}
+
+#codeBlockHeader {
+    background-color: @surface_raised;
+    border-bottom: 1px solid @code_border;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+    padding: 4px 8px;
+}
+
+#codeBlockLangBadge {
+    color: @text_secondary;
+    font-size: 11px;
+    font-weight: 600;
+    background: transparent;
+}
+
+#codeBlockBody {
+    background-color: @code_bg;
+    color: @text_primary;
+    border: none;
+    font-family: "JetBrains Mono", "Fira Code", monospace;
+    font-size: 13px;
+    padding: 8px;
+}
+
+#codeBlockCopyBtn, #codeBlockRunBtn, #codeBlockExpandBtn {
+    background: transparent;
+    color: @text_muted;
+    border: none;
+    border-radius: 4px;
+    font-size: 12px;
+    padding: 2px 6px;
+}
+
+#codeBlockCopyBtn:hover, #codeBlockRunBtn:hover, #codeBlockExpandBtn:hover {
+    background-color: @action_btn_hover;
+    color: @text_primary;
+}
+
+#codeBlockOutput {
+    background-color: @surface;
+    color: @text_secondary;
+    border: none;
+    border-top: 1px solid @code_border;
+    font-family: "JetBrains Mono", "Fira Code", monospace;
+    font-size: 12px;
+    padding: 6px 8px;
+}
+
+#codeBlockOutputError {
+    background-color: @surface;
+    color: @error_red;
+    border: none;
+    border-top: 1px solid @code_border;
+    font-family: "JetBrains Mono", "Fira Code", monospace;
+    font-size: 12px;
+    padding: 6px 8px;
+}
+
+#lineNumberArea {
+    background-color: @code_bg;
+    color: @text_muted;
+    border: none;
+    font-family: "JetBrains Mono", "Fira Code", monospace;
+    font-size: 13px;
+}
+
+/* ============================================================
+   Action Bar (Phase 12)
+   ============================================================ */
+
+#actionBar {
+    background: transparent;
+    padding: 2px 0;
+}
+
+#actionBtn {
+    background: transparent;
+    color: @text_muted;
+    border: none;
+    border-radius: 4px;
+    font-size: 12px;
+    padding: 3px 8px;
+}
+
+#actionBtn:hover {
+    background-color: @action_btn_hover;
+    color: @text_primary;
+}
+
+#feedbackBtn {
+    background: transparent;
+    color: @text_muted;
+    border: none;
+    border-radius: 4px;
+    font-size: 13px;
+    padding: 3px 6px;
+}
+
+#feedbackBtn:hover {
+    background-color: @action_btn_hover;
+    color: @text_primary;
+}
+
+#feedbackBtn[active="true"] {
+    color: @accent;
+}
+
+/* ============================================================
+   Thinking Indicator (Phase 12)
+   ============================================================ */
+
+#thinkingIndicator {
+    background-color: @emily_bubble;
+    border-radius: 12px;
+    margin-right: 80px;
+    padding: 8px 12px;
+}
+
+#thinkingDots {
+    color: @accent;
+    font-size: 18px;
+    background: transparent;
+}
+
+#thinkingPreview {
+    color: @text_muted;
+    font-size: 12px;
+    font-style: italic;
+    background: transparent;
+}
+
+#thinkingElapsed {
+    color: @text_muted;
+    font-size: 11px;
+    background: transparent;
+}
+
+/* ============================================================
+   Reasoning Phase Cards (Phase 13)
+   ============================================================ */
+
+#phaseCard {
+    background-color: @thinking_bg;
+    border: 1px solid @thinking_border;
+    border-radius: 6px;
+    margin: 2px 0;
+}
+
+#phaseCard[phase="analyzing"] {
+    border-left: 3px solid @phase_analyzing;
+}
+
+#phaseCard[phase="considering"] {
+    border-left: 3px solid @phase_considering;
+}
+
+#phaseCard[phase="comparing"] {
+    border-left: 3px solid @phase_comparing;
+}
+
+#phaseCard[phase="concluding"] {
+    border-left: 3px solid @phase_concluding;
+}
+
+#phaseCard[phase="uncertain"] {
+    border-left: 3px solid @phase_uncertain;
+}
+
+#phaseCardHeader {
+    color: @text_secondary;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    background: transparent;
+}
+
+#phaseCardTime {
+    color: @text_muted;
+    font-size: 10px;
+    background: transparent;
+}
+
+#phaseCardBody {
+    color: @text_secondary;
+    font-family: "JetBrains Mono", "Fira Code", monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    background: transparent;
+}
+
+/* ============================================================
+   Session Stats (Phase 13)
+   ============================================================ */
+
+#sessionStatsSection {
+    background: transparent;
+}
+
+#sessionStatsHeader {
+    color: @text_secondary;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    background: transparent;
+}
+
+#sessionStatsKey {
+    color: @text_muted;
+    font-size: 12px;
+    background: transparent;
+}
+
+#sessionStatsValue {
+    color: @text_primary;
+    font-size: 12px;
+    background: transparent;
+}
+
+#costBreakdownItem {
+    color: @text_secondary;
+    font-size: 11px;
+    background: transparent;
+}
+
+#contextBar {
+    background-color: @progress_bg;
+    border: none;
+    border-radius: 3px;
+    height: 6px;
+}
+
+#contextBar::chunk {
+    background-color: @progress_bar;
+    border-radius: 3px;
+}
+
+/* ============================================================
+   Collapsible Thinking Block (Phase 12 — inline in Emily bubble)
+   ============================================================ */
+
+#inlineThinkingBlock {
+    background-color: @thinking_bg;
+    border: 1px solid @thinking_border;
+    border-radius: 8px;
+    margin: 4px 0;
+}
+
+#inlineThinkingContent {
+    color: @text_secondary;
+    font-family: "JetBrains Mono", "Fira Code", monospace;
+    font-size: 12px;
+    background: transparent;
+    padding: 8px;
+}
+
+#inlineThinkingToggle {
+    background: transparent;
+    color: @thinking_border;
+    border: none;
+    font-size: 11px;
+    padding: 4px 8px;
+}
+
+/* ============================================================
+   Top Bar (Phase 14)
+   ============================================================ */
+
+#topBar {
+    background-color: @surface;
+    border-bottom: 1px solid @border;
+}
+
+#modelSelectorBtn, #skillSelectorBtn {
+    background: transparent;
+    color: @text_primary;
+    border: 1px solid @border;
+    border-radius: 6px;
+    font-size: 12px;
+    padding: 4px 10px;
+}
+
+#modelSelectorBtn:hover, #skillSelectorBtn:hover {
+    background-color: @action_btn_hover;
+    border-color: @accent;
+}
+
+#liveStatsBar {
+    background: transparent;
+}
+
+#statLabel {
+    color: @text_muted;
+    font-size: 11px;
+    font-family: "JetBrains Mono", "Fira Code", monospace;
+    background: transparent;
+}
+
+#costWarning {
+    color: @warning_amber;
+    font-size: 11px;
+    font-weight: 600;
+    background: transparent;
+    padding: 0 4px;
+}
+
+#contextWarning {
+    color: @error_red;
+    font-size: 11px;
+    font-weight: 600;
+    background: transparent;
+    padding: 0 4px;
+}
+
+/* ============================================================
+   Input Toolbar (Phase 15)
+   ============================================================ */
+
+#toolbarBtn {
+    background: transparent;
+    color: @text_muted;
+    border: none;
+    border-radius: 4px;
+    font-size: 13px;
+    padding: 4px 8px;
+}
+
+#toolbarBtn:hover {
+    background-color: @action_btn_hover;
+    color: @text_primary;
+}
+
+#toolbarBtnActive {
+    background: transparent;
+    color: @accent;
+    border: none;
+    border-radius: 4px;
+    font-size: 13px;
+    padding: 4px 8px;
+}
+
+#attachmentChip {
+    background-color: @surface_raised;
+    color: @text_secondary;
+    border: 1px solid @border;
+    border-radius: 12px;
+    font-size: 11px;
+    padding: 2px 8px;
+}
+
+#attachmentChipClose {
+    background: transparent;
+    color: @text_muted;
+    border: none;
+    font-size: 10px;
+    padding: 0 2px;
+}
+
+#attachmentChipClose:hover {
+    color: @error_red;
+}
+
+#slashCommandPopup {
+    background-color: @surface;
+    border: 1px solid @border;
+    border-radius: 8px;
+    padding: 4px;
+}
+
+#slashCommandItem {
+    background: transparent;
+    color: @text_primary;
+    border: none;
+    border-radius: 4px;
+    font-size: 12px;
+    padding: 6px 10px;
+    text-align: left;
+}
+
+#slashCommandItem:hover {
+    background-color: @action_btn_hover;
+}
+
+/* ============================================================
+   Search Overlay (Phase 18)
+   ============================================================ */
+
+#searchOverlay {
+    background-color: rgba(245, 245, 247, 200);
+}
+
+#searchOverlayPanel {
+    background-color: @surface;
+    border: 1px solid @border;
+    border-radius: 12px;
+}
+
+#searchOverlayInput {
+    background-color: @surface_raised;
+    color: @text_primary;
+    border: 1px solid @border;
+    border-radius: 8px;
+    font-size: 14px;
+    padding: 8px 12px;
+}
+
+#searchResultItem {
+    background: transparent;
+    border-radius: 6px;
+    padding: 6px 10px;
+}
+
+#searchResultItem:hover {
+    background-color: @action_btn_hover;
+}
+
+#searchCommandItem {
+    background: transparent;
+    color: @text_secondary;
+    border: none;
+    border-radius: 4px;
+    font-size: 12px;
+    padding: 4px 10px;
+}
+
+#searchCommandItem:hover {
+    background-color: @action_btn_hover;
+    color: @text_primary;
+}
+
+/* ============================================================
+   Skill Editor (Phase 16)
+   ============================================================ */
+
+#skillEditorDialog {
+    background-color: @surface;
+    border: 1px solid @border;
+    border-radius: 12px;
+}

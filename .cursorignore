@@ -1,0 +1,61 @@
+# Python bytecode & caches
+__pycache__/
+*.py[cod]
+*.pyo
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Model weights & caches (large binary files, useless for code context)
+models/.cache/
+*.gguf
+*.bin
+*.onnx
+*.safetensors
+*.pt
+*.pth
+
+# Data & runtime artifacts
+data/
+*.sqlite
+*.db
+*.csv
+*.parquet
+*.pkl
+*.h5
+
+# Prompt archives (historical, not active code)
+prompts/archive/
+
+# Docker volumes & build artifacts
+*.log
+*.pid
+*.pid.lock
+
+# Node / JS (if any MCP tooling)
+node_modules/
+
+# IDE & OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Git internals
+.git/
+
+# Generated docs
+docs/_build/
+site/
+
+# Grafana/Prometheus data (runtime, not code)
+scripts/grafana_provisioning/dashboards/*.json

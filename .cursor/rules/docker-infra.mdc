@@ -1,0 +1,38 @@
+---
+description: Rules for Emily's Docker, CI, and infrastructure config
+globs: ["**/Dockerfile*", "**/docker-compose*.yml", "**/.github/workflows/*.yml", "**/scripts/prometheus.yml", "**/scripts/searxng_settings.yml", "**/scripts/grafana_provisioning/**"]
+alwaysApply: false
+---
+
+# Emily Infrastructure Rules
+
+## Docker Compose
+Emily runs bare-metal for GPU access. Docker Compose manages supporting services only:
+- **qdrant** — vector database for semantic memory and RAG
+- **searxng** — private web search instance
+- **prometheus** — metrics collection
+- **grafana** — dashboards and alerting
+- **jaeger** — distributed tracing (OpenTelemetry)
+
+### Conventions
+- Pin image versions exactly (e.g., `qdrant/qdrant:v1.9.2`) — never use `latest` except for searxng
+- Use named volumes for persistent data (qdrant_data, prometheus_data, grafana_data)
+- Add `healthcheck` directives to all services
+- Never hardcode secrets — use `${VAR}` references and `.env` files
+- All services join `emily-network` for inter-service DNS resolution
+
+## Configuration Files
+- `scripts/prometheus.yml` — Prometheus scrape targets (Emily exports metrics on :8000/metrics)
+- `scripts/searxng_settings.yml` — SearXNG engine and UI config
+- `scripts/grafana_provisioning/` — auto-provisioned datasources and dashboards
+
+## Environment & Secrets
+- `.env` files are for local dev only — never commit them
+- `.env.example` lists all required variables with blank values
+- Production secrets go in a secrets manager or encrypted vault, not env files
+- Emily's built-in vault (`security/vault/`) handles runtime secrets
+
+## GitHub Actions (if/when added)
+- Pin action versions to full SHA, not tags
+- Cache pip dependencies keyed on pyproject.toml hash
+- Separate lint, test, and deploy into distinct jobs with `needs:` dependencies

@@ -1,0 +1,266 @@
+emily:
+  name: "Emily"
+  version: "1.0.0"
+  log_level: "INFO"
+  data_dir: "data"
+  logs_dir: "logs"
+  knowledge_dir: "knowledge"
+  prompts_dir: "prompts"
+
+llm:
+  backend: "ollama"
+  ollama_base_url: "http://localhost:11434"
+  models:
+    nano: "qwen3:4b"
+    voice_fast: "qwen3:4b"
+    fast: "qwen3:14b"
+    smart: "qwq:latest"
+    reasoning: "qwq:latest"
+    # smart_alt: "qwen3:32b"       # inactive — swap in for smart/reasoning when desired (~20 GB VRAM)
+    vision: "minicpm-v:latest"
+    embedding: "bge-m3"
+  routing:
+    complexity_threshold_fast: 3
+    complexity_threshold_smart: 7
+    voice_fast_complexity_threshold: 5   # voice queries below this complexity -> voice_fast tier
+    voice_skip_rag_below: 5             # skip RAG retrieval for voice queries below this complexity
+    voice_skip_critic: true              # disable critic loop for voice turns
+    vram_headroom_gb: 2.0
+    default_stream: true
+  inference:
+    temperature: 0.7
+    top_p: 0.9
+    repeat_penalty: 1.1
+    max_tokens: 4096
+    context_window: 8192
+  critic:
+    enabled: true
+    min_confidence: 0.65
+    max_retries: 2
+  llamacpp:
+    enabled: true
+    models_dir: "models"   # place GGUF files here (e.g. nano Qwen3 4B)
+    models:
+      nano:
+        filename: "qwen3-4b-instruct-q4_k_m.gguf"  # Qwen3 4B; download to models_dir
+        n_gpu_layers: -1
+        n_ctx: 32768
+        n_batch: 512
+      voice_fast:
+        alias_of: "nano"
+  tier_backend:
+    nano: "llamacpp"
+    voice_fast: "llamacpp"
+    fast: "ollama"
+    smart: "ollama"
+    reasoning: "ollama"
+    vision: "ollama"
+    embedding: "ollama"
+
+audio:
+  sample_rate: 16000
+  channels: 1
+  chunk_size: 1024
+  input_device: null   # null = system default
+  output_device: null  # null = system default
+
+wake_word:
+  model: "hey_emily"
+  threshold: 0.5
+  inference_framework: "onnx"
+  custom_model_path: null
+
+vad:
+  model: "silero"
+  threshold: 0.5
+  min_silence_ms: 500
+  min_speech_ms: 250
+  adaptive: true
+  noise_floor_update_rate: 0.01
+
+stt:
+  model: "large-v3-turbo"
+  device: "cuda"
+  compute_type: "float16"
+  language: "en"
+  word_timestamps: true
+  beam_size: 5
+  voice_fast_beam_size: 1
+
+tts:
+  primary: "kokoro"
+  fallback: "xtts_v2"
+  voice_preset: "en_US_female_1"
+  xtts:
+    model_name: "tts_models/multilingual/multi-dataset/xtts_v2"
+    speaker_wav: null
+    language: "en"
+    speed: 1.0
+  kokoro:
+    voice: "af_heart"
+    speed: 1.0
+  csm:
+    model_id: "sesame/csm-1b"
+    speaker_id: 0
+    max_audio_length: 250
+    dtype: "float16"
+  streaming_chunk_size: 100
+
+singing:
+  enabled: true
+  primary: "musicgen"
+  fallback: "suno"
+  output_dir: "data/singing_output"
+  rvc:
+    enabled: true
+    model_path: null
+    index_path: null
+    device: "cuda:0"
+    f0_method: "rmvpe"
+    transpose: 0
+  musicgen:
+    enabled: true
+    model_size: "small"
+    duration_seconds: 30
+    device: "cuda:0"
+  suno:
+    enabled: true
+    api_url: "https://api.sunoapi.org"
+    api_key: null     # set via SUNO_API_KEY env var
+    model_version: "v4"
+    timeout_seconds: 120
+
+voice_engine:
+  enabled: true
+  input_sample_rate: 48000
+  output_sample_rate: 24000
+  output_channels: 2
+  chunk_ms: 10
+  aec_enabled: true
+  aec_tail_ms: 150
+  noise_suppress_enabled: true
+  noise_threshold_db: 15.0
+  speaker_tracking: true
+  max_speakers: 2
+  turn_response_threshold: 0.85
+  turn_backchannel_threshold: 0.45
+  backchannels_enabled: true
+  fillers_enabled: true
+  breathing_enabled: true
+  rhythm_sync_enabled: true
+  entrainment_degree: 0.4
+  emotion_adapt_enabled: true
+  whisper_match: true
+  energy_match: true
+  cross_session_rhythm: true
+  latency_target_ms: 500
+  speculative_generation: true
+  speculative_start_probability: 0.65
+  fast_mode: true
+  fast_mode_skip_speaker_tracking: true
+  fast_mode_skip_emotion: true
+  fast_mode_skip_breathing: true
+  fast_mode_skip_rhythm: true
+  interrupt_energy_threshold: 0.03
+  interrupt_cooldown_ms: 300
+  interrupt_fade_ms: 20
+  interrupt_lookahead_ms: 300
+  interrupt_ack_enabled: true
+  interrupt_resume_enabled: true
+  interrupt_resume_expiry_s: 30.0
+  interrupt_adaptive_threshold: true
+
+memory:
+  sensory_buffer_size: 1000
+  working:
+    max_tokens: 4096
+    pin_important_threshold: 0.8
+  episodic:
+    db_path: "data/episodes.db"
+    auto_summarize: true
+    summary_model: "fast"
+  semantic:
+    qdrant_url: "http://localhost:6333"
+    collection_name: "emily_semantic"
+    bm25_index_path: "data/bm25_index"
+    temporal_decay_days: 365
+    decay_factor: 0.95
+  procedural:
+    path: "data/procedural.json"
+  consolidation:
+    idle_trigger_minutes: 10
+    max_episodes_per_run: 20
+    reflection_model: "smart"
+
+rag:
+  watch_dirs:
+    - "knowledge"
+  chunk_size_child: 256
+  chunk_size_parent: 2048
+  chunk_overlap: 32
+  embedding_batch_size: 32
+  query_expansion_count: 3
+  rerank_top_k: 20
+  final_top_k: 5
+
+agents:
+  message_bus_port: 5555
+  heartbeat_interval_s: 5
+  task_timeout_s: 60
+  reflection_interval_minutes: 10
+  monitor_interval_s: 30
+
+tools:
+  sandbox: "bubblewrap"
+  allowed_paths:
+    - "/home/supernovyl/Emily1.0"
+    - "/tmp/emily_sandbox"
+  web_search_url: "http://localhost:8080"
+  home_assistant:
+    url: "http://localhost:8123"
+    token: null  # set in .env
+
+vision:
+  enabled: false
+  screen_capture_interval_s: 5
+  webcam_device: 0
+  emotion_detection: false
+
+persona:
+  profile_path: "persona/profile.json"
+  curiosity: 0.8
+  warmth: 0.85
+  directness: 0.7
+  humor: 0.5
+  formality: 0.3
+  evolution_rate: 0.01
+
+security:
+  encrypt_at_rest: true
+  key_file: "~/.emily_key"
+  pii_scrub: true
+  audit_log_path: "logs/audit.log"
+  dead_man_switch_days: 30
+  require_approval_tools:
+    - "shell"
+    - "process_manager"
+    - "file_writer"
+
+self_improvement:
+  track_performance: true
+  evolve_prompts: true
+  prompt_ab_test_sessions: 10
+  capability_gap_log: "data/capability_gaps.jsonl"
+  performance_log: "data/performance_log.jsonl"
+
+api:
+  host: "127.0.0.1"
+  port: 8000
+  reload: false
+  secret_key: null  # set in .env
+
+observability:
+  otlp_endpoint: "http://localhost:4317"
+  metrics_port: 9090
+  log_format: "json"
+  tracing_enabled: true

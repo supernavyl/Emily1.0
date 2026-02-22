@@ -1,0 +1,35 @@
+---
+description: Rules for Emily's desktop UI (PySide6) and terminal UI (Textual)
+globs: ["**/emily_chat/**/*.py", "**/ui/**/*.py"]
+alwaysApply: false
+---
+
+# Emily Desktop & Terminal UI Rules
+
+## PySide6 Desktop App (emily_chat/)
+- Main app is `emily_chat/app.py` with `emily_chat/main.py` as the entry point
+- Uses Qt's signal/slot pattern for inter-component communication — never poll in the UI thread
+- Themes are QSS stylesheets in `emily_chat/assets/themes/` (dark.qss, light.qss)
+- Keep UI logic in controller (`emily_chat/controller.py`), not in widget classes
+
+### Component Rules
+- One widget class per file in `emily_chat/ui/`
+- Widget filenames match widget class names (snake_case file, PascalCase class)
+- Heavy computation (LLM calls, embedding, file parsing) must run in a worker thread via `QThreadPool` or `asyncio.to_thread` — never block the UI thread
+- Markdown rendering goes through `emily_chat/ui/markdown_renderer.py`
+
+### Model Providers
+- Provider implementations live in `emily_chat/models/` (openai, anthropic, ollama, etc.)
+- All providers must implement the same interface for the auto_router to dispatch to them
+- Cost tracking via `emily_chat/models/cost_tracker.py`
+
+## Textual TUI (ui/)
+- Brain dashboard: `ui/brain/dashboard.py` — shows FSM state, active agents, memory
+- Voice dashboard: `ui/voice/dashboard.py` — shows audio pipeline, TTS state
+- Terminal app: `ui/terminal/app.py` — interactive conversation interface
+
+### Textual Conventions
+- Use Textual's reactive attributes for state that drives UI updates
+- CSS styling in `.tcss` files co-located with the app
+- Widgets compose via `yield` in `compose()` — keep the widget tree shallow
+- Use `work()` decorator for async operations that update the UI
