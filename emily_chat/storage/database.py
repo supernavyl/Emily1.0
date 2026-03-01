@@ -8,9 +8,8 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
 
 import aiosqlite
 
@@ -23,7 +22,7 @@ _MIGRATIONS_DIR = Path(__file__).parent / "migrations"
 
 def _utcnow() -> str:
     """ISO-8601 timestamp in UTC."""
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _new_id() -> str:
@@ -43,7 +42,7 @@ class ConversationDatabase:
 
     def __init__(self, db_path: Path | str | None = None) -> None:
         self._path = str(db_path) if db_path else str(_DB_PATH)
-        self._conn: Optional[aiosqlite.Connection] = None
+        self._conn: aiosqlite.Connection | None = None
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -83,9 +82,7 @@ class ConversationDatabase:
             "CREATE TABLE IF NOT EXISTS schema_version "
             "(version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)"
         )
-        cursor = await self.conn.execute(
-            "SELECT COALESCE(MAX(version), 0) FROM schema_version"
-        )
+        cursor = await self.conn.execute("SELECT COALESCE(MAX(version), 0) FROM schema_version")
         row = await cursor.fetchone()
         current = row[0] if row else 0
 
@@ -133,7 +130,7 @@ class ConversationDatabase:
             skill_id=skill_id,
         )
 
-    async def get_conversation(self, conversation_id: str) -> Optional[ConversationSummary]:
+    async def get_conversation(self, conversation_id: str) -> ConversationSummary | None:
         """Return a single conversation summary or None."""
         cursor = await self.conn.execute(
             "SELECT * FROM conversations WHERE id = ?", (conversation_id,)
@@ -188,7 +185,7 @@ class ConversationDatabase:
         await self.conn.execute("DELETE FROM conversations WHERE id = ?", (conversation_id,))
         await self.conn.commit()
 
-    async def duplicate_conversation(self, conversation_id: str) -> Optional[ConversationSummary]:
+    async def duplicate_conversation(self, conversation_id: str) -> ConversationSummary | None:
         """Clone a conversation and all its messages, returning the new summary."""
         src = await self.get_conversation(conversation_id)
         if src is None:
@@ -215,13 +212,25 @@ class ConversationDatabase:
                 "latency_ms, first_token_ms, created_at, edited, stopped, rating, version) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
-                    new_mid, new_conv.id, row["role"], row["content"],
-                    row["content_raw"], row["thinking_content"],
-                    row["model"], row["provider"],
-                    row["tokens_in"], row["tokens_out"], row["tokens_thinking"],
-                    row["cost_usd"], row["latency_ms"], row["first_token_ms"],
-                    row["created_at"], row["edited"], row["stopped"],
-                    row["rating"], row["version"],
+                    new_mid,
+                    new_conv.id,
+                    row["role"],
+                    row["content"],
+                    row["content_raw"],
+                    row["thinking_content"],
+                    row["model"],
+                    row["provider"],
+                    row["tokens_in"],
+                    row["tokens_out"],
+                    row["tokens_thinking"],
+                    row["cost_usd"],
+                    row["latency_ms"],
+                    row["first_token_ms"],
+                    row["created_at"],
+                    row["edited"],
+                    row["stopped"],
+                    row["rating"],
+                    row["version"],
                 ),
             )
 
@@ -232,7 +241,7 @@ class ConversationDatabase:
 
     async def fork_conversation(
         self, conversation_id: str, from_message_id: str
-    ) -> Optional[ConversationSummary]:
+    ) -> ConversationSummary | None:
         """Create a branch: copy messages up to (and including) *from_message_id*."""
         src = await self.get_conversation(conversation_id)
         if src is None:
@@ -263,13 +272,25 @@ class ConversationDatabase:
                 "latency_ms, first_token_ms, created_at, edited, stopped, rating, version) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
-                    new_mid, new_conv.id, row["role"], row["content"],
-                    row["content_raw"], row["thinking_content"],
-                    row["model"], row["provider"],
-                    row["tokens_in"], row["tokens_out"], row["tokens_thinking"],
-                    row["cost_usd"], row["latency_ms"], row["first_token_ms"],
-                    row["created_at"], row["edited"], row["stopped"],
-                    row["rating"], row["version"],
+                    new_mid,
+                    new_conv.id,
+                    row["role"],
+                    row["content"],
+                    row["content_raw"],
+                    row["thinking_content"],
+                    row["model"],
+                    row["provider"],
+                    row["tokens_in"],
+                    row["tokens_out"],
+                    row["tokens_thinking"],
+                    row["cost_usd"],
+                    row["latency_ms"],
+                    row["first_token_ms"],
+                    row["created_at"],
+                    row["edited"],
+                    row["stopped"],
+                    row["rating"],
+                    row["version"],
                 ),
             )
             if row["id"] == from_message_id:
@@ -310,9 +331,21 @@ class ConversationDatabase:
             "cost_usd, latency_ms, first_token_ms, created_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
-                mid, conversation_id, role, content, content_raw, thinking_content,
-                model, provider, tokens_in, tokens_out, tokens_thinking,
-                cost_usd, latency_ms, first_token_ms, now,
+                mid,
+                conversation_id,
+                role,
+                content,
+                content_raw,
+                thinking_content,
+                model,
+                provider,
+                tokens_in,
+                tokens_out,
+                tokens_thinking,
+                cost_usd,
+                latency_ms,
+                first_token_ms,
+                now,
             ),
         )
         # Update conversation aggregates
@@ -328,8 +361,14 @@ class ConversationDatabase:
             "updated_at = ? "
             "WHERE id = ?",
             (
-                tokens_in, tokens_out, tokens_thinking, cost_usd,
-                model, provider, now, conversation_id,
+                tokens_in,
+                tokens_out,
+                tokens_thinking,
+                cost_usd,
+                model,
+                provider,
+                now,
+                conversation_id,
             ),
         )
         await self.conn.commit()
@@ -359,6 +398,40 @@ class ConversationDatabase:
         )
         rows = await cursor.fetchall()
         return [_row_to_message(r) for r in rows]
+
+    async def rate_message(self, message_id: str, rating: int) -> bool:
+        """Set the rating on a message.
+
+        Args:
+            message_id: The message ID.
+            rating: Rating value (-1, 0, or 1).
+
+        Returns:
+            ``True`` if the message existed and was updated.
+        """
+        cursor = await self.conn.execute(
+            "UPDATE messages SET rating = ? WHERE id = ?",
+            (rating, message_id),
+        )
+        await self.conn.commit()
+        return cursor.rowcount > 0
+
+    async def edit_message(self, message_id: str, content: str) -> bool:
+        """Update the content of a message and mark it as edited.
+
+        Args:
+            message_id: The message ID.
+            content: The new content.
+
+        Returns:
+            ``True`` if the message existed and was updated.
+        """
+        cursor = await self.conn.execute(
+            "UPDATE messages SET content = ?, edited = 1 WHERE id = ?",
+            (content, message_id),
+        )
+        await self.conn.commit()
+        return cursor.rowcount > 0
 
     # ------------------------------------------------------------------
     # Search
@@ -422,12 +495,10 @@ class ConversationDatabase:
 # Row → model converters
 # ------------------------------------------------------------------
 
+
 def _row_to_summary(row: aiosqlite.Row) -> ConversationSummary:
     tags_raw = row["tags"]
-    if isinstance(tags_raw, str):
-        tags = json.loads(tags_raw)
-    else:
-        tags = tags_raw or []
+    tags = json.loads(tags_raw) if isinstance(tags_raw, str) else tags_raw or []
 
     return ConversationSummary(
         id=row["id"],

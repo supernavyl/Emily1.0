@@ -12,20 +12,22 @@ Capture thread uses SCHED_FIFO real-time priority on Linux.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import ctypes
 import os
 import struct
 import threading
-import time
-from collections import deque
-from dataclasses import dataclass, field
-from typing import Deque
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
+import numpy.typing as npt
 
-from config import AudioConfig
 from observability.logger import get_logger
 from perception.audio.stream import AudioChunk
+
+if TYPE_CHECKING:
+    from config import AudioConfig
 
 log = get_logger(__name__)
 
@@ -64,7 +66,7 @@ class CaptureConfig:
 
 class RingBuffer:
     """
-    Lock-free single-producer single-consumer ring buffer for float32 audio.
+    Thread-safe single-producer single-consumer ring buffer for float32 audio.
 
     Overwrites oldest data on overflow rather than blocking.
     """
@@ -80,7 +82,7 @@ class RingBuffer:
         self._read_pos = 0
         self._lock = threading.Lock()
 
-    def write(self, data: np.ndarray) -> int:
+    def write(self, data: npt.NDArray[np.float32]) -> int:
         """
         Write samples into the ring buffer.
 
@@ -94,7 +96,7 @@ class RingBuffer:
         """
         n = len(data)
         if n >= self._capacity:
-            data = data[-self._capacity:]
+            data = data[-self._capacity :]
             n = self._capacity
 
         with self._lock:
@@ -105,16 +107,16 @@ class RingBuffer:
 
             end = self._write_pos + n
             if end <= self._capacity:
-                self._buf[self._write_pos:end] = data
+                self._buf[self._write_pos : end] = data
             else:
                 first = self._capacity - self._write_pos
-                self._buf[self._write_pos:] = data[:first]
-                self._buf[:n - first] = data[first:]
+                self._buf[self._write_pos :] = data[:first]
+                self._buf[: n - first] = data[first:]
 
             self._write_pos = (self._write_pos + n) % self._capacity
         return n
 
-    def read(self, n_samples: int) -> np.ndarray | None:
+    def read(self, n_samples: int) -> npt.NDArray[np.float32] | None:
         """
         Read up to n_samples from the buffer.
 
@@ -131,17 +133,17 @@ class RingBuffer:
 
             end = self._read_pos + n_samples
             if end <= self._capacity:
-                out = self._buf[self._read_pos:end].copy()
+                out = self._buf[self._read_pos : end].copy()
             else:
                 first = self._capacity - self._read_pos
                 out = np.empty(n_samples, dtype=np.float32)
-                out[:first] = self._buf[self._read_pos:]
-                out[first:] = self._buf[:n_samples - first]
+                out[:first] = self._buf[self._read_pos :]
+                out[first:] = self._buf[: n_samples - first]
 
             self._read_pos = (self._read_pos + n_samples) % self._capacity
             return out
 
-    def peek(self, n_samples: int) -> np.ndarray | None:
+    def peek(self, n_samples: int) -> npt.NDArray[np.float32] | None:
         """Read samples without advancing the read pointer."""
         with self._lock:
             avail = self._available_unlocked()
@@ -150,11 +152,11 @@ class RingBuffer:
 
             end = self._read_pos + n_samples
             if end <= self._capacity:
-                return self._buf[self._read_pos:end].copy()
+                return self._buf[self._read_pos : end].copy()
             first = self._capacity - self._read_pos
             out = np.empty(n_samples, dtype=np.float32)
-            out[:first] = self._buf[self._read_pos:]
-            out[first:] = self._buf[:n_samples - first]
+            out[:first] = self._buf[self._read_pos :]
+            out[first:] = self._buf[: n_samples - first]
             return out
 
     @property
@@ -200,11 +202,12 @@ class AudioCaptureEngine:
 
         self._aec_reference_ring = RingBuffer(self.config.output_sample_rate * 1)  # 1s AEC ref
 
-        self._input_stream: object | None = None
-        self._output_stream: object | None = None
+        self._input_stream: Any = None
+        self._output_stream: Any = None
         self._running = False
         self._input_queue: asyncio.Queue[AudioChunk] = asyncio.Queue(maxsize=300)
         self._loop: asyncio.AbstractEventLoop | None = None
+        self._tasks: set[asyncio.Task[None]] = set()
 
         self._input_chunk_samples = int(
             self.config.input_sample_rate * self.config.input_chunk_ms / 1000
@@ -219,10 +222,10 @@ class AudioCaptureEngine:
         self._running = True
 
         try:
-            import sounddevice as sd
+            import sounddevice as sd  # type: ignore[import-untyped]
         except ImportError:
             log.warning("sounddevice_not_available", fallback="silence_generator")
-            asyncio.create_task(self._silence_generator())
+            self._spawn_task(self._silence_generator())
             return
 
         try:
@@ -234,11 +237,11 @@ class AudioCaptureEngine:
                 error=str(exc)[:200],
                 fallback="silence_generator",
             )
-            asyncio.create_task(self._silence_generator())
+            self._spawn_task(self._silence_generator())
             return
 
         self._set_thread_priority_realtime()
-        asyncio.create_task(self._input_dispatch_loop())
+        self._spawn_task(self._input_dispatch_loop())
 
         log.info(
             "capture_engine_started",
@@ -247,12 +250,18 @@ class AudioCaptureEngine:
             chunk_ms=self.config.input_chunk_ms,
         )
 
+    def _spawn_task(self, coro: Any) -> None:
+        """Create a background task and prevent it from being garbage-collected."""
+        task: asyncio.Task[None] = asyncio.create_task(coro)
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
+
     def _start_input_stream(self, sd: object) -> None:
         """Open sounddevice InputStream with a callback."""
-        import sounddevice as sd_mod
+        import sounddevice as sd_mod  # type: ignore[import-untyped]
 
         def input_callback(
-            indata: np.ndarray,
+            indata: npt.NDArray[np.float32],
             frames: int,
             time_info: object,
             status: object,
@@ -264,7 +273,7 @@ class AudioCaptureEngine:
             mono = indata[:, 0].copy() if indata.ndim > 1 else indata.copy().flatten()
             self._input_ring.write(mono)
 
-        self._input_stream = sd_mod.InputStream(
+        self._input_stream = sd_mod.InputStream(  # pyright: ignore[reportUnknownMemberType]
             samplerate=self.config.input_sample_rate,
             channels=self.config.input_channels,
             dtype="float32",
@@ -272,14 +281,14 @@ class AudioCaptureEngine:
             device=self.config.input_device,
             callback=input_callback,
         )
-        self._input_stream.start()
+        self._input_stream.start()  # pyright: ignore[reportUnknownMemberType]
 
     def _start_output_stream(self, sd: object) -> None:
         """Open sounddevice OutputStream with a callback that drains the output ring."""
-        import sounddevice as sd_mod
+        import sounddevice as sd_mod  # type: ignore[import-untyped]
 
         def output_callback(
-            outdata: np.ndarray,
+            outdata: npt.NDArray[np.float32],
             frames: int,
             time_info: object,
             status: object,
@@ -303,7 +312,7 @@ class AudioCaptureEngine:
             else:
                 outdata[:] = 0
 
-        self._output_stream = sd_mod.OutputStream(
+        self._output_stream = sd_mod.OutputStream(  # pyright: ignore[reportUnknownMemberType]
             samplerate=self.config.output_sample_rate,
             channels=self.config.output_channels,
             dtype="float32",
@@ -311,7 +320,7 @@ class AudioCaptureEngine:
             device=self.config.output_device,
             callback=output_callback,
         )
-        self._output_stream.start()
+        self._output_stream.start()  # pyright: ignore[reportUnknownMemberType]
 
     async def _input_dispatch_loop(self) -> None:
         """Reads 10ms chunks from the input ring and dispatches to the async queue."""
@@ -327,10 +336,8 @@ class AudioCaptureEngine:
                     channels=1,
                 )
                 if self._input_queue.full():
-                    try:
+                    with contextlib.suppress(asyncio.QueueEmpty):
                         self._input_queue.get_nowait()
-                    except asyncio.QueueEmpty:
-                        pass
                 await self._input_queue.put(chunk)
             else:
                 await asyncio.sleep(interval * 0.5)
@@ -357,7 +364,7 @@ class AudioCaptureEngine:
         """
         return await self._input_queue.get()
 
-    def write_output(self, audio: np.ndarray) -> None:
+    def write_output(self, audio: npt.NDArray[np.float32]) -> None:
         """
         Write audio samples to the output ring buffer for playback.
 
@@ -366,21 +373,56 @@ class AudioCaptureEngine:
         """
         self._output_ring.write(audio)
 
-    def get_aec_reference(self, n_samples: int) -> np.ndarray | None:
+    def get_aec_reference(
+        self,
+        n_samples: int,
+        target_rate: int | None = None,
+    ) -> npt.NDArray[np.float32] | None:
         """
-        Read from the AEC reference ring buffer.
+        Read the AEC reference signal, optionally resampled to a target rate.
+
+        The ring buffer holds samples at the output sample rate (24kHz).  When
+        the microphone operates at a different rate (e.g. 48kHz) the caller
+        must pass *target_rate* so the correct number of source samples is
+        consumed and the result is upsampled to match *n_samples*.
 
         Args:
-            n_samples: Number of samples to read.
+            n_samples: Number of samples needed at *target_rate* (or the raw
+                output rate when *target_rate* is None).
+            target_rate: Desired output sample rate.  If omitted or equal to
+                the capture output rate, no resampling is performed.
 
         Returns:
-            Float32 array of what the speakers are currently playing,
-            or None if insufficient data.
+            Float32 array of *n_samples* length, or None if insufficient data.
         """
-        return self._aec_reference_ring.read(n_samples)
+        out_rate = self.config.output_sample_rate  # 24 000 Hz
+        if target_rate is None or target_rate == out_rate:
+            return self._aec_reference_ring.read(n_samples)
+
+        # Convert requested sample count from target_rate to the ring-buffer rate.
+        n_at_ring_rate = max(1, round(n_samples * out_rate / target_rate))
+        ref = self._aec_reference_ring.read(n_at_ring_rate)
+        if ref is None:
+            return None
+
+        # Upsample to target_rate using an integer up/down ratio.
+        from math import gcd
+
+        from scipy.signal import resample_poly  # lazy import — avoids overhead at module load
+
+        g = gcd(target_rate, out_rate)
+        up, down = target_rate // g, out_rate // g
+        resampled: npt.NDArray[np.float32] = resample_poly(ref, up, down).astype(np.float32)
+
+        # Trim or pad to exactly n_samples to guard against rounding drift.
+        if len(resampled) >= n_samples:
+            return resampled[:n_samples]
+        padded = np.zeros(n_samples, dtype=np.float32)
+        padded[: len(resampled)] = resampled
+        return padded
 
     @staticmethod
-    def downsample_48k_to_16k(audio_48k: np.ndarray) -> np.ndarray:
+    def downsample_48k_to_16k(audio_48k: npt.NDArray[np.float32]) -> npt.NDArray[np.float32]:
         """
         Downsample from 48kHz to 16kHz using decimation (factor 3).
 
@@ -390,11 +432,16 @@ class AudioCaptureEngine:
         Returns:
             Float32 audio at 16kHz.
         """
-        from scipy.signal import decimate
-        return decimate(audio_48k, 3, ftype="fir", zero_phase=False).astype(np.float32)
+        from scipy.signal import decimate  # type: ignore[import-untyped]
+
+        decimated: npt.NDArray[np.float32] = np.asarray(
+            decimate(audio_48k, 3, ftype="fir", zero_phase=False),
+            dtype=np.float32,
+        )
+        return decimated
 
     @staticmethod
-    def upsample_24k_to_48k(audio_24k: np.ndarray) -> np.ndarray:
+    def upsample_24k_to_48k(audio_24k: npt.NDArray[np.float32]) -> npt.NDArray[np.float32]:
         """
         Upsample from 24kHz to 48kHz (factor 2) for AEC reference alignment.
 
@@ -404,19 +451,23 @@ class AudioCaptureEngine:
         Returns:
             Float32 audio at 48kHz.
         """
-        from scipy.signal import resample_poly
-        return resample_poly(audio_24k, 2, 1).astype(np.float32)
+        from scipy.signal import resample_poly  # type: ignore[import-untyped]
+
+        return cast(
+            "npt.NDArray[np.float32]",
+            resample_poly(audio_24k, 2, 1).astype(np.float32),
+        )
 
     def _set_thread_priority_realtime(self) -> None:
         """Set SCHED_FIFO on Linux for the audio threads."""
         if os.name != "posix":
             return
         try:
-            SCHED_FIFO = 1
+            sched_fifo = 1
             param = struct.pack("i", 50)  # priority 50 out of 99
             libc = ctypes.CDLL("libc.so.6", use_errno=True)
             tid = libc.syscall(186)  # SYS_gettid
-            result = libc.sched_setscheduler(tid, SCHED_FIFO, ctypes.c_char_p(param))
+            result = libc.sched_setscheduler(tid, sched_fifo, ctypes.c_char_p(param))
             if result == 0:
                 log.info("realtime_priority_set", scheduler="SCHED_FIFO", priority=50)
             else:

@@ -18,17 +18,17 @@ is emitted containing all accumulated audio for that utterance.
 from __future__ import annotations
 
 import asyncio
-import io
-import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum, auto
-from typing import AsyncIterator
+from typing import TYPE_CHECKING
 
 import numpy as np
 
-from config import VADConfig
 from observability.logger import get_logger
-from perception.audio.stream import AudioChunk
+
+if TYPE_CHECKING:
+    from config import VADConfig
+    from perception.audio.stream import AudioChunk
 
 log = get_logger(__name__)
 
@@ -82,7 +82,7 @@ class SileroVAD:
         self._silence_chunks = 0
         self._speech_chunks = 0
         self._segment_start: float = 0.0
-        self._noise_floor: float = 0.02  # Initial estimate, adapts over time
+        self._noise_floor: float = 0.001  # Initial estimate, adapts over time
         self._use_silero = False
 
         # Threshold adapts upward from the noise floor to prevent false triggers
@@ -96,6 +96,7 @@ class SileroVAD:
         """
         try:
             from silero_vad import load_silero_vad  # type: ignore[import-untyped]
+
             self._model = await asyncio.to_thread(load_silero_vad)
             self._use_silero = True
             log.info("silero_vad_loaded")
@@ -105,7 +106,7 @@ class SileroVAD:
 
     def _estimate_speech_probability_energy(self, audio: np.ndarray) -> float:
         """Energy-based speech probability (fallback for when Silero unavailable)."""
-        rms = float(np.sqrt(np.mean(audio ** 2)))
+        rms = float(np.sqrt(np.mean(audio**2)))
         # Simple sigmoid-like mapping from RMS to probability
         threshold = self._noise_floor * 3
         if rms < threshold:
@@ -128,7 +129,10 @@ class SileroVAD:
         if self._use_silero and self._model is not None:
             try:
                 import torch  # type: ignore[import-untyped]
+
                 tensor = torch.FloatTensor(audio)
+                # Synchronous call is safe: Silero runs on ~512-sample tensors
+                # and completes in <1ms even on CPU.
                 prob = float(self._model(tensor, self._SILERO_SAMPLE_RATE).item())
                 return prob
             except Exception as exc:
@@ -143,7 +147,7 @@ class SileroVAD:
         Only updates during confirmed silence periods.
         """
         if self._state == VADState.SILENCE:
-            rms = float(np.sqrt(np.mean(audio ** 2)))
+            rms = float(np.sqrt(np.mean(audio**2)))
             alpha = self.config.noise_floor_update_rate
             self._noise_floor = (1 - alpha) * self._noise_floor + alpha * rms
             # Effective threshold stays above noise floor with margin
@@ -180,7 +184,11 @@ class SileroVAD:
                 if self._speech_chunks >= min_speech_chunks:
                     self._state = VADState.SPEECH
                     self._segment_start = chunk.timestamp - (self._speech_chunks * chunk_ms / 1000)
-                    log.debug("vad_speech_start", prob=f"{prob:.3f}", threshold=f"{self._effective_threshold:.3f}")
+                    log.debug(
+                        "vad_speech_start",
+                        prob=f"{prob:.3f}",
+                        threshold=f"{self._effective_threshold:.3f}",
+                    )
             else:
                 self._speech_chunks = 0
                 self._speech_buffer.clear()

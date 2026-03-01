@@ -36,6 +36,11 @@ _BUILTIN_MODULES = [
     "plugins.builtin.process_manager",
     "plugins.builtin.email_reader",
     "plugins.builtin.singing",
+    "plugins.builtin.webhook",
+    "plugins.builtin.discord_tool",
+    "plugins.builtin.computer_open",
+    "plugins.builtin.computer_awareness",
+    "plugins.builtin.vision_tools",
 ]
 
 
@@ -143,9 +148,7 @@ class PluginRegistry:
             log.error("generated_tool_file_not_found", path=path)
             return False
 
-        spec = importlib.util.spec_from_file_location(
-            f"generated_{file_path.stem}", file_path
-        )
+        spec = importlib.util.spec_from_file_location(f"generated_{file_path.stem}", file_path)
         if spec is None or spec.loader is None:
             log.error("generated_tool_spec_failed", path=path)
             return False

@@ -13,15 +13,17 @@ Architecture:
 from __future__ import annotations
 
 import asyncio
-import threading
+import contextlib
 import time
-from collections import deque
-from typing import Deque
+from typing import TYPE_CHECKING
 
 import numpy as np
+import numpy.typing as npt
 
-from config import AudioConfig
 from observability.logger import get_logger
+
+if TYPE_CHECKING:
+    from config import AudioConfig
 
 log = get_logger(__name__)
 
@@ -33,7 +35,7 @@ class AudioChunk:
 
     def __init__(
         self,
-        data: np.ndarray,
+        data: npt.NDArray[np.float32],
         sample_rate: int,
         channels: int,
     ) -> None:
@@ -85,6 +87,7 @@ class AudioStream:
         self._loop = asyncio.get_running_loop()
         try:
             import sounddevice as sd  # type: ignore[import-untyped]
+
             self._start_sounddevice(sd)
             self._device_available = True
             log.info(
@@ -107,7 +110,7 @@ class AudioStream:
         import sounddevice as sd_mod  # type: ignore[import-untyped]
 
         def callback(
-            indata: np.ndarray,
+            indata: npt.NDArray[np.float32],
             frames: int,
             time_info: object,
             status: object,
@@ -121,9 +124,7 @@ class AudioStream:
                 sample_rate=self.config.sample_rate,
                 channels=self.config.channels,
             )
-            asyncio.run_coroutine_threadsafe(
-                self._enqueue_chunk(chunk), self._loop
-            )
+            asyncio.run_coroutine_threadsafe(self._enqueue_chunk(chunk), self._loop)
 
         self._stream = sd_mod.InputStream(
             samplerate=self.config.sample_rate,
@@ -152,10 +153,8 @@ class AudioStream:
     async def _enqueue_chunk(self, chunk: AudioChunk) -> None:
         """Put a chunk onto the queue, dropping oldest if full."""
         if self._queue.full():
-            try:
+            with contextlib.suppress(asyncio.QueueEmpty):
                 self._queue.get_nowait()
-            except asyncio.QueueEmpty:
-                pass
         await self._queue.put(chunk)
 
     async def read(self) -> AudioChunk:

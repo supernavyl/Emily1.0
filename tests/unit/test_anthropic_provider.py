@@ -8,13 +8,12 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from emily_chat.models.base import GenerationSettings, StreamChunk
-from emily_chat.models.registry import get_model, get_default_model, list_models
-
+from emily_chat.models.registry import get_default_model, get_model, list_models
 
 # ---------------------------------------------------------------------------
 # Registry tests
@@ -26,19 +25,18 @@ class TestModelRegistry:
 
     def test_get_model_found(self) -> None:
         """Known model IDs return a ModelSpec."""
-        spec = get_model("claude-sonnet-4-5")
+        spec = get_model("claude-sonnet-4-6")
         assert spec is not None
         assert spec.provider == "anthropic"
-        assert spec.default is True
 
     def test_get_model_not_found(self) -> None:
         """Unknown model IDs return None."""
         assert get_model("nonexistent-model-99") is None
 
     def test_get_default_model(self) -> None:
-        """get_default_model returns the default spec."""
+        """get_default_model returns Emily's local brain as default."""
         key, spec = get_default_model()
-        assert key == "claude-sonnet-4-5"
+        assert key == "emily-ollama"
         assert spec.default is True
 
     def test_list_models_all(self) -> None:
@@ -128,7 +126,7 @@ def _build_fake_stream(
     """Assemble a fake stream with thinking and text events."""
     events: list[_FakeEvent] = []
 
-    for chunk in (thinking_chunks or []):
+    for chunk in thinking_chunks or []:
         events.append(
             _FakeEvent(
                 type="content_block_delta",
@@ -136,7 +134,7 @@ def _build_fake_stream(
             )
         )
 
-    for chunk in (text_chunks or []):
+    for chunk in text_chunks or []:
         events.append(
             _FakeEvent(
                 type="content_block_delta",
@@ -167,6 +165,7 @@ class TestAnthropicProvider:
 
     def _make_provider(self) -> Any:
         from emily_chat.models.providers.anthropic import AnthropicProvider
+
         return AnthropicProvider(api_key="test-key-123")
 
     @pytest.mark.asyncio
@@ -181,9 +180,7 @@ class TestAnthropicProvider:
 
         settings = GenerationSettings(thinking_budget=8000)
         chunks = [
-            c async for c in provider.stream(
-                "claude-sonnet-4-5-20260101", [], "system", settings
-            )
+            c async for c in provider.stream([], "system", settings, model_id="claude-sonnet-4-6")
         ]
 
         thinking = [c for c in chunks if c.type == "thinking"]
@@ -200,9 +197,7 @@ class TestAnthropicProvider:
 
         settings = GenerationSettings(thinking_budget=0)
         chunks = [
-            c async for c in provider.stream(
-                "claude-sonnet-4-5-20260101", [], "system", settings
-            )
+            c async for c in provider.stream([], "system", settings, model_id="claude-sonnet-4-6")
         ]
 
         text = [c for c in chunks if c.type == "text"]
@@ -223,9 +218,7 @@ class TestAnthropicProvider:
 
         settings = GenerationSettings(thinking_budget=0)
         chunks = [
-            c async for c in provider.stream(
-                "claude-sonnet-4-5-20260101", [], "system", settings
-            )
+            c async for c in provider.stream([], "system", settings, model_id="claude-sonnet-4-6")
         ]
 
         usage = [c for c in chunks if c.type == "usage"]
@@ -242,9 +235,7 @@ class TestAnthropicProvider:
 
         settings = GenerationSettings(thinking_budget=0)
         chunks = [
-            c async for c in provider.stream(
-                "claude-sonnet-4-5-20260101", [], "system", settings
-            )
+            c async for c in provider.stream([], "system", settings, model_id="claude-sonnet-4-6")
         ]
 
         assert chunks[-1].type == "stop"
@@ -261,9 +252,7 @@ class TestAnthropicProvider:
 
         settings = GenerationSettings(thinking_budget=8000)
         chunks = [
-            c async for c in provider.stream(
-                "claude-sonnet-4-5-20260101", [], "system", settings
-            )
+            c async for c in provider.stream([], "system", settings, model_id="claude-sonnet-4-6")
         ]
 
         types = [c.type for c in chunks]
@@ -302,6 +291,7 @@ class TestStreamingEngine:
         with patch.dict("sys.modules", {"anthropic": mock_module}):
             # Clear the provider cache so each test gets a fresh one
             from emily_chat.models import streaming_engine
+
             streaming_engine._PROVIDERS.clear()
             yield
             streaming_engine._PROVIDERS.clear()
@@ -317,7 +307,7 @@ class TestStreamingEngine:
         )
         self._mock_client.messages.stream.return_value = stream
 
-        spec = get_model("claude-sonnet-4-5")
+        spec = get_model("claude-sonnet-4-6")
         assert spec is not None
 
         def fake_filter(text: str) -> str:
@@ -326,20 +316,14 @@ class TestStreamingEngine:
         engine = StreamingEngine()
         settings = GenerationSettings(thinking_budget=8000)
         chunks = [
-            c async for c in engine.stream(
-                spec, [], "system", settings, persona_filter=fake_filter
-            )
+            c async for c in engine.stream(spec, [], "system", settings, persona_filter=fake_filter)
         ]
 
         thinking = [c for c in chunks if c.type == "thinking"]
-        assert any("Claude" in c.content for c in thinking), (
-            "Thinking chunks must NOT be filtered"
-        )
+        assert any("Claude" in c.content for c in thinking), "Thinking chunks must NOT be filtered"
 
         text = [c for c in chunks if c.type == "text"]
-        assert all("Claude" not in c.content for c in text), (
-            "Text chunks must be filtered"
-        )
+        assert all("Claude" not in c.content for c in text), "Text chunks must be filtered"
         assert any("Emily" in c.content for c in text)
 
     @pytest.mark.asyncio
@@ -350,14 +334,12 @@ class TestStreamingEngine:
         stream = _build_fake_stream(text_chunks=["Hi"], input_tokens=100, output_tokens=50)
         self._mock_client.messages.stream.return_value = stream
 
-        spec = get_model("claude-sonnet-4-5")
+        spec = get_model("claude-sonnet-4-6")
         assert spec is not None
 
         engine = StreamingEngine()
         settings = GenerationSettings(thinking_budget=0)
-        chunks = [
-            c async for c in engine.stream(spec, [], "system", settings)
-        ]
+        chunks = [c async for c in engine.stream(spec, [], "system", settings)]
 
         usage = [c for c in chunks if c.type == "usage"]
         assert len(usage) == 1
@@ -374,7 +356,7 @@ class TestStreamingEngine:
         stream = _build_fake_stream(text_chunks=["a", "b", "c", "d", "e"])
         self._mock_client.messages.stream.return_value = stream
 
-        spec = get_model("claude-sonnet-4-5")
+        spec = get_model("claude-sonnet-4-6")
         assert spec is not None
 
         interrupt = asyncio.Event()
@@ -383,9 +365,7 @@ class TestStreamingEngine:
         settings = GenerationSettings(thinking_budget=0)
         result: list[StreamChunk] = []
         count = 0
-        async for c in engine.stream(
-            spec, [], "system", settings, interrupt=interrupt
-        ):
+        async for c in engine.stream(spec, [], "system", settings, interrupt=interrupt):
             result.append(c)
             count += 1
             if count >= 2:

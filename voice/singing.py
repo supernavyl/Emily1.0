@@ -22,12 +22,16 @@ import subprocess
 import time
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, AsyncIterator
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from config import SingingConfig
 from observability.logger import get_logger
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
+    from config import SingingConfig
 
 log = get_logger(__name__)
 
@@ -60,10 +64,20 @@ def _decode_audio_to_pcm(data: bytes) -> bytes:
     """
     proc = subprocess.run(
         [
-            "ffmpeg", "-hide_banner", "-loglevel", "error",
-            "-i", "pipe:0",
-            "-f", "s16le", "-acodec", "pcm_s16le",
-            "-ac", "1", "-ar", str(TARGET_SR),
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-i",
+            "pipe:0",
+            "-f",
+            "s16le",
+            "-acodec",
+            "pcm_s16le",
+            "-ac",
+            "1",
+            "-ar",
+            str(TARGET_SR),
             "pipe:1",
         ],
         input=data,
@@ -329,9 +343,7 @@ class SunoEngine(SingingEngineBase):
             log.info("suno_disabled")
             return
 
-        self._api_key = (
-            self._config.suno.api_key or os.environ.get("SUNO_API_KEY")
-        )
+        self._api_key = self._config.suno.api_key or os.environ.get("SUNO_API_KEY")
         if not self._api_key:
             log.warning("suno_no_api_key", hint="Set SUNO_API_KEY or singing.suno.api_key")
             return
@@ -453,9 +465,7 @@ class SingingManager:
         available = [e.name for e in self._engine_list if e.available]
         log.info("singing_manager_ready", available_engines=available)
 
-    def _select_engine(
-        self, mode: str | None = None
-    ) -> SingingEngineBase:
+    def _select_engine(self, mode: str | None = None) -> SingingEngineBase:
         """Select the best available engine, optionally forced by mode.
 
         Args:
@@ -481,8 +491,7 @@ class SingingManager:
                 return eng
 
         raise RuntimeError(
-            "No singing engine available. "
-            "Install audiocraft or rvc-python, or set a Suno API key."
+            "No singing engine available. Install audiocraft or rvc-python, or set a Suno API key."
         )
 
     async def sing(

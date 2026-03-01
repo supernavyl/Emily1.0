@@ -11,13 +11,17 @@ Manages LLM inference for real-time conversation with:
 from __future__ import annotations
 
 import asyncio
-import time
-from dataclasses import dataclass, field
-from typing import AsyncIterator, Any
+import contextlib
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
 
 from observability.logger import get_logger
-from conversation.emotion_sync import ResponseStyleParameters
-from perception.audio.emotion_detector import EmotionState
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
+    from conversation.emotion_sync import ResponseStyleParameters
+    from perception.audio.emotion_detector import EmotionState
 
 log = get_logger(__name__)
 
@@ -26,9 +30,11 @@ log = get_logger(__name__)
 class GenerationConfig:
     """Configuration for the LLM orchestrator."""
 
-    fast_model: str = "qwen3:14b"
-    smart_model: str = "qwq:latest"
+    fast_model: str = "Qwen2.5-14B-Instruct-abliterated"
+    smart_model: str = "QwQ-32B-abliterated"
     ollama_base_url: str = "http://localhost:11434"
+    tabbyapi_base_url: str = "http://localhost:5000"
+    tabbyapi_api_key: str = ""
     max_tokens: int = 512
     temperature: float = 0.7
     speculative_start_probability: float = 0.65
@@ -61,13 +67,17 @@ class ConversationLLMOrchestrator:
         self._speculative_transcript: str | None = None
 
     async def _ensure_client(self) -> Any:
-        """Return the injected client or lazily create an OllamaClient."""
+        """Return the injected client or lazily create a TabbyAPIClient."""
         if self._client is None:
             try:
-                from llm.client import OllamaClient
-                self._client = OllamaClient(base_url=self.config.ollama_base_url)
+                from llm.tabbyapi_client import TabbyAPIClient
+
+                self._client = TabbyAPIClient(
+                    base_url=self.config.tabbyapi_base_url,
+                    api_key=self.config.tabbyapi_api_key,
+                )
             except ImportError:
-                log.error("ollama_client_not_available")
+                log.error("tabbyapi_client_not_available")
                 raise
         return self._client
 
@@ -96,7 +106,7 @@ class ConversationLLMOrchestrator:
         if not user_text:
             return
 
-        system_prompt = self._build_system_prompt(emotion, style, memory_context)
+        system_prompt = self._build_system_prompt(emotion, style, memory_context)  # noqa
 
         self._conversation_history.append({"role": "user", "content": user_text})
         if len(self._conversation_history) > 20:
@@ -112,19 +122,64 @@ class ConversationLLMOrchestrator:
 
             buffer = ""
             full_response = ""
+            raw_buf = ""  # accumulates raw tokens for <think> tag detection
+            in_thinking = False
+            last_yield_time = asyncio.get_event_loop().time()
 
             async for chunk in client.chat_stream(
                 model=self.config.fast_model,
                 messages=messages,
                 max_tokens=self.config.max_tokens,
+                enable_thinking=False,
             ):
                 if interrupt_signal and interrupt_signal.is_set():
                     log.info("llm_generation_interrupted")
                     break
 
                 text = chunk.content if hasattr(chunk, "content") else str(chunk)
-                buffer += text
                 full_response += text
+                raw_buf += text
+
+                # Strip <think>...</think> blocks — Qwen3/QwQ emit these
+                # and they must never reach TTS.  Uses raw_buf to handle
+                # tags that arrive split across multiple chunks.
+                clean = ""
+                while raw_buf:
+                    if in_thinking:
+                        end_idx = raw_buf.find("</think>")
+                        if end_idx == -1:
+                            # Might be a partial closing tag at the tail
+                            if raw_buf.endswith(
+                                ("<", "</", "</t", "</th", "</thi", "</thin", "</think")
+                            ):
+                                break  # wait for more tokens
+                            raw_buf = ""
+                            break
+                        in_thinking = False
+                        raw_buf = raw_buf[end_idx + len("</think>") :]
+                        continue
+
+                    start_idx = raw_buf.find("<think>")
+                    if start_idx == -1:
+                        # Check for partial opening tag at the tail
+                        for i in range(1, min(len("<think>"), len(raw_buf)) + 1):
+                            if "<think>".startswith(raw_buf[-i:]):
+                                clean += raw_buf[:-i]
+                                raw_buf = raw_buf[-i:]
+                                break
+                        else:
+                            clean += raw_buf
+                            raw_buf = ""
+                        break
+
+                    clean += raw_buf[:start_idx]
+                    in_thinking = True
+                    raw_buf = raw_buf[start_idx + len("<think>") :]
+
+                if not clean:
+                    continue
+
+                buffer += clean
 
                 sentences = self._extract_sentences(buffer)
                 if len(sentences) > 1:
@@ -132,21 +187,28 @@ class ConversationLLMOrchestrator:
                         sent = sent.strip()
                         if sent:
                             yield sent
+                            last_yield_time = asyncio.get_event_loop().time()
                     buffer = sentences[-1]
+                elif len(buffer) > 20 and asyncio.get_event_loop().time() - last_yield_time > 0.4:
+                    yield buffer.strip()
+                    buffer = ""
+                    last_yield_time = asyncio.get_event_loop().time()
 
             remaining = buffer.strip()
             if remaining:
                 yield remaining
 
             if full_response.strip():
-                self._conversation_history.append({
-                    "role": "assistant",
-                    "content": full_response.strip(),
-                })
+                self._conversation_history.append(
+                    {
+                        "role": "assistant",
+                        "content": full_response.strip(),
+                    }
+                )
 
         except Exception as exc:
             log.error("llm_generation_error", error=str(exc))
-            yield "I'm sorry, I had trouble with that. Could you say that again?"
+            return
 
     def _build_system_prompt(
         self,
@@ -155,37 +217,36 @@ class ConversationLLMOrchestrator:
         memory_context: str,
     ) -> str:
         """Assemble the full system prompt with context."""
-        parts = [
-            "You are Emily, a warm and attentive conversational AI. "
-            "You are speaking out loud, not writing. Keep responses concise — "
-            "1-3 sentences is ideal. Be natural and conversational."
-        ]
-
+        emotion_context = None
         if emotion is not None:
             emotion_name = emotion.primary.value
             if emotion.confidence > 0.5:
-                parts.append(
+                emotion_context = (
                     f"The user seems {emotion_name}. "
                     "Respond appropriately to their emotional state."
                 )
 
+        style_inst = None
         if style is not None:
             from conversation.emotion_sync import EmotionSynchronizer
+
             sync = EmotionSynchronizer()
-            style_inst = sync.get_llm_style_instructions(style)
-            if style_inst:
-                parts.append(style_inst)
+            style_inst = sync.get_llm_style_instructions(style) or None
 
-        if memory_context:
-            parts.append(f"Relevant context: {memory_context}")
+        from llm.prompt_builder import PromptBuilder
 
-        return " ".join(parts)
+        return PromptBuilder().build_voice_system_prompt(
+            emotion_context=emotion_context,
+            style_instructions=style_inst,
+            memory_context=memory_context or None,
+        )
 
     @staticmethod
     def _extract_sentences(text: str) -> list[str]:
         """Split text at sentence boundaries."""
         import re
-        parts = re.split(r'(?<=[.!?])\s+', text)
+
+        parts = re.split(r"(?<=[.!?])\s+", text)
         return parts if parts else [text]
 
     async def start_speculative(
@@ -218,12 +279,24 @@ class ConversationLLMOrchestrator:
             ]
 
             response = ""
+            in_thinking = False
             async for chunk in client.chat_stream(
                 model=self.config.fast_model,
                 messages=messages,
                 max_tokens=self.config.max_tokens,
+                enable_thinking=False,
             ):
                 text = chunk.content if hasattr(chunk, "content") else str(chunk)
+                # Strip <think> blocks from speculative cache (safety net)
+                if "<think>" in text:
+                    in_thinking = True
+                if in_thinking:
+                    if "</think>" in text:
+                        in_thinking = False
+                        after = text.split("</think>", 1)[-1]
+                        if after:
+                            response += after
+                    continue
                 response += text
                 if len(response) > 200:
                     break
@@ -296,8 +369,6 @@ class ConversationLLMOrchestrator:
     async def close(self) -> None:
         """Close the LLM client."""
         if self._client is not None:
-            try:
+            with contextlib.suppress(Exception):
                 await self._client.close()
-            except Exception:
-                pass
             self._client = None

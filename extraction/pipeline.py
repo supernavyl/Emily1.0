@@ -16,20 +16,22 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING
 
 from extraction.deduplicator import Deduplicator
 from extraction.entity_extractor import EntityExtractor, ExtractedEntity
 from extraction.relation_extractor import RelationExtractor
-from llm.client import OllamaClient
 from memory.knowledge_models import (
     EntityRecord,
     FactRecord,
     PersonRecord,
     RelationshipRecord,
 )
-from memory.knowledge_store import KnowledgeStore
 from observability.logger import get_logger
+
+if TYPE_CHECKING:
+    from llm.base import LLMClientProtocol
+    from memory.knowledge_store import KnowledgeStore
 
 log = get_logger(__name__)
 
@@ -58,13 +60,13 @@ class ExtractionPipeline:
 
     def __init__(
         self,
-        llm_client: OllamaClient,
+        llm_client: LLMClientProtocol,
         store: KnowledgeStore,
-        model: str = "qwen3:14b",
+        model: str = "Qwen2.5-14B-Instruct-abliterated",
     ) -> None:
         """
         Args:
-            llm_client: Shared Ollama async HTTP client.
+            llm_client: LLM client satisfying LLMClientProtocol.
             store: Connected KnowledgeStore for persistence.
             model: LLM model to use for extraction tasks.
         """
@@ -132,8 +134,7 @@ class ExtractionPipeline:
         # ── Step 3: Extract and persist relationships ─────────────────────
         if len(temp_id_to_entity) >= 2:
             resolved_entities = [
-                _entity_as_extracted(e, tid)
-                for tid, e in temp_id_to_entity.items()
+                _entity_as_extracted(e, tid) for tid, e in temp_id_to_entity.items()
             ]
             relationships = await self._relation_extractor.extract(
                 text, resolved_entities, source_session_id=session_id

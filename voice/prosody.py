@@ -70,13 +70,13 @@ class ProsodyController:
         state = emotional_state or {}
         engagement = state.get("engagement", 0.7)
         confidence = state.get("confidence", 0.8)
-        concern = state.get("concern", 0.2)
+        concern = state.get("concern", 0.1)
         enthusiasm = state.get("enthusiasm", 0.6)
-        warmth = state.get("warmth", 0.5)
+        warmth = state.get("warmth", 0.6)
 
-        speed = 0.9 + 0.2 * engagement + 0.1 * enthusiasm
-        pitch = 1.0 + 0.1 * enthusiasm - 0.05 * concern + 0.03 * warmth
-        energy = 0.85 + 0.15 * confidence + 0.1 * engagement
+        speed = 0.88 + 0.12 * engagement + 0.06 * enthusiasm
+        pitch = 1.0 + 0.05 * enthusiasm - 0.03 * concern + 0.02 * warmth
+        energy = 0.9 + 0.15 * confidence + 0.08 * engagement
         pause_after_ms = 200
 
         stripped = text.strip()

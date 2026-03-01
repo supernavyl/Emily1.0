@@ -13,12 +13,14 @@ import time
 from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Deque
+from typing import TYPE_CHECKING
 
 import numpy as np
 
 from observability.logger import get_logger
-from perception.audio.prosody_analyzer import ProsodyFeatures, SpeakerBaseline
+
+if TYPE_CHECKING:
+    from perception.audio.prosody_analyzer import ProsodyFeatures, SpeakerBaseline
 
 log = get_logger(__name__)
 
@@ -54,16 +56,16 @@ class EmotionState:
 # Emotion profiles: (f0_delta, energy_delta, rate_delta, quality_hint)
 # Deltas are relative to speaker baseline
 _EMOTION_PROFILES: dict[UserEmotion, dict[str, tuple[float, float]]] = {
-    UserEmotion.NEUTRAL:    {"f0": (-0.1, 0.1), "energy": (-0.1, 0.1), "rate": (-0.1, 0.1)},
-    UserEmotion.HAPPY:      {"f0": (0.05, 0.3), "energy": (0.05, 0.3), "rate": (0.0, 0.2)},
-    UserEmotion.EXCITED:    {"f0": (0.15, 0.5), "energy": (0.2, 0.5), "rate": (0.1, 0.4)},
-    UserEmotion.ANXIOUS:    {"f0": (0.05, 0.25), "energy": (-0.1, 0.1), "rate": (0.1, 0.3)},
+    UserEmotion.NEUTRAL: {"f0": (-0.1, 0.1), "energy": (-0.1, 0.1), "rate": (-0.1, 0.1)},
+    UserEmotion.HAPPY: {"f0": (0.05, 0.3), "energy": (0.05, 0.3), "rate": (0.0, 0.2)},
+    UserEmotion.EXCITED: {"f0": (0.15, 0.5), "energy": (0.2, 0.5), "rate": (0.1, 0.4)},
+    UserEmotion.ANXIOUS: {"f0": (0.05, 0.25), "energy": (-0.1, 0.1), "rate": (0.1, 0.3)},
     UserEmotion.FRUSTRATED: {"f0": (-0.1, 0.2), "energy": (0.15, 0.4), "rate": (0.0, 0.2)},
-    UserEmotion.SAD:        {"f0": (-0.3, -0.05), "energy": (-0.3, -0.1), "rate": (-0.3, -0.05)},
-    UserEmotion.CONFUSED:   {"f0": (0.0, 0.2), "energy": (-0.1, 0.1), "rate": (-0.2, 0.0)},
-    UserEmotion.CURIOUS:    {"f0": (0.1, 0.3), "energy": (0.0, 0.15), "rate": (-0.05, 0.1)},
-    UserEmotion.BORED:      {"f0": (-0.2, 0.0), "energy": (-0.2, -0.05), "rate": (-0.1, 0.05)},
-    UserEmotion.TIRED:      {"f0": (-0.25, -0.05), "energy": (-0.3, -0.1), "rate": (-0.3, -0.1)},
+    UserEmotion.SAD: {"f0": (-0.3, -0.05), "energy": (-0.3, -0.1), "rate": (-0.3, -0.05)},
+    UserEmotion.CONFUSED: {"f0": (0.0, 0.2), "energy": (-0.1, 0.1), "rate": (-0.2, 0.0)},
+    UserEmotion.CURIOUS: {"f0": (0.1, 0.3), "energy": (0.0, 0.15), "rate": (-0.05, 0.1)},
+    UserEmotion.BORED: {"f0": (-0.2, 0.0), "energy": (-0.2, -0.05), "rate": (-0.1, 0.05)},
+    UserEmotion.TIRED: {"f0": (-0.25, -0.05), "energy": (-0.3, -0.1), "rate": (-0.3, -0.1)},
 }
 
 _VALENCE_MAP = {
@@ -126,12 +128,8 @@ class EmotionDetector:
             EmotionState with primary emotion, confidence, and dimensions.
         """
         f0_delta = self._compute_delta(prosody.f0_hz, baseline.f0_mean, baseline.f0_std)
-        energy_delta = self._compute_delta(
-            prosody.intensity_db, baseline.intensity_mean, 10.0
-        )
-        rate_delta = self._compute_delta(
-            prosody.speaking_rate_syl_s, baseline.rate_mean, 1.5
-        )
+        energy_delta = self._compute_delta(prosody.intensity_db, baseline.intensity_mean, 10.0)
+        rate_delta = self._compute_delta(prosody.speaking_rate_syl_s, baseline.rate_mean, 1.5)
 
         scores: dict[UserEmotion, float] = {}
         for emotion, profile in _EMOTION_PROFILES.items():
@@ -217,7 +215,9 @@ class EmotionDetector:
 
         return boosts
 
-    def _estimate_cognitive_load(self, prosody: ProsodyFeatures, baseline: SpeakerBaseline) -> float:
+    def _estimate_cognitive_load(
+        self, prosody: ProsodyFeatures, baseline: SpeakerBaseline
+    ) -> float:
         """
         Estimate cognitive load from prosodic cues.
 

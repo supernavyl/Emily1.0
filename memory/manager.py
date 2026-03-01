@@ -14,10 +14,13 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from config import EmilySettings
 from memory.episodic import Episode, EpisodicMemory
+
+if TYPE_CHECKING:
+    from config import EmilySettings
+from memory.interaction_logger import InteractionLogger
 from memory.procedural import ProceduralMemory
 from memory.sensory_buffer import PerceptionEvent, SensoryBuffer
 from memory.working import WorkingMemory
@@ -47,17 +50,32 @@ class MemoryManager:
         self.working = WorkingMemory(settings.memory.working)
         self.episodic = EpisodicMemory(settings.memory.episodic)
         self.procedural = ProceduralMemory(settings.memory.procedural)
+
+        # Initialize interaction logger if enabled
+        self.interaction_logger: InteractionLogger | None = None
+        if settings.memory.episodic.save_all_interactions:
+            self.interaction_logger = InteractionLogger(
+                db_path=settings.memory.episodic.interactions_db_path,
+                auto_backup_interval_minutes=settings.memory.episodic.auto_backup_interval_minutes,
+            )
+
         self._session_start: float = time.time()
         self._retriever: Any | None = None
         self._brain_hub = brain_hub
 
     async def startup(self) -> None:
         """Initialize all persistent memory tiers."""
-        await asyncio.gather(
+        tasks = [
             self.episodic.connect(),
             self.procedural.load(),
-        )
-        log.info("memory_manager_ready")
+        ]
+
+        # Connect interaction logger if enabled
+        if self.interaction_logger:
+            tasks.append(self.interaction_logger.connect())
+
+        await asyncio.gather(*tasks)
+        log.info("memory_manager_ready", interaction_logging=self.interaction_logger is not None)
 
     async def add_user_turn(
         self,
@@ -66,7 +84,7 @@ class MemoryManager:
         metadata: dict[str, Any] | None = None,
     ) -> None:
         """
-        Add a user utterance to working memory.
+        Add a user utterance to working memory and log it permanently.
 
         Args:
             text: The user's message text.
@@ -79,10 +97,25 @@ class MemoryManager:
             importance=importance,
             metadata=metadata or {},
         )
+
+        # Immediately save to interaction logger for permanent storage
+        if self.interaction_logger:
+            await self.interaction_logger.log_user_turn(
+                session_id=self.working.session_id,
+                content=text,
+                importance=importance,
+                metadata=metadata,
+            )
+
         if self._brain_hub is not None:
-            await self._brain_hub.emit("memory", "user_turn", {
-                "text_len": len(text), "importance": importance,
-            })
+            await self._brain_hub.emit(
+                "memory",
+                "user_turn",
+                {
+                    "text_len": len(text),
+                    "importance": importance,
+                },
+            )
 
     async def add_assistant_turn(
         self,
@@ -91,7 +124,7 @@ class MemoryManager:
         metadata: dict[str, Any] | None = None,
     ) -> None:
         """
-        Add Emily's response to working memory.
+        Add Emily's response to working memory and log it permanently.
 
         Args:
             text: Emily's response text.
@@ -104,10 +137,25 @@ class MemoryManager:
             importance=importance,
             metadata=metadata or {},
         )
+
+        # Immediately save to interaction logger for permanent storage
+        if self.interaction_logger:
+            await self.interaction_logger.log_assistant_turn(
+                session_id=self.working.session_id,
+                content=text,
+                importance=importance,
+                metadata=metadata,
+            )
+
         if self._brain_hub is not None:
-            await self._brain_hub.emit("memory", "assistant_turn", {
-                "text_len": len(text), "importance": importance,
-            })
+            await self._brain_hub.emit(
+                "memory",
+                "assistant_turn",
+                {
+                    "text_len": len(text),
+                    "importance": importance,
+                },
+            )
 
     async def end_session(self, summary: dict[str, Any] | None = None) -> Episode:
         """
@@ -122,9 +170,7 @@ class MemoryManager:
         """
         duration = time.time() - self._session_start
         transcript = self.working.get_transcript()
-        transcript_path = await self.episodic.save_transcript(
-            self.working.session_id, transcript
-        )
+        transcript_path = await self.episodic.save_transcript(self.working.session_id, transcript)
 
         summary = summary or {}
         episode = Episode(
@@ -184,9 +230,15 @@ class MemoryManager:
         try:
             results = await self._retriever.retrieve(query, top_k=top_k)
             if self._brain_hub is not None:
-                await self._brain_hub.emit("memory", "context_retrieved", {
-                    "query": query[:120], "top_k": top_k, "results": len(results),
-                })
+                await self._brain_hub.emit(
+                    "memory",
+                    "context_retrieved",
+                    {
+                        "query": query[:120],
+                        "top_k": top_k,
+                        "results": len(results),
+                    },
+                )
             return results
         except Exception as exc:
             log.warning("retrieval_failed", query=query[:80], error=str(exc))
@@ -225,7 +277,13 @@ class MemoryManager:
         return context
 
     async def shutdown(self) -> None:
-        """Flush all pending writes and close connections."""
-        await self.procedural.close()
+        """
+        Gracefully shutdown memory manager and close all connections.
+
+        Creates final backup of interactions before closing.
+        """
+        if self.interaction_logger:
+            await self.interaction_logger.close()
+
         await self.episodic.close()
-        log.info("memory_manager_shutdown")
+        log.info("memory_manager_shutdown_complete")

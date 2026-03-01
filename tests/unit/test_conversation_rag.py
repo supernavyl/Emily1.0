@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass, field
-from typing import Any, AsyncIterator
+from typing import TYPE_CHECKING, Any, ClassVar
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from agents.conversation import ConversationAgent
 from plugins.base import BaseTool, ExecutionContext, ToolResult
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
 
 
 # ── lightweight fakes ───────────────────────────────────────────
@@ -24,7 +26,7 @@ class _FakeCriticScore:
 @dataclass
 class _FakeRouting:
     tier: MagicMock = field(default_factory=lambda: MagicMock(value="fast"))
-    model_name: str = "qwen3:14b"
+    model_name: str = "Qwen2.5-14B-Instruct-abliterated"
     complexity_score: int = 3
 
 
@@ -46,18 +48,28 @@ class _FakeWorkingMemory:
 
 
 class _FakeProcedural:
-    user_profile: dict[str, Any] = {}
-    self_model: dict[str, Any] = {}
+    user_profile: ClassVar[dict[str, Any]] = {}
+    self_model: ClassVar[dict[str, Any]] = {}
 
 
 class _FakeMemory:
     working = _FakeWorkingMemory()
     procedural = _FakeProcedural()
 
-    async def add_user_turn(self, text: str, importance: float = 0.5, metadata: Any = None) -> None:
+    async def add_user_turn(
+        self,
+        text: str,
+        importance: float = 0.5,
+        metadata: Any = None,
+    ) -> None:
         pass
 
-    async def add_assistant_turn(self, text: str, importance: float = 0.5, metadata: Any = None) -> None:
+    async def add_assistant_turn(
+        self,
+        text: str,
+        importance: float = 0.5,
+        metadata: Any = None,
+    ) -> None:
         pass
 
     async def retrieve_context(self, query: str, top_k: int = 5) -> list[dict[str, Any]]:
@@ -79,7 +91,7 @@ class _FakeStreamProcessor:
 class _FakeWebSearch(BaseTool):
     name = "web_search"
     description = "test"
-    parameters: dict[str, Any] = {}
+    parameters: ClassVar[dict[str, Any]] = {}
 
     def __init__(self) -> None:
         pass
@@ -88,9 +100,15 @@ class _FakeWebSearch(BaseTool):
         return "would search"
 
     async def execute(self, params: dict[str, Any], context: ExecutionContext) -> ToolResult:
-        return ToolResult.ok([
-            {"title": "Breaking News", "url": "https://example.com", "snippet": "Something happened."},
-        ])
+        return ToolResult.ok(
+            [
+                {
+                    "title": "Breaking News",
+                    "url": "https://example.com",
+                    "snippet": "Something happened.",
+                },
+            ]
+        )
 
 
 # ── fixtures ────────────────────────────────────────────────────
@@ -99,12 +117,15 @@ class _FakeWebSearch(BaseTool):
 def _make_agent(
     memory: Any = None,
     web_search: BaseTool | None = None,
+    complexity_score: int = 3,
 ) -> ConversationAgent:
     bus = AsyncMock()
     bus.send_to = AsyncMock()
 
     fleet = MagicMock()
-    fleet.route = MagicMock(return_value=_FakeRouting())
+    routing = _FakeRouting()
+    routing.complexity_score = complexity_score
+    fleet.route = MagicMock(return_value=routing)
 
     fleet._config.routing.voice_fast_complexity_threshold = 5
     fleet._config.routing.voice_skip_rag_below = 5
@@ -113,7 +134,7 @@ def _make_agent(
     async def _fake_stream(*args: Any, **kwargs: Any) -> AsyncIterator[str]:
         yield "Hello world."
 
-    fleet.chat_stream = _fake_stream
+    fleet.chat_stream = MagicMock(side_effect=_fake_stream)
 
     mem = memory or _FakeMemory()
 
@@ -189,3 +210,30 @@ async def test_empty_retriever_produces_no_context() -> None:
         _, kwargs = spy.call_args
         context = kwargs.get("context_block", "")
         assert context == ""
+
+
+@pytest.mark.asyncio
+async def test_voice_mode_uses_voice_fast_for_simple_turns() -> None:
+    """Voice mode should force VOICE_FAST only for low complexity turns."""
+    agent = _make_agent(complexity_score=2)
+
+    await agent._generate_response("hey there", "task-voice-simple", voice_mode=True)
+
+    force_tier = agent._fleet.chat_stream.call_args.kwargs["force_tier"]
+    assert force_tier is not None
+    assert force_tier.value == "voice_fast"
+
+
+@pytest.mark.asyncio
+async def test_voice_mode_allows_escalation_for_complex_turns() -> None:
+    """Voice mode should not force VOICE_FAST for high complexity turns."""
+    agent = _make_agent(complexity_score=9)
+
+    await agent._generate_response(
+        "compare two designs and explain tradeoffs in detail",
+        "task-voice-complex",
+        voice_mode=True,
+    )
+
+    force_tier = agent._fleet.chat_stream.call_args.kwargs["force_tier"]
+    assert force_tier is None

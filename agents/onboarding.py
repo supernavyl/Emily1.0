@@ -4,22 +4,63 @@ OnboardingAgent — first-run user profile interview.
 Runs a multi-turn conversation where Emily asks the user about themselves
 and saves all extracted facts to procedural memory. This only runs once,
 on the very first startup when no user name is set.
+
+Provides both a BaseAgent subclass (OnboardingAgent) for registry
+integration and a standalone ``run_onboarding`` helper for the
+conversation FSM's callback-driven flow.
 """
 
 from __future__ import annotations
 
 import json
 import re
-from typing import Any, Awaitable, Callable
+from typing import TYPE_CHECKING, Any
 
+from agents.base import BaseAgent
 from llm.client import ChatMessage
 from llm.prompt_builder import PromptBuilder
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
+    from core.bus import Message
 from llm.router import ModelTier, TaskType
 from observability.logger import get_logger
 
 log = get_logger(__name__)
 
 _TOTAL_QUESTIONS = 10
+
+
+class OnboardingAgent(BaseAgent):
+    """
+    BaseAgent wrapper for onboarding — allows registry discovery and bus messaging.
+
+    The actual interview logic lives in :func:`run_onboarding` so that it can also
+    be invoked directly by the conversation FSM with speak/listen callbacks.
+    """
+
+    name = "OnboardingAgent"
+    description = "First-run user profile interview."
+
+    def __init__(self, bus: Any, fleet: Any, memory: Any) -> None:
+        super().__init__(bus, fleet, memory)
+        self._prompts = PromptBuilder()
+
+    async def handle(self, message: Message) -> None:
+        """Handle onboarding trigger messages."""
+        if message.type == "onboarding.start":
+            speak_cb = message.payload.get("speak")
+            listen_cb = message.payload.get("listen")
+            if speak_cb and listen_cb:
+                await run_onboarding(
+                    fleet=self._fleet,
+                    memory=self._memory,
+                    speak=speak_cb,
+                    listen=listen_cb,
+                )
+            else:
+                self._log.warning("onboarding_missing_callbacks")
 
 
 async def run_onboarding(
@@ -55,7 +96,7 @@ async def run_onboarding(
     conversation_history.append(ChatMessage(role="user", content=answer))
 
     for q_num in range(1, _TOTAL_QUESTIONS + 1):
-        system_prompt = prompts.build_onboarding_prompt(q_num, _TOTAL_QUESTIONS)
+        system_prompt = prompts.build_onboarding_prompt(q_num, _TOTAL_QUESTIONS)  # noqa
 
         messages = [ChatMessage(role="system", content=system_prompt)]
         messages.extend(conversation_history)

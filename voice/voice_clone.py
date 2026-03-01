@@ -12,7 +12,6 @@ Full voice cloning is activated in Phase 17 (Persona system).
 
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
 
 from observability.logger import get_logger
@@ -51,8 +50,7 @@ class VoiceCloner:
             return None
 
         samples = [
-            f for f in self._samples_dir.iterdir()
-            if f.suffix.lower() in self._SUPPORTED_FORMATS
+            f for f in self._samples_dir.iterdir() if f.suffix.lower() in self._SUPPORTED_FORMATS
         ]
 
         if not samples:

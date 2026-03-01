@@ -8,14 +8,13 @@ status and aggregates results.
 
 from __future__ import annotations
 
-import asyncio
 import uuid
 from typing import Any
 
 from agents.base import BaseAgent
 from core.bus import Message, Priority
 from llm.prompt_builder import PromptBuilder
-from llm.router import ModelTier, TaskType
+from llm.router import ModelTier
 from llm.structured_output import extract_json
 from observability.logger import get_logger
 
@@ -61,15 +60,10 @@ class PlannerAgent(BaseAgent):
         task = message.payload.get("task", "")
         requester_task_id = message.task_id
 
-        plan_prompt = (
-            f"Break this complex task into 2-5 concrete sub-tasks, each assignable to a specialist:\n"
-            f"TASK: {task}\n\n"
-            f"AVAILABLE AGENTS: ResearchAgent, CodeAgent, ToolBuilderAgent\n\n"
-            "Respond with JSON:\n"
-            '{"steps": [{"step": 1, "agent": "AgentName", "task": "...", "depends_on": []}]}'
-        )
+        plan_prompt = self._prompts.build_plan_decomposition_prompt(task)
 
         from llm.client import ChatMessage
+
         result = await self._fleet.chat(
             user_message=plan_prompt,
             messages=[ChatMessage(role="user", content=plan_prompt)],
@@ -94,17 +88,22 @@ class PlannerAgent(BaseAgent):
 
         # Track this plan's pending sub-tasks
         plan_id = str(uuid.uuid4())
+        dispatched_roots: set[int] = set()
+        for step in steps:
+            if not step.get("depends_on"):
+                dispatched_roots.add(step["step"])
+
         self._pending_tasks[plan_id] = {
             "task": task,
             "steps": steps,
             "completed": {},
             "requester_task_id": requester_task_id,
             "total_steps": len(steps),
+            "_dispatched": dispatched_roots,
         }
 
-        # Delegate to agents (topological order via depends_on)
         for step in steps:
-            if not step.get("depends_on"):  # Run root steps immediately
+            if not step.get("depends_on"):
                 await self.send(
                     step["agent"],
                     "agent.task",
@@ -118,7 +117,8 @@ class PlannerAgent(BaseAgent):
 
     async def _handle_subtask_result(self, message: Message) -> None:
         """
-        Process a completed sub-task result and check if the plan is done.
+        Process a completed sub-task result, dispatch newly-unblocked steps,
+        and assemble the final answer once all steps finish.
 
         Args:
             message: Contains "plan_id", "step_index", "result" in payload.
@@ -141,16 +141,62 @@ class PlannerAgent(BaseAgent):
             total=plan["total_steps"],
         )
 
+        await self._dispatch_unblocked_steps(plan_id, plan)
+
         if len(plan["completed"]) == plan["total_steps"]:
-            # All steps done — assemble final answer
-            results_text = "\n".join(
-                f"Step {k}: {v}" for k, v in sorted(plan["completed"].items())
-            )
+            results_text = "\n".join(f"Step {k}: {v}" for k, v in sorted(plan["completed"].items()))
             await self.send(
                 "ConversationAgent",
                 "text.input",
-                {"text": f"Synthesize these research results into a final answer for: {plan['task']}\n\n{results_text}"},
+                {
+                    "text": (
+                        f"Synthesize these research results into a "
+                        f"final answer for: {plan['task']}\n\n"
+                        f"{results_text}"
+                    ),
+                },
                 priority=Priority.ACTIVE,
                 task_id=plan["requester_task_id"],
             )
             del self._pending_tasks[plan_id]
+
+    async def _dispatch_unblocked_steps(
+        self,
+        plan_id: str,
+        plan: dict[str, Any],
+    ) -> None:
+        """
+        Dispatch steps whose dependencies are now fully satisfied.
+
+        Args:
+            plan_id: Unique identifier for the plan.
+            plan: Plan tracking dict with "steps" and "completed" keys.
+        """
+        completed_indices = set(plan["completed"].keys())
+        for step in plan["steps"]:
+            idx = step["step"]
+            if idx in completed_indices:
+                continue
+            deps = step.get("depends_on") or []
+            if not deps:
+                continue
+            if all(d in completed_indices for d in deps) and idx not in plan.get(
+                "_dispatched", set()
+            ):
+                plan.setdefault("_dispatched", set()).add(idx)
+                self._log.info(
+                    "dispatching_unblocked_step",
+                    plan_id=plan_id,
+                    step=idx,
+                    satisfied_deps=deps,
+                )
+                await self.send(
+                    step["agent"],
+                    "agent.task",
+                    {
+                        "task": step["task"],
+                        "plan_id": plan_id,
+                        "step_index": idx,
+                    },
+                    priority=Priority.ACTIVE,
+                )

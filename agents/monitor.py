@@ -38,7 +38,10 @@ class MonitorAgent(BaseAgent):
     async def start(self) -> None:
         """Start the agent and the background monitoring loop."""
         await super().start()
-        asyncio.create_task(self._monitoring_loop(), name="monitor_resource_loop")
+        self._monitor_task = asyncio.create_task(
+            self._monitoring_loop(),
+            name="monitor_resource_loop",
+        )
 
     async def handle(self, message: Message) -> None:
         """Handle monitoring requests and heartbeats."""
@@ -94,7 +97,9 @@ class MonitorAgent(BaseAgent):
         """Query VRAM usage via nvidia-smi."""
         try:
             proc = await asyncio.create_subprocess_exec(
-                "nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits",
+                "nvidia-smi",
+                "--query-gpu=memory.used",
+                "--format=csv,noheader,nounits",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.DEVNULL,
             )
@@ -108,9 +113,10 @@ class MonitorAgent(BaseAgent):
 
     async def _send_status_report(self, message: Message) -> None:
         """Send a system status report."""
-        ram = psutil.virtual_memory()
+        ram = await asyncio.to_thread(psutil.virtual_memory)
+        cpu_pct = await asyncio.to_thread(psutil.cpu_percent)
         status = {
-            "cpu_percent": psutil.cpu_percent(),
+            "cpu_percent": cpu_pct,
             "ram_used_gb": round(ram.used / 1e9, 2),
             "ram_total_gb": round(ram.total / 1e9, 2),
             "agent_heartbeats": dict(self._heartbeats),

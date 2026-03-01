@@ -18,12 +18,14 @@ from __future__ import annotations
 import time
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Deque
+from typing import TYPE_CHECKING
 
 import numpy as np
 
 from observability.logger import get_logger
-from perception.audio.stream import AudioChunk
+
+if TYPE_CHECKING:
+    from perception.audio.stream import AudioChunk
 
 log = get_logger(__name__)
 
@@ -88,6 +90,7 @@ class ProsodyAnalyzer:
 
         try:
             import parselmouth  # noqa: F401
+
             self._parselmouth_available = True
         except ImportError:
             log.info("parselmouth_not_available", hint="pip install praat-parselmouth")
@@ -117,8 +120,8 @@ class ProsodyAnalyzer:
         if self._buffer_samples < self._sample_rate * 0.05:
             return ProsodyFeatures()
 
-        audio = np.concatenate(list(self._buffer))[-self._window_samples:]
-        energy = float(np.sqrt(np.mean(audio ** 2)))
+        audio = np.concatenate(list(self._buffer))[-self._window_samples :]
+        energy = float(np.sqrt(np.mean(audio**2)))
 
         if energy < 0.005:
             if self._silence_start is None:
@@ -150,7 +153,9 @@ class ProsodyAnalyzer:
         if len(self._f0_history) > 5:
             f0_vals = [v for v in self._f0_history if v > 0]
             if len(f0_vals) >= 2:
-                f0_range = 12 * np.log2(max(f0_vals) / max(min(f0_vals), 1)) if min(f0_vals) > 0 else 0
+                f0_range = (
+                    12 * np.log2(max(f0_vals) / max(min(f0_vals), 1)) if min(f0_vals) > 0 else 0
+                )
 
         return ProsodyFeatures(
             f0_hz=f0,
@@ -171,6 +176,7 @@ class ProsodyAnalyzer:
         if self._parselmouth_available:
             try:
                 import parselmouth
+
                 snd = parselmouth.Sound(audio, sampling_frequency=self._sample_rate)
                 pitch = snd.to_pitch(time_step=0.01)
                 f0_values = pitch.selected_array["frequency"]
@@ -186,13 +192,13 @@ class ProsodyAnalyzer:
     def _autocorrelation_f0(self, audio: np.ndarray) -> float:
         """Simple autocorrelation-based F0 estimation."""
         min_lag = int(self._sample_rate / 500)  # 500 Hz max
-        max_lag = int(self._sample_rate / 60)   # 60 Hz min
+        max_lag = int(self._sample_rate / 60)  # 60 Hz min
 
         if len(audio) < max_lag * 2:
             return self._last_f0
 
         corr = np.correlate(audio[max_lag:], audio[max_lag:], mode="full")
-        corr = corr[len(corr) // 2:]
+        corr = corr[len(corr) // 2 :]
 
         if len(corr) <= max_lag:
             return self._last_f0
@@ -282,7 +288,7 @@ class ProsodyAnalyzer:
 
         periods = []
         for i in range(0, len(audio) - period_samples * 2, period_samples):
-            segment = audio[i:i + period_samples * 2]
+            segment = audio[i : i + period_samples * 2]
             corr = np.correlate(segment[:period_samples], segment[period_samples:])
             if len(corr) > 0:
                 periods.append(float(corr[0]))
@@ -325,8 +331,8 @@ class ProsodyAnalyzer:
         envelope = np.zeros(n_frames)
         for i in range(n_frames):
             start = i * hop
-            frame = audio[start:start + frame_len]
-            envelope[i] = float(np.sqrt(np.mean(frame ** 2)))
+            frame = audio[start : start + frame_len]
+            envelope[i] = float(np.sqrt(np.mean(frame**2)))
 
         if len(envelope) < 3:
             return 4.0
@@ -354,16 +360,18 @@ class ProsodyAnalyzer:
         if len(spectrum) < 10:
             return 0.5
 
-        spectral_entropy = float(-np.sum(
-            (spectrum / (np.sum(spectrum) + 1e-10)) *
-            np.log2(spectrum / (np.sum(spectrum) + 1e-10) + 1e-10)
-        ))
+        spectral_entropy = float(
+            -np.sum(
+                (spectrum / (np.sum(spectrum) + 1e-10))
+                * np.log2(spectrum / (np.sum(spectrum) + 1e-10) + 1e-10)
+            )
+        )
         max_entropy = np.log2(len(spectrum))
         return float(np.clip(1.0 - spectral_entropy / max(max_entropy, 1), 0, 1))
 
     def _classify_pause(self, duration_ms: float, audio: np.ndarray) -> str:
         """Classify silence type based on spectral content."""
-        energy = float(np.sqrt(np.mean(audio ** 2)))
+        energy = float(np.sqrt(np.mean(audio**2)))
         if energy < 0.001:
             return "unfilled"
 
@@ -371,7 +379,7 @@ class ProsodyAnalyzer:
         freqs = np.fft.rfftfreq(len(audio), d=1.0 / self._sample_rate)
         breath_band = (freqs >= 200) & (freqs <= 2500)
         breath_energy = float(np.mean(spectrum[breath_band] ** 2)) if np.any(breath_band) else 0
-        total_energy = float(np.mean(spectrum ** 2)) + 1e-10
+        total_energy = float(np.mean(spectrum**2)) + 1e-10
 
         if breath_energy / total_energy > 0.4:
             return "breath"

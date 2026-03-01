@@ -13,20 +13,21 @@ Supports voiceprint enrollment and cross-session recognition.
 from __future__ import annotations
 
 import asyncio
-import json
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING
 
 import numpy as np
 
 from observability.logger import get_logger
-from perception.audio.stream import AudioChunk
+
+if TYPE_CHECKING:
+    from perception.audio.stream import AudioChunk
 
 log = get_logger(__name__)
 
-VOICE_PROFILES_DIR = Path("assets/voice_profiles")
+VOICE_PROFILES_DIR = Path(__file__).resolve().parent.parent.parent / "assets" / "voice_profiles"
 
 
 @dataclass
@@ -94,25 +95,43 @@ class SpeakerEngine:
         self._load_known_speakers()
 
     async def _load_embedder(self) -> None:
-        """Load the ECAPA-TDNN speaker embedding model."""
+        """Load the ECAPA-TDNN speaker embedding model (CUDA with CPU fallback)."""
         try:
             from speechbrain.inference.speaker import EncoderClassifier
-            self._embedder = await asyncio.to_thread(
-                EncoderClassifier.from_hparams,
-                source="speechbrain/spkrec-ecapa-voxceleb",
-                run_opts={"device": "cuda"},
-            )
+
+            device = "cuda"
+            try:
+                self._embedder = await asyncio.to_thread(
+                    EncoderClassifier.from_hparams,
+                    source="speechbrain/spkrec-ecapa-voxceleb",
+                    run_opts={"device": device},
+                )
+            except Exception:
+                device = "cpu"
+                log.info("speaker_cuda_unavailable_falling_back_to_cpu")
+                self._embedder = await asyncio.to_thread(
+                    EncoderClassifier.from_hparams,
+                    source="speechbrain/spkrec-ecapa-voxceleb",
+                    run_opts={"device": device},
+                )
+
             self._embedder_available = True
-            log.info("speaker_embedder_loaded", model="ecapa-tdnn")
+            log.info("speaker_embedder_loaded", model="ecapa-tdnn", device=device)
         except ImportError:
             log.info("speechbrain_not_available", hint="pip install speechbrain")
         except Exception as exc:
             log.warning("speaker_embedder_load_failed", error=str(exc))
 
     async def _load_diarizer(self) -> None:
-        """Load the pyannote diarization pipeline."""
+        """Load the pyannote diarization pipeline.
+
+        TODO: Integrate diarizer into process_frame() for multi-speaker
+        segmentation once overlap detection is needed.  Currently only
+        the ECAPA-TDNN embedder is used for speaker identification.
+        """
         try:
             from pyannote.audio import Pipeline
+
             self._diarizer = await asyncio.to_thread(
                 Pipeline.from_pretrained,
                 "pyannote/speaker-diarization-3.1",
@@ -153,7 +172,7 @@ class SpeakerEngine:
         """
         self._frame_count += 1
 
-        energy = float(np.sqrt(np.mean(chunk.data ** 2)))
+        energy = float(np.sqrt(np.mean(chunk.data**2)))
         if energy < 0.005:
             return SpeakerFrame(
                 active_speakers=[],
@@ -202,6 +221,7 @@ class SpeakerEngine:
 
         try:
             import torch
+
             if sample_rate != 16000:
                 ratio = 16000 / sample_rate
                 n_out = int(len(audio) * ratio)
@@ -212,9 +232,7 @@ class SpeakerEngine:
                 ).astype(np.float32)
 
             waveform = torch.FloatTensor(audio).unsqueeze(0)
-            embedding = await asyncio.to_thread(
-                self._embedder.encode_batch, waveform
-            )
+            embedding = await asyncio.to_thread(self._embedder.encode_batch, waveform)
             return embedding.squeeze().cpu().numpy()
         except Exception as exc:
             log.debug("embedding_compute_error", error=str(exc))

@@ -1,17 +1,82 @@
 EMILY SYSTEM RULES — read before every edit:
 
-1. Read ARCHITECTURE.md, COGNITIVE_MODEL.md, and DECISIONS.md before ANY architectural change.
-2. Append a dated entry to MEMORY_LOG.md after every significant change: what changed, why, what it affects.
-3. ALL prompts assembled in llm/prompt_builder.py only. Never inline. Inline prompt strings are a bug.
-4. ALL tool additions require: class in plugins/, dry_run() method, test in tests/unit/, README plugin table entry.
-5. Memory schema changes require a migration script in scripts/migrations/.
-6. Never add a dependency without first checking if an existing one already covers the need.
-7. Security module changes (security/) require explicit user approval before implementation.
-8. After implementing any agent, verify it registers correctly in agents/registry.py.
-9. Latency budget targets: STT < 300ms, LLM first token < 1s (fast_model), TTS first audio < 200ms.
-10. If Emily's self-improvement engine modifies a prompt, the old version must be archived in prompts/archive/.
-11. The system is named Emily. Never refer to her as NOVA, assistant, bot, or chatbot.
-12. All blocking I/O must use async or asyncio.to_thread. No sync calls in async context.
-13. Every function must have: type hints, docstring, at least one unit test.
-14. Phase > ~200 lines of new code: split and ask which half to implement first.
-15. Generated tools (plugins/generated/) are never auto-loaded at startup — require explicit user approval.
+IDENTITY: Emily is a self-evolving multi-agent local AI voice operating system.
+          She is NOT an assistant, NOT a bot, NOT a chatbot. She is a cognitive AI companion.
+          Always refer to her as Emily. Never NOVA, assistant, bot, or chatbot.
+
+HARDWARE: Intel i9-14900K, 64 GB DDR5, NVIDIA RTX 4090 24 GB, Arch Linux.
+
+TECH: Python 3.12+ | uv + hatchling | config.yaml + Pydantic Settings v2 | TabbyAPI + Ollama
+      | SQLite + Qdrant + networkx | FastAPI + WebSocket | ZeroMQ | structlog + Prometheus + OTEL
+      | Tauri + React + Tailwind (web/) | PySide6 (emily_chat/) | Textual (ui/terminal/)
+
+MODELS: nano=Qwen3-4B, voice_fast/fast/smart=Qwen3-8B-abliterated, vision=MiniCPM-V-2.6, embedding=BGE-M3
+
+=== 15 CRITICAL RULES ===
+
+1.  Read ARCHITECTURE.md, COGNITIVE_MODEL.md, DECISIONS.md before ANY architectural change.
+2.  Append a dated entry to MEMORY_LOG.md after every significant change: what, why, affects.
+3.  ALL prompt strings in llm/prompt_builder.py ONLY. Inline prompt strings anywhere = BUG.
+4.  New tool = class in plugins/ + dry_run() method + test in tests/unit/ + README table entry.
+5.  Memory/DB schema changes require scripts/migrations/NNN_description.py.
+6.  Never add a dependency without checking if an existing one covers the need.
+7.  Security module changes (security/) require explicit user approval.
+8.  New agents MUST register in agents/registry.py.
+9.  Latency: STT < 300ms, LLM first token < 1s (fast), TTS first audio < 200ms.
+10. Self-improvement prompt changes → archive old version in prompts/archive/.
+11. System is named Emily. Never NOVA, assistant, bot, chatbot.
+12. No blocking I/O in async context. Use async or asyncio.to_thread().
+13. Every function: type hints, docstring, at least one unit test.
+14. Phase > ~200 lines → split and implement in halves.
+15. plugins/generated/ never auto-loaded — require explicit user approval.
+
+=== CODE STYLE ===
+
+- async-first: every I/O function is async
+- Strict typing: all params and returns annotated
+- Google-style docstrings with Args/Returns sections
+- snake_case functions/vars, PascalCase classes, SCREAMING_SNAKE_CASE constants
+- Import order: stdlib → third-party → local (absolute from project root)
+- No bare except — always catch specific exceptions
+
+=== KEY PATTERNS ===
+
+Config:   from config import get_settings; settings = get_settings()
+Memory:   await memory.add_user_turn(text); await memory.retrieve_context(query)
+Agent:    class X(BaseAgent): name, description, async def handle(self, msg)
+Tool:     class X(BaseTool): name, description, async execute(), async dry_run()
+Prompts:  from llm.prompt_builder import PromptBuilder
+Privacy:  from users.owner_identity import OwnerIdentityManager
+
+=== KEY FILES ===
+
+config.yaml + config.py          → All configuration
+llm/prompt_builder.py            → ALL prompts (single source of truth)
+llm/fleet.py + router.py         → Model management + routing
+agents/conversation.py           → Dialogue handler
+agents/registry.py               → Agent registration
+memory/manager.py                → Unified memory access
+memory/interaction_logger.py     → Persistent interaction logging
+users/owner_identity.py          → Single-owner identity + privacy
+users/privacy_filter.py          → Guest privacy protection
+plugins/base.py                  → Tool base class
+core/bus.py                      → Inter-agent messaging
+core/bootstrap.py                → System startup
+api/app.py                       → FastAPI application
+web/src/                         → Tauri desktop app
+
+=== DO NOT ===
+
+- Put prompts outside llm/prompt_builder.py
+- Do blocking I/O in async functions
+- Auto-load plugins/generated/ tools
+- Skip dry_run() for new tools
+- Change memory schemas without migrations
+- Modify security/ without user approval
+- Call Emily "assistant", "bot", "NOVA", or "chatbot"
+- Add unnecessary dependencies
+- Commit .env, secrets, model weights, or data/
+- Write functions without type hints, docstrings, and tests
+- Use requests/urllib in async context (use httpx)
+- Hardcode file paths (use config.yaml)
+- Skip error handling or use bare except

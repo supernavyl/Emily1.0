@@ -10,21 +10,27 @@ emily:
 llm:
   backend: "ollama"
   ollama_base_url: "http://localhost:11434"
+  tabbyapi_base_url: "http://localhost:5000" # TabbyAPI ExLlamaV2 inference server (optional)
+  tabbyapi_api_key: "" # set if auth enabled in TabbyAPI config.yml
   models:
-    nano: "qwen3:4b"
-    voice_fast: "qwen3:4b"
-    fast: "qwen3:14b"
-    smart: "qwq:latest"
-    reasoning: "qwq:latest"
-    # smart_alt: "qwen3:32b"       # inactive — swap in for smart/reasoning when desired (~20 GB VRAM)
-    vision: "minicpm-v:latest"
-    embedding: "bge-m3"
+    # ── Ollama abliterated models ────────────────────────────────────────────────────
+    # JOSIEFIED: abliterated + fine-tuned to preserve tool-use & instruction-following
+    # Qwen 3.5: latest generation, multimodal, 256K context
+    nano: "goekdenizguelmez/JOSIEFIED-Qwen3:8b" # Routing & classification
+    voice_fast: "goekdenizguelmez/JOSIEFIED-Qwen3:8b" # Fast voice responses (<1s)
+    fast: "goekdenizguelmez/JOSIEFIED-Qwen3:14b" # Standard conversation + voice escalation
+    smart: "huihui_ai/qwen3.5-abliterated:27b" # Complex reasoning & text chat
+    reasoning: "huihui_ai/qwen3.5-abliterated:27b" # Deep reasoning with thinking (text chat)
+    vision: "minicpm-v:latest" # Ollama - vision only (not abliterated)
+    embedding: "bge-m3" # Ollama - embeddings (not abliterated)
+    cloud_best: "claude-opus-4-6" # Anthropic - deep reasoning, reflection, planning
+    cloud_fast: "claude-sonnet-4-6" # Anthropic - fast cloud with thinking
   routing:
     complexity_threshold_fast: 3
     complexity_threshold_smart: 7
-    voice_fast_complexity_threshold: 5   # voice queries below this complexity -> voice_fast tier
-    voice_skip_rag_below: 5             # skip RAG retrieval for voice queries below this complexity
-    voice_skip_critic: true              # disable critic loop for voice turns
+    voice_fast_complexity_threshold: 5 # voice queries below this complexity -> voice_fast tier
+    voice_skip_rag_below: 5 # skip RAG retrieval for voice queries below this complexity
+    voice_skip_critic: true # disable critic loop for voice turns
     vram_headroom_gb: 2.0
     default_stream: true
   inference:
@@ -33,36 +39,74 @@ llm:
     repeat_penalty: 1.1
     max_tokens: 4096
     context_window: 8192
+  # Per-tier overrides — applied on top of inference defaults
+  tier_inference:
+    nano:
+      temperature: 0.3 # Low temp for deterministic routing/classification
+      max_tokens: 512
+      enable_thinking: false
+    voice_fast:
+      temperature: 0.7
+      max_tokens: 1024
+      enable_thinking: false # Disable thinking for <1s voice latency
+    fast:
+      temperature: 0.7
+      max_tokens: 4096
+      enable_thinking: true # Qwen3 fast thinking when helpful
+    smart:
+      temperature: 0.6
+      max_tokens: 8192
+      enable_thinking: true
+    reasoning:
+      temperature: 0.6 # Slightly lower for more precise reasoning
+      max_tokens: 16384 # QwQ-32B needs room to think
+      enable_thinking: true # ALWAYS enable thinking for QwQ-32B
+    cloud_best:
+      temperature: 1.0 # Anthropic requires temp=1 for extended thinking
+      max_tokens: 16384
+      enable_thinking: true
+      thinking_budget: 16000 # Claude Opus 4.6 extended thinking budget
+    cloud_fast:
+      temperature: 1.0
+      max_tokens: 8192
+      enable_thinking: true
+      thinking_budget: 8000 # Claude Sonnet 4.6 extended thinking budget
   critic:
     enabled: true
     min_confidence: 0.65
     max_retries: 2
   llamacpp:
-    enabled: true
-    models_dir: "models"   # place GGUF files here (e.g. nano Qwen3 4B)
+    enabled: false
+    models_dir: "models" # ignored while disabled
     models:
       nano:
-        filename: "qwen3-4b-instruct-q4_k_m.gguf"  # Qwen3 4B; download to models_dir
+        # kept only as fallback config if llama-cpp is re-enabled
+        filename: "qwen3-4b-abliterated-q4_k_m.gguf"
         n_gpu_layers: -1
         n_ctx: 32768
         n_batch: 512
       voice_fast:
         alias_of: "nano"
   tier_backend:
-    nano: "llamacpp"
-    voice_fast: "llamacpp"
-    fast: "ollama"
-    smart: "ollama"
-    reasoning: "ollama"
-    vision: "ollama"
-    embedding: "ollama"
+    nano: "ollama" # JOSIEFIED-Qwen3 8B — fast routing
+    voice_fast: "ollama" # JOSIEFIED-Qwen3 8B — fast voice responses
+    fast: "ollama" # Qwen3.5-abliterated 27B — standard chat
+    smart: "ollama" # Qwen3.5-abliterated 27B — complex reasoning
+    reasoning: "ollama" # Qwen3.5-abliterated 27B — deep reasoning with thinking
+    vision: "ollama" # MiniCPM-V (not abliterated)
+    embedding: "ollama" # BGE-M3 embeddings
+    cloud_best: "anthropic" # Claude Opus 4.6 — agents, reflection, planning
+    cloud_fast: "anthropic" # Claude Sonnet 4.6 — fast cloud inference
 
 audio:
   sample_rate: 16000
   channels: 1
   chunk_size: 1024
-  input_device: null   # null = system default
-  output_device: null  # null = system default
+  # ── AUDIO DEVICE CONFIGURATION ──
+  # [10] Yeti Nano: USB Audio (input, 44100Hz)
+  # [42] USB Audio Speakers (output, 48000Hz)
+  input_device: 10 # Yeti Nano
+  output_device: 41 # USB Audio Front Headphones
 
 wake_word:
   model: "hey_emily"
@@ -72,13 +116,14 @@ wake_word:
 
 vad:
   model: "silero"
-  threshold: 0.5
-  min_silence_ms: 500
-  min_speech_ms: 250
+  threshold: 0.1
+  min_silence_ms: 600
+  min_speech_ms: 0
   adaptive: true
-  noise_floor_update_rate: 0.01
+  noise_floor_update_rate: 0.005
 
 stt:
+  profile: "accurate" # fast | accurate
   model: "large-v3-turbo"
   device: "cuda"
   compute_type: "float16"
@@ -86,10 +131,27 @@ stt:
   word_timestamps: true
   beam_size: 5
   voice_fast_beam_size: 1
+  voice_accurate_beam_size: 3
+  streaming_window_duration_s: 4.0
+  streaming_process_interval_s: 0.12
+  streaming_min_buffer_s: 0.25
+  streaming_commit_skip_threshold_s: 0.2
+  streaming_rms_gate_threshold: 0.0045
+  streaming_commit_confidence: 0.8
+  streaming_reject_low_confidence: 0.74
+  streaming_min_final_words: 5
+  streaming_min_unique_ratio: 0.6
+  streaming_max_repeat_ratio: 0.5
+  streaming_short_utterance_confidence: 0.92
+  use_whisper_vad: false
+  whisper_vad_threshold: 0.1
+  whisper_vad_min_speech_ms: 0
+  whisper_vad_min_silence_ms: 300
+  no_speech_threshold: 0.6
 
 tts:
   primary: "kokoro"
-  fallback: "xtts_v2"
+  fallback: "csm"
   voice_preset: "en_US_female_1"
   xtts:
     model_name: "tts_models/multilingual/multi-dataset/xtts_v2"
@@ -98,23 +160,23 @@ tts:
     speed: 1.0
   kokoro:
     voice: "af_heart"
-    speed: 1.0
+    speed: 0.88
   csm:
     model_id: "sesame/csm-1b"
     speaker_id: 0
-    max_audio_length: 250
-    dtype: "float16"
+    max_audio_length: 150
+    dtype: "bfloat16"
   streaming_chunk_size: 100
 
 singing:
   enabled: true
-  primary: "musicgen"
-  fallback: "suno"
+  primary: "rvc"
+  fallback: "musicgen"
   output_dir: "data/singing_output"
   rvc:
     enabled: true
-    model_path: null
-    index_path: null
+    model_path: "data/rvc_models/emily.pth"
+    index_path: "data/rvc_models/emily.index"
     device: "cuda:0"
     f0_method: "rmvpe"
     transpose: 0
@@ -126,49 +188,19 @@ singing:
   suno:
     enabled: true
     api_url: "https://api.sunoapi.org"
-    api_key: null     # set via SUNO_API_KEY env var
+    api_key: null # set via SUNO_API_KEY env var
     model_version: "v4"
     timeout_seconds: 120
 
 voice_engine:
   enabled: true
-  input_sample_rate: 48000
-  output_sample_rate: 24000
-  output_channels: 2
-  chunk_ms: 10
-  aec_enabled: true
-  aec_tail_ms: 150
-  noise_suppress_enabled: true
-  noise_threshold_db: 15.0
-  speaker_tracking: true
-  max_speakers: 2
-  turn_response_threshold: 0.85
-  turn_backchannel_threshold: 0.45
-  backchannels_enabled: true
-  fillers_enabled: true
-  breathing_enabled: true
-  rhythm_sync_enabled: true
-  entrainment_degree: 0.4
-  emotion_adapt_enabled: true
-  whisper_match: true
-  energy_match: true
-  cross_session_rhythm: true
-  latency_target_ms: 500
-  speculative_generation: true
-  speculative_start_probability: 0.65
-  fast_mode: true
-  fast_mode_skip_speaker_tracking: true
-  fast_mode_skip_emotion: true
-  fast_mode_skip_breathing: true
-  fast_mode_skip_rhythm: true
-  interrupt_energy_threshold: 0.03
-  interrupt_cooldown_ms: 300
-  interrupt_fade_ms: 20
-  interrupt_lookahead_ms: 300
-  interrupt_ack_enabled: true
-  interrupt_resume_enabled: true
-  interrupt_resume_expiry_s: 30.0
-  interrupt_adaptive_threshold: true
+  # Provider selection (detailed config in .env — see voice_engine/config.py)
+  stt_provider: "faster_whisper"
+  llm_provider: "ollama" # uses TabbyAPI (ExLlamaV2)
+  tts_provider: "kokoro"
+  vad_threshold: 0.5
+  min_speech_ms: 200
+  min_silence_ms: 800
 
 memory:
   sensory_buffer_size: 1000
@@ -179,6 +211,9 @@ memory:
     db_path: "data/episodes.db"
     auto_summarize: true
     summary_model: "fast"
+    save_all_interactions: true # Save every single turn immediately
+    interactions_db_path: "data/interactions.db"
+    auto_backup_interval_minutes: 30
   semantic:
     qdrant_url: "http://localhost:6333"
     collection_name: "emily_semantic"
@@ -215,25 +250,35 @@ tools:
   allowed_paths:
     - "/home/supernovyl/Emily1.0"
     - "/tmp/emily_sandbox"
-  web_search_url: "http://localhost:8080"
+  web_search_url: "http://localhost:8888"
   home_assistant:
     url: "http://localhost:8123"
-    token: null  # set in .env
+    token: null # set in .env
+
+integrations:
+  discord:
+    bot_token: ""  # set via DISCORD_BOT_TOKEN env var
+    default_channel_id: ""
+  automation:
+    enabled: true
+    max_history: 100
+  crews:
+    default_mode: "sequential"
 
 vision:
-  enabled: false
+  enabled: true
   screen_capture_interval_s: 5
   webcam_device: 0
-  emotion_detection: false
+  emotion_detection: true
 
 persona:
   profile_path: "persona/profile.json"
-  curiosity: 0.8
-  warmth: 0.85
-  directness: 0.7
-  humor: 0.5
-  formality: 0.3
-  evolution_rate: 0.01
+  curiosity: 0.5
+  warmth: 0.5
+  directness: 0.5
+  humor: 0.2
+  formality: 0.5
+  evolution_rate: 0.0
 
 security:
   encrypt_at_rest: true
@@ -246,6 +291,17 @@ security:
     - "process_manager"
     - "file_writer"
 
+# Owner identity and privacy settings
+owner:
+  enabled: true # Enable single-owner mode
+  identity_file: "data/owner_identity.json"
+  require_verification: true # Require passphrase on new sessions
+  verification_timeout_minutes: 60 # Re-verify after this many minutes
+  guest_mode_enabled: true # Allow guests with limited access
+  share_personal_with_guests: false # NEVER share personal info with non-owners
+  lockout_after_failed_attempts: 3
+  lockout_duration_minutes: 5
+
 self_improvement:
   track_performance: true
   evolve_prompts: true
@@ -257,10 +313,10 @@ api:
   host: "127.0.0.1"
   port: 8000
   reload: false
-  secret_key: null  # set in .env
+  secret_key: null # set in .env
 
 observability:
   otlp_endpoint: "http://localhost:4317"
-  metrics_port: 9090
+  metrics_port: 9091
   log_format: "json"
   tracing_enabled: true

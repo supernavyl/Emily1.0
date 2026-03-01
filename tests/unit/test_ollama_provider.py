@@ -22,14 +22,23 @@ from emily_chat.models.registry import (
 )
 from emily_chat.models.streaming_engine import ChunkType, GenerationSettings, StreamChunk
 
-_LOCAL_SPEC = EMILY_MODEL_REGISTRY["ollama-local"]
+_LOCAL_SPEC = EMILY_MODEL_REGISTRY["emily-ollama"]
 _OLLAMA_CHAT_URL = "http://localhost:11434/api/chat"
 _OLLAMA_TAGS_URL = "http://localhost:11434/api/tags"
+
+
+@pytest.fixture
+async def provider():
+    """Create an OllamaProvider and ensure it is closed after the test."""
+    p = OllamaProvider()
+    yield p
+    await p.close()
 
 
 # ------------------------------------------------------------------
 # JSON-line helpers (Ollama does NOT use SSE)
 # ------------------------------------------------------------------
+
 
 def _json_line(content: str, done: bool = False, **kwargs: int) -> str:
     """Build a single Ollama JSON-line response."""
@@ -80,15 +89,21 @@ def _discovery_response(models: list[str] | None = None) -> dict:
 
 
 class TestOllamaRegistry:
-    """Verify the Ollama placeholder model is registered."""
+    """Verify Emily's local fleet models are registered."""
 
-    def test_ollama_model_present(self) -> None:
-        """The ollama-local placeholder should exist."""
+    def test_emily_fast_present(self) -> None:
+        """Emily's default local brain should exist in the registry."""
         ollama = get_models_for_provider("ollama")
-        assert "ollama-local" in ollama
+        assert "emily-ollama" in ollama
+
+    def test_emily_fleet_present(self) -> None:
+        """All Emily fleet models should be registered."""
+        ollama = get_models_for_provider("ollama")
+        assert "emily-ollama" in ollama
+        assert "emily-vision" in ollama
 
     def test_ollama_spec(self) -> None:
-        """Ollama spec should have zero cost and correct provider."""
+        """Emily-ollama spec should have zero cost and correct provider."""
         assert _LOCAL_SPEC.provider == "ollama"
         assert _LOCAL_SPEC.input_usd == 0.0
         assert _LOCAL_SPEC.output_usd == 0.0
@@ -96,9 +111,12 @@ class TestOllamaRegistry:
     def test_register_dynamic_model(self) -> None:
         """Dynamic registration should add a model to the registry."""
         spec = OllamaProvider.create_local_spec("test-model:7b")
-        register_dynamic_model("ollama-test-model:7b", spec)
-        assert "ollama-test-model:7b" in EMILY_MODEL_REGISTRY
-        del EMILY_MODEL_REGISTRY["ollama-test-model:7b"]
+        key = "ollama-test-model:7b"
+        register_dynamic_model(key, spec)
+        try:
+            assert key in EMILY_MODEL_REGISTRY
+        finally:
+            EMILY_MODEL_REGISTRY.pop(key, None)
 
 
 # ------------------------------------------------------------------
@@ -317,9 +335,7 @@ class TestOllamaDiscovery:
     async def test_discover_empty(self) -> None:
         """Should return empty list when no models installed."""
         with respx.mock:
-            respx.get(_OLLAMA_TAGS_URL).mock(
-                return_value=httpx.Response(200, json={"models": []})
-            )
+            respx.get(_OLLAMA_TAGS_URL).mock(return_value=httpx.Response(200, json={"models": []}))
             provider = OllamaProvider()
             models = await provider.discover_models()
             assert models == []
@@ -400,9 +416,7 @@ class TestOllamaErrors:
     async def test_connect_error(self) -> None:
         """Connection failure should yield a helpful ERROR chunk."""
         with respx.mock:
-            respx.post(_OLLAMA_CHAT_URL).mock(
-                side_effect=httpx.ConnectError("Connection refused")
-            )
+            respx.post(_OLLAMA_CHAT_URL).mock(side_effect=httpx.ConnectError("Connection refused"))
             provider = OllamaProvider()
             chunks: list[StreamChunk] = []
 

@@ -12,10 +12,12 @@ work during resource contention.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import time
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable
+from typing import Any, ClassVar
 
 from core.bus import Priority
 from observability.logger import get_logger
@@ -51,7 +53,7 @@ class Scheduler:
       P4 Idle:       1 concurrent worker
     """
 
-    _DEFAULT_CONCURRENCY = {
+    _DEFAULT_CONCURRENCY: ClassVar[dict[Priority, int]] = {
         Priority.EMERGENCY: 999,
         Priority.REALTIME: 8,
         Priority.ACTIVE: 4,
@@ -69,9 +71,13 @@ class Scheduler:
         """
         self._concurrency = concurrency or dict(self._DEFAULT_CONCURRENCY)
         self._queue: asyncio.PriorityQueue[ScheduledTask] = asyncio.PriorityQueue()
-        self._active: dict[Priority, int] = {p: 0 for p in Priority}
+        self._active: dict[Priority, int] = dict.fromkeys(Priority, 0)
+        self._semaphores: dict[Priority, asyncio.Semaphore] = {
+            p: asyncio.Semaphore(self._concurrency.get(p, 4)) for p in Priority
+        }
         self._running = False
-        self._lock = asyncio.Lock()
+        self._dispatch_task: asyncio.Task[None] | None = None
+        self._workers: set[asyncio.Task[None]] = set()
 
     async def submit(
         self,
@@ -112,42 +118,41 @@ class Scheduler:
         return tid
 
     async def _run_task(self, task: ScheduledTask) -> None:
-        """Execute a single task, respecting the optional deadline."""
+        """Execute a single task, gated by a per-priority semaphore."""
         priority = Priority(task.priority)
-        async with self._lock:
-            self._active[priority] += 1
+        sem = self._semaphores[priority]
 
-        try:
-            coro = task.fn(*task.args, **task.kwargs)
-            if task.deadline_ms:
-                await asyncio.wait_for(coro, timeout=task.deadline_ms / 1000)
-            else:
-                await coro
-        except asyncio.TimeoutError:
-            log.warning("task_deadline_exceeded", task_id=task.task_id, deadline_ms=task.deadline_ms)
-        except asyncio.CancelledError:
-            log.debug("task_cancelled", task_id=task.task_id)
-        except Exception as exc:
-            log.error("task_error", task_id=task.task_id, error=str(exc), exc_info=True)
-        finally:
-            async with self._lock:
+        async with sem:
+            self._active[priority] += 1
+            try:
+                coro = task.fn(*task.args, **task.kwargs)
+                if task.deadline_ms:
+                    await asyncio.wait_for(coro, timeout=task.deadline_ms / 1000)
+                else:
+                    await coro
+            except TimeoutError:
+                log.warning(
+                    "task_deadline_exceeded",
+                    task_id=task.task_id,
+                    deadline_ms=task.deadline_ms,
+                )
+            except asyncio.CancelledError:
+                log.debug("task_cancelled", task_id=task.task_id)
+            except Exception as exc:
+                log.error("task_error", task_id=task.task_id, error=str(exc), exc_info=True)
+            finally:
                 self._active[priority] -= 1
-            AGENT_QUEUE_DEPTH.dec()
+                AGENT_QUEUE_DEPTH.dec()
 
     async def _dispatch_loop(self) -> None:
         """Main loop: pull tasks from the priority queue and dispatch them."""
         while self._running:
             try:
                 task = await asyncio.wait_for(self._queue.get(), timeout=0.1)
-                priority = Priority(task.priority)
-
-                # Check concurrency cap for this priority tier
-                cap = self._concurrency.get(priority, 4)
-                while self._active[priority] >= cap:
-                    await asyncio.sleep(0.01)
-
-                asyncio.create_task(self._run_task(task))
-            except asyncio.TimeoutError:
+                worker = asyncio.create_task(self._run_task(task))
+                self._workers.add(worker)
+                worker.add_done_callback(self._workers.discard)
+            except TimeoutError:
                 continue
             except asyncio.CancelledError:
                 break
@@ -157,15 +162,17 @@ class Scheduler:
     async def start(self) -> None:
         """Start the scheduler dispatch loop as a background task."""
         self._running = True
-        asyncio.create_task(self._dispatch_loop())
+        self._dispatch_task = asyncio.create_task(self._dispatch_loop())
         log.info("scheduler_started")
 
     async def stop(self) -> None:
-        """Stop the scheduler and wait for active tasks to drain."""
+        """Stop the scheduler and cancel the dispatch task."""
         self._running = False
-        # Drain remaining items
-        while not self._queue.empty():
-            await asyncio.sleep(0.05)
+        if self._dispatch_task is not None:
+            self._dispatch_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._dispatch_task
+            self._dispatch_task = None
         log.info("scheduler_stopped")
 
     def queue_depth(self) -> int:

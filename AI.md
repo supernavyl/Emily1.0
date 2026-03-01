@@ -13,7 +13,7 @@ This project uses `.cursorrules` (coding standards), `AI.md` (this file), and op
 **Who uses it:** Solo developer / single-user local deployment.  
 **Core value prop:** Local-first voice OS with always-on perception (audio, vision, telemetry), multi-agent cognitive core (Conversation, Planner, Memory, Reflection, Research, Code, etc.), pentagonal memory, RAG, and tool/plugin ecosystem.  
 **Current phase:** Prototype  
-**Last updated:** 2026-02-22
+**Last updated:** 2026-02-28
 
 ---
 

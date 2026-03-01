@@ -1,0 +1,230 @@
+@import "tailwindcss";
+
+@theme {
+  --color-surface: #0a0a0f;
+  --color-surface-raised: #111118;
+  --color-surface-hover: #1a1a24;
+  --color-border: #2a2a3a;
+  --color-accent: #7c6af7;
+  --color-accent-hover: #9b8cf9;
+  --color-text-primary: #f0f0f5;
+  --color-text-secondary: #8888aa;
+  --color-text-muted: #555570;
+  --color-user-bubble: #1a1a2e;
+  --color-emily-bubble: #111118;
+  --color-thinking-bg: #0d1520;
+  --color-thinking-border: #1e3a5f;
+  --color-code-bg: #0d0d14;
+  --color-code-border: #1e1e2e;
+  --color-cost-green: #22c55e;
+  --color-warning-amber: #f59e0b;
+  --color-error-red: #ef4444;
+  --color-link: #8b9cf7;
+  --color-phase-analyzing: #3b82f6;
+  --color-phase-considering: #f59e0b;
+  --color-phase-comparing: #a855f7;
+  --color-phase-concluding: #22c55e;
+  --color-phase-uncertain: #eab308;
+
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+@font-face {
+  font-family: 'Inter';
+  src: local('Inter');
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: local('JetBrains Mono');
+  font-display: swap;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--color-surface);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
+}
+
+::selection {
+  background: var(--color-accent);
+  color: white;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slide-in-from-top {
+  from { opacity: 0; transform: translateY(-16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-in {
+  animation: fade-in 0.2s ease-out;
+}
+
+.animate-slide-in-top {
+  animation: slide-in-from-top 0.2s ease-out;
+}
+
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.line-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.prose-emily strong {
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.prose-emily em {
+  color: var(--color-text-secondary);
+}
+
+mark {
+  background: rgba(245, 158, 11, 0.3);
+  color: #f59e0b;
+  border-radius: 2px;
+  padding: 0 2px;
+}
+
+/* Brain dashboard animations */
+@keyframes pulse-ring {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(124, 106, 247, 0.4); }
+  50% { box-shadow: 0 0 0 12px rgba(124, 106, 247, 0); }
+}
+.animate-pulse-ring {
+  animation: pulse-ring 2s ease-in-out infinite;
+}
+
+@keyframes glow-node {
+  0%, 100% { filter: drop-shadow(0 0 4px rgba(124, 106, 247, 0.3)); }
+  50% { filter: drop-shadow(0 0 14px rgba(124, 106, 247, 0.8)); }
+}
+.animate-glow-node {
+  animation: glow-node 2s ease-in-out infinite;
+}
+
+@keyframes wave-bar {
+  0%, 100% { transform: scaleY(0.2); }
+  50% { transform: scaleY(1); }
+}
+
+@keyframes heartbeat {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+}
+.animate-heartbeat {
+  animation: heartbeat 1.5s ease-in-out infinite;
+}
+
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: scale(1); }
+}
+.animate-scale-in {
+  animation: scale-in 0.15s ease-out;
+}
+
+@keyframes draw-line {
+  from { stroke-dashoffset: 1000; }
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes orbit {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.animate-orbit {
+  animation: orbit 8s linear infinite;
+}
+
+@keyframes data-flow {
+  0% { opacity: 0; transform: translateY(0); }
+  50% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-20px); }
+}
+.animate-data-flow {
+  animation: data-flow 2s ease-in-out infinite;
+}
+
+/* Memory Chronicle animations */
+@keyframes memory-card-in {
+  from { opacity: 0; transform: translateY(28px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0)   scale(1);    }
+}
+.animate-memory-card {
+  animation: memory-card-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes log-row-in {
+  from { opacity: 0; transform: translateX(16px); }
+  to   { opacity: 1; transform: translateX(0);    }
+}
+.animate-log-row {
+  animation: log-row-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes live-pulse {
+  0%, 100% { opacity: 1; transform: scale(1);    }
+  50%       { opacity: 0.4; transform: scale(0.8); }
+}
+.animate-live-pulse {
+  animation: live-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position:  200% center; }
+}
+.animate-shimmer {
+  background: linear-gradient(90deg, transparent 0%, rgba(124,106,247,0.15) 50%, transparent 100%);
+  background-size: 200% 100%;
+  animation: shimmer 2s linear infinite;
+}
+
+@keyframes film-scroll {
+  0%   { background-position: 0   0; }
+  100% { background-position: 0 40px; }
+}
+.animate-film-scroll {
+  animation: film-scroll 0.8s linear infinite;
+}

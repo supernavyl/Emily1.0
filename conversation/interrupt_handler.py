@@ -21,6 +21,7 @@ from enum import Enum
 from typing import Any
 
 import numpy as np
+import numpy.typing as npt
 
 from observability.logger import get_logger
 
@@ -143,8 +144,11 @@ class InterruptHandler:
             InterruptResponse with type, acknowledgment, and stop parameters.
         """
         interrupt_type = self._classify_interrupt(
-            partial_user_text, user_energy, sentence_so_far,
-            prosody=prosody, emotion=emotion,
+            partial_user_text,
+            user_energy,
+            sentence_so_far,
+            prosody=prosody,
+            emotion=emotion,
         )
 
         ack = self._generate_acknowledgment(interrupt_type)
@@ -202,29 +206,37 @@ class InterruptHandler:
             emo_name = getattr(emotion.primary, "value", str(emotion.primary))
             if emo_name in ("frustrated", "anxious") and emotion.confidence > 0.6:
                 return InterruptionType.URGENCY
-        if prosody is not None and hasattr(prosody, "f0_hz"):
-            if prosody.f0_hz > 0 and prosody.f0_range_semitones > 8:
-                return InterruptionType.URGENCY
+        if (
+            prosody is not None
+            and hasattr(prosody, "f0_hz")
+            and prosody.f0_hz > 0
+            and prosody.f0_range_semitones > 8
+        ):
+            return InterruptionType.URGENCY
 
         # --- Correction: keywords, or emphatic stress with negation ---
         has_correction_kw = any(w in lower for w in _CORRECTION_KEYWORDS)
         if has_correction_kw:
             return InterruptionType.CORRECTION
-        if prosody is not None and hasattr(prosody, "stress_pattern"):
-            if (prosody.stress_pattern
-                    and max(prosody.stress_pattern, default=0) > 0.8
-                    and any(neg in lower for neg in ("no", "not", "wrong"))):
-                return InterruptionType.CORRECTION
+        if (
+            prosody is not None
+            and hasattr(prosody, "stress_pattern")
+            and prosody.stress_pattern
+            and max(prosody.stress_pattern, default=0) > 0.8
+            and any(neg in lower for neg in ("no", "not", "wrong"))
+        ):
+            return InterruptionType.CORRECTION
 
         # --- Clarification: question words/punctuation, or rising pitch ---
-        is_question = lower.endswith("?") or any(
-            w in lower for w in _QUESTION_KEYWORDS
-        )
+        is_question = lower.endswith("?") or any(w in lower for w in _QUESTION_KEYWORDS)
         if is_question:
             return InterruptionType.CLARIFICATION
-        if prosody is not None and hasattr(prosody, "f0_trajectory"):
-            if prosody.f0_trajectory == "rising":
-                return InterruptionType.CLARIFICATION
+        if (
+            prosody is not None
+            and hasattr(prosody, "f0_trajectory")
+            and prosody.f0_trajectory == "rising"
+        ):
+            return InterruptionType.CLARIFICATION
 
         # --- Disengagement: short/empty text, optionally confirmed by emotion ---
         if not lower or len(lower.split()) < 3:
@@ -232,9 +244,12 @@ class InterruptHandler:
                 emo_name = getattr(emotion.primary, "value", str(emotion.primary))
                 if emo_name in ("bored", "tired", "neutral"):
                     return InterruptionType.DISENGAGEMENT
-            if prosody is not None and hasattr(prosody, "intensity_trajectory"):
-                if prosody.intensity_trajectory == "falling":
-                    return InterruptionType.DISENGAGEMENT
+            if (
+                prosody is not None
+                and hasattr(prosody, "intensity_trajectory")
+                and prosody.intensity_trajectory == "falling"
+            ):
+                return InterruptionType.DISENGAGEMENT
             return InterruptionType.DISENGAGEMENT
 
         # --- Cooperative overlap: user finishing Emily's sentence ---
@@ -270,7 +285,7 @@ class InterruptHandler:
 
     def find_graceful_stop_point(
         self,
-        audio_buffer: np.ndarray,
+        audio_buffer: npt.NDArray[np.float32],
         sample_rate: int = 24000,
     ) -> int:
         """
@@ -299,8 +314,8 @@ class InterruptHandler:
         energies = np.zeros(n_frames)
         for i in range(n_frames):
             start = i * hop
-            frame = audio_buffer[start:start + frame_size]
-            energies[i] = float(np.sqrt(np.mean(frame ** 2)))
+            frame = audio_buffer[start : start + frame_size]
+            energies[i] = float(np.sqrt(np.mean(frame**2)))
 
         if len(energies) < 3:
             return search_len
@@ -315,10 +330,10 @@ class InterruptHandler:
 
     def apply_fade_out(
         self,
-        audio: np.ndarray,
+        audio: npt.NDArray[np.float32],
         stop_sample: int,
         fade_samples: int | None = None,
-    ) -> np.ndarray:
+    ) -> npt.NDArray[np.float32]:
         """
         Apply a smooth fade-out at the stop point.
 

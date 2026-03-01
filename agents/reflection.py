@@ -10,11 +10,13 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from agents.base import BaseAgent
-from core.bus import Message, Priority
 from llm.client import ChatMessage
+
+if TYPE_CHECKING:
+    from core.bus import Message
 from llm.prompt_builder import PromptBuilder
 from llm.router import ModelTier
 from llm.structured_output import extract_json
@@ -86,8 +88,8 @@ class ReflectionAgent(BaseAgent):
             result = await self._fleet.chat(
                 user_message=prompt,
                 messages=[ChatMessage(role="user", content=prompt)],
-                force_tier=ModelTier.SMART,
-                temperature=0.4,
+                force_tier=ModelTier.CLOUD_BEST,
+                temperature=1.0,  # Anthropic extended thinking requires temperature=1
             )
 
             insights = extract_json(result.content)
@@ -122,13 +124,23 @@ class ReflectionAgent(BaseAgent):
         """
         import json
         from pathlib import Path
-        gap_log = Path("data/capability_gaps.jsonl")
-        entry = json.dumps({"gap": gap, "timestamp": time.time(), "source": "reflection"})
-        with gap_log.open("a") as f:
-            f.write(entry + "\n")
+
+        def _write_gap() -> None:
+            gap_log = Path("data/capability_gaps.jsonl")
+            entry = json.dumps({"gap": gap, "timestamp": time.time(), "source": "reflection"})
+            with gap_log.open("a") as f:
+                f.write(entry + "\n")
+
+        await asyncio.to_thread(_write_gap)
 
     async def _schedule_reflection(self, message: Message) -> None:
-        """Schedule a future reflection cycle."""
+        """Schedule a future reflection cycle without blocking the handler."""
         delay_minutes = message.payload.get("delay_minutes", 10)
-        await asyncio.sleep(delay_minutes * 60)
-        await self._run_reflection(message)
+
+        async def _delayed() -> None:
+            await asyncio.sleep(delay_minutes * 60)
+            await self._run_reflection(message)
+
+        task = asyncio.create_task(_delayed())
+        self._scheduled_task = task
+        task.add_done_callback(lambda _: None)

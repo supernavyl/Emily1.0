@@ -19,12 +19,14 @@ from __future__ import annotations
 import time
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Deque
+from typing import TYPE_CHECKING
 
 import numpy as np
 
 from observability.logger import get_logger
-from perception.audio.prosody_analyzer import ProsodyFeatures
+
+if TYPE_CHECKING:
+    from perception.audio.prosody_analyzer import ProsodyFeatures
 
 log = get_logger(__name__)
 
@@ -98,9 +100,8 @@ class RhythmSynchronizer:
         if prosody.pause_duration_ms > 50:
             self._pause_history.append(prosody.pause_duration_ms)
             self._user_profile.pause_duration_ms = (
-                (1 - self._EMA_ALPHA) * self._user_profile.pause_duration_ms
-                + self._EMA_ALPHA * prosody.pause_duration_ms
-            )
+                1 - self._EMA_ALPHA
+            ) * self._user_profile.pause_duration_ms + self._EMA_ALPHA * prosody.pause_duration_ms
 
         self._user_profile.n_samples += 1
         self._user_profile.last_updated = time.monotonic()
@@ -114,9 +115,8 @@ class RhythmSynchronizer:
         """
         self._response_gap_history.append(gap_ms)
         self._user_profile.response_latency_ms = (
-            (1 - self._EMA_ALPHA) * self._user_profile.response_latency_ms
-            + self._EMA_ALPHA * gap_ms
-        )
+            1 - self._EMA_ALPHA
+        ) * self._user_profile.response_latency_ms + self._EMA_ALPHA * gap_ms
 
     def get_targets(self) -> RhythmTargets:
         """

@@ -7,24 +7,55 @@ Manages the lifecycle of the model fleet:
 - Providing a unified inference interface that routes to the correct model
 - Dispatching each tier to the configured backend (Ollama or llama-cpp-python)
 - Monitoring VRAM usage and adjusting model selection accordingly
+- Extracting <think>...</think> blocks from QwQ/Qwen3 reasoning models
 
 The fleet manager is the single point of entry for all LLM inference.
 """
 
 from __future__ import annotations
 
-import asyncio
-from typing import Any, AsyncIterator
+import re
+from typing import TYPE_CHECKING, Any
 
-from config import LLMConfig
-from llm.base import LLMClientProtocol
+from llm.anthropic_client import AnthropicFleetClient
 from llm.client import ChatMessage, CompletionResult, EmbeddingResult, OllamaClient
 from llm.llamacpp_client import LlamaCppClient
 from llm.router import ModelRouter, ModelTier, RoutingDecision, TaskType
+from llm.tabbyapi_client import TabbyAPIClient
 from observability.logger import get_logger
-from observability.metrics import VRAM_USED_GB
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
+    from config import LLMConfig
+    from llm.base import LLMClientProtocol
 
 log = get_logger(__name__)
+
+# Matches <think>…</think> blocks emitted by QwQ-32B and Qwen3 thinking models
+_THINK_RE = re.compile(r"<think>(.*?)</think>", re.DOTALL)
+
+
+def extract_thinking(text: str) -> tuple[str, str]:
+    """
+    Split a model response into (thinking_content, visible_content).
+
+    QwQ-32B and Qwen3 models wrap their reasoning in <think>…</think> tags.
+    This strips the thinking block so TTS and the chat bubble only get the
+    clean response, while the reasoning panel shows the thinking content.
+
+    Args:
+        text: Raw model output, possibly containing <think>…</think>.
+
+    Returns:
+        Tuple of (thinking_text, clean_response_text).
+    """
+    thinking_parts: list[str] = []
+    clean = _THINK_RE.sub(
+        lambda m: thinking_parts.append(m.group(1)) or "",
+        text,
+    )
+    return "\n\n".join(thinking_parts).strip(), clean.strip()
 
 
 class LLMFleet:
@@ -43,46 +74,108 @@ class LLMFleet:
         """
         self._config = config
         self._ollama = OllamaClient(base_url=config.ollama_base_url)
+        self._tabbyapi = TabbyAPIClient(
+            base_url=config.tabbyapi_base_url,
+            api_key=config.tabbyapi_api_key,
+        )
         self._llamacpp = LlamaCppClient(config.llamacpp)
+        self._anthropic: AnthropicFleetClient | None = None
         self._router = ModelRouter(config)
         self._available_models: set[str] = set()
         self._healthy = False
+        self._tabbyapi_healthy = False
         self._brain_hub = brain_hub
 
     def _client_for_tier(self, tier: ModelTier) -> LLMClientProtocol:
         """Return the backend client configured for *tier*."""
         backend = getattr(self._config.tier_backend, tier.value, "ollama")
+        if backend == "anthropic":
+            return self._get_anthropic_client(tier)
         if backend == "llamacpp" and self._llamacpp.has_model(tier.value):
             return self._llamacpp
+        if backend == "tabbyapi":
+            return self._tabbyapi
         return self._ollama
+
+    def _get_anthropic_client(self, tier: ModelTier) -> AnthropicFleetClient:
+        """Return (lazily create) the Anthropic fleet client.
+
+        Uses a single shared instance — the client is stateless and thread-safe.
+        The thinking budget comes from tier_inference config for the requested tier.
+        """
+        if self._anthropic is None:
+            tier_cfg = self._config.tier_inference.for_tier("cloud_best")
+            budget = tier_cfg.thinking_budget if tier_cfg.thinking_budget is not None else 16_000
+            import os
+
+            self._anthropic = AnthropicFleetClient(
+                api_key=os.environ.get("ANTHROPIC_API_KEY"),
+                default_thinking_budget=budget,
+            )
+        return self._anthropic
 
     async def startup(self) -> None:
         """
         Start all backends: check Ollama health, discover available models,
         and load llama-cpp-python GGUF models if enabled.
         """
-        # --- Ollama ---
-        self._healthy = await self._ollama.health_check()
-        if not self._healthy:
-            log.error("ollama_not_reachable", url=self._config.ollama_base_url)
+        # --- TabbyAPI (text tiers) ---
+        self._tabbyapi_healthy = await self._tabbyapi.health_check()
+        if not self._tabbyapi_healthy:
+            log.warning(
+                "tabbyapi_not_reachable",
+                url=self._config.tabbyapi_base_url,
+                hint="Start TabbyAPI and load your abliterated EXL2 model",
+            )
         else:
-            available = await self._ollama.list_models()
-            self._available_models = set(available)
-            log.info("ollama_healthy", n_models=len(available))
-
-            ollama_tiers = {
+            tabbyapi_tiers = {
                 tier: getattr(self._config.models, tier)
-                for tier in ("nano", "voice_fast", "fast", "smart", "embedding")
-                if getattr(self._config.tier_backend, tier, "ollama") == "ollama"
+                for tier in ("nano", "voice_fast", "fast", "smart", "reasoning", "embedding")
+                if getattr(self._config.tier_backend, tier, "ollama") == "tabbyapi"
             }
-            for tier, model in ollama_tiers.items():
-                if not any(model in m for m in available):
+            loaded = await self._tabbyapi.list_models()
+            for tier, model in tabbyapi_tiers.items():
+                if model not in loaded:
                     log.warning(
-                        "model_not_found_in_ollama",
+                        "tabbyapi_model_not_loaded",
                         tier=tier,
                         model=model,
-                        hint=f"Run: ollama pull {model}",
+                        loaded=loaded,
+                        hint=(
+                            f"Load '{model}' in TabbyAPI or update "
+                            f"config.yaml llm.models.{tier} to match your model dir name"
+                        ),
                     )
+
+        # --- Ollama (non-Tabby capability tiers) ---
+        ollama_tiers = {
+            tier: getattr(self._config.models, tier)
+            for tier in ("nano", "voice_fast", "fast", "smart", "reasoning", "vision", "embedding")
+            if getattr(self._config.tier_backend, tier, "ollama") == "ollama"
+        }
+        if ollama_tiers:
+            self._healthy = await self._ollama.health_check()
+            if not self._healthy:
+                log.error(
+                    "ollama_not_reachable",
+                    url=self._config.ollama_base_url,
+                    required_tiers=sorted(ollama_tiers.keys()),
+                )
+            else:
+                available = await self._ollama.list_models()
+                self._available_models = set(available)
+                log.info("ollama_healthy", n_models=len(available))
+                for tier, model in ollama_tiers.items():
+                    if not any(model in m for m in available):
+                        log.warning(
+                            "model_not_found_in_ollama",
+                            tier=tier,
+                            model=model,
+                            hint=f"Run: ollama pull {model}",
+                        )
+        else:
+            self._healthy = True
+            log.info("ollama_skipped_no_required_tiers")
 
         # --- llama-cpp-python ---
         if self._config.llamacpp.enabled:
@@ -102,7 +195,10 @@ class LLMFleet:
                     hint="Tiers configured for llamacpp will fall back to Ollama",
                 )
 
-        if not self._healthy and not await self._llamacpp.health_check():
+        any_backend_up = (
+            self._healthy or self._tabbyapi_healthy or await self._llamacpp.health_check()
+        )
+        if not any_backend_up:
             log.error("no_llm_backend_available")
 
     async def chat_stream(
@@ -118,6 +214,12 @@ class LLMFleet:
         """
         Stream a chat completion, automatically routing to the best model.
 
+        <think>…</think> blocks from QwQ/Qwen3 are intercepted here:
+        - Thinking content is emitted to brain-hub as ``"thinking_token"`` events
+          (shown in the Reasoning panel in the UI).
+        - The yielded stream contains only the clean visible response
+          (safe to pipe directly to TTS).
+
         Args:
             user_message: The current user message (used for routing).
             messages: Full message list including system prompt and history.
@@ -128,46 +230,106 @@ class LLMFleet:
             max_tokens: Override default max tokens.
 
         Yields:
-            Text token strings as they stream from the model.
+            Clean text token strings (thinking stripped).
         """
         decision = self._router.route(
             user_message, task_type=task_type, force_tier=force_tier, urgency=urgency
         )
         cfg = self._config.inference
+        tier_cfg = self._config.tier_inference.for_tier(decision.tier.value)
+
+        effective_temp = temperature or tier_cfg.temperature or cfg.temperature
+        effective_max_tokens = max_tokens or tier_cfg.max_tokens or cfg.max_tokens
+        enable_thinking = tier_cfg.enable_thinking
+        thinking_budget = tier_cfg.thinking_budget  # None for local tiers, int for cloud
 
         if self._brain_hub is not None:
-            await self._brain_hub.emit("llm", "token_start", {
-                "model": decision.model_name,
-                "tier": decision.tier.value,
-                "task_type": task_type.value if hasattr(task_type, "value") else str(task_type),
-            })
+            await self._brain_hub.emit(
+                "llm",
+                "token_start",
+                {
+                    "model": decision.model_name,
+                    "tier": decision.tier.value,
+                    "task_type": task_type.value if hasattr(task_type, "value") else str(task_type),
+                    "thinking": enable_thinking,
+                },
+            )
 
         client = self._client_for_tier(decision.tier)
         token_count = 0
-        async for chunk in client.chat_stream(
-            model=decision.model_name,
-            messages=messages,
-            temperature=temperature or cfg.temperature,
-            top_p=cfg.top_p,
-            max_tokens=max_tokens or cfg.max_tokens,
-            repeat_penalty=cfg.repeat_penalty,
-            model_tier=decision.tier.value,
-        ):
-            if chunk.content:
-                token_count += 1
-                if self._brain_hub is not None:
-                    await self._brain_hub.emit("llm", "token", {
-                        "text": chunk.content,
-                        "model": decision.model_name,
-                        "n": token_count,
-                    })
-                yield chunk.content
+        buffer = ""
+        in_think = False
+
+        stream_kwargs: dict = {
+            "model": decision.model_name,
+            "messages": messages,
+            "temperature": effective_temp,
+            "top_p": cfg.top_p,
+            "max_tokens": effective_max_tokens,
+            "repeat_penalty": cfg.repeat_penalty,
+            "model_tier": decision.tier.value,
+            "enable_thinking": enable_thinking,
+        }
+        if thinking_budget is not None:
+            stream_kwargs["thinking_budget"] = thinking_budget
+
+        async for chunk in client.chat_stream(**stream_kwargs):
+            if not chunk.content:
+                continue
+            buffer += chunk.content
+
+            # Route <think> content to brain-hub only; yield clean text to callers
+            while True:
+                if not in_think:
+                    start = buffer.find("<think>")
+                    if start == -1:
+                        safe, buffer = buffer, ""
+                        if safe:
+                            token_count += 1
+                            if self._brain_hub is not None:
+                                await self._brain_hub.emit(
+                                    "llm",
+                                    "token",
+                                    {"text": safe, "model": decision.model_name, "n": token_count},
+                                )
+                            yield safe
+                        break
+                    else:
+                        before, buffer = buffer[:start], buffer[start + len("<think>") :]
+                        in_think = True
+                        if before:
+                            token_count += 1
+                            yield before
+                else:
+                    end = buffer.find("</think>")
+                    if end == -1:
+                        if self._brain_hub is not None:
+                            await self._brain_hub.emit(
+                                "llm",
+                                "thinking_token",
+                                {"text": buffer, "model": decision.model_name},
+                            )
+                        buffer = ""
+                        break
+                    else:
+                        think_chunk, buffer = buffer[:end], buffer[end + len("</think>") :]
+                        in_think = False
+                        if think_chunk and self._brain_hub is not None:
+                            await self._brain_hub.emit(
+                                "llm",
+                                "thinking_token",
+                                {"text": think_chunk, "model": decision.model_name},
+                            )
+
+        if buffer and not in_think:
+            yield buffer
 
         if self._brain_hub is not None:
-            await self._brain_hub.emit("llm", "token_end", {
-                "model": decision.model_name,
-                "total_tokens": token_count,
-            })
+            await self._brain_hub.emit(
+                "llm",
+                "token_end",
+                {"model": decision.model_name, "total_tokens": token_count},
+            )
 
     async def chat(
         self,
@@ -182,6 +344,9 @@ class LLMFleet:
         """
         Non-streaming chat completion.
 
+        Thinking content is stripped from the returned CompletionResult.content
+        and stored in CompletionResult.thinking_content instead.
+
         Args:
             user_message: Current user message for routing.
             messages: Full message list.
@@ -192,40 +357,69 @@ class LLMFleet:
             max_tokens: Max tokens override.
 
         Returns:
-            CompletionResult with full response.
+            CompletionResult with clean response (thinking stored separately).
         """
         decision = self._router.route(
             user_message, task_type=task_type, force_tier=force_tier, urgency=urgency
         )
         cfg = self._config.inference
+        tier_cfg = self._config.tier_inference.for_tier(decision.tier.value)
+
+        effective_temp = temperature or tier_cfg.temperature or cfg.temperature
+        effective_max_tokens = max_tokens or tier_cfg.max_tokens or cfg.max_tokens
+        enable_thinking = tier_cfg.enable_thinking
+        thinking_budget = tier_cfg.thinking_budget
 
         if self._brain_hub is not None:
-            await self._brain_hub.emit("llm", "request", {
-                "model": decision.model_name,
-                "tier": decision.tier.value,
-            })
+            await self._brain_hub.emit(
+                "llm",
+                "request",
+                {"model": decision.model_name, "tier": decision.tier.value},
+            )
 
         client = self._client_for_tier(decision.tier)
 
         import time as _time
+
         t0 = _time.monotonic()
 
-        result = await client.chat(
-            model=decision.model_name,
-            messages=messages,
-            temperature=temperature or cfg.temperature,
-            top_p=cfg.top_p,
-            max_tokens=max_tokens or cfg.max_tokens,
-            repeat_penalty=cfg.repeat_penalty,
-            model_tier=decision.tier.value,
-        )
+        chat_kwargs: dict = {
+            "model": decision.model_name,
+            "messages": messages,
+            "temperature": effective_temp,
+            "top_p": cfg.top_p,
+            "max_tokens": effective_max_tokens,
+            "repeat_penalty": cfg.repeat_penalty,
+            "model_tier": decision.tier.value,
+            "enable_thinking": enable_thinking,
+        }
+        if thinking_budget is not None:
+            chat_kwargs["thinking_budget"] = thinking_budget
+
+        result = await client.chat(**chat_kwargs)
 
         if self._brain_hub is not None:
-            await self._brain_hub.emit("llm", "response", {
-                "model": decision.model_name,
-                "content_len": len(result.content),
-                "latency_ms": round((_time.monotonic() - t0) * 1000),
-            })
+            await self._brain_hub.emit(
+                "llm",
+                "response",
+                {
+                    "model": decision.model_name,
+                    "content_len": len(result.content),
+                    "latency_ms": round((_time.monotonic() - t0) * 1000),
+                },
+            )
+
+        # Extract <think>…</think> blocks from the raw response
+        thinking_text, clean_text = extract_thinking(result.content)
+        result.content = clean_text
+        if thinking_text:
+            result.thinking_content = thinking_text
+            if self._brain_hub is not None:
+                await self._brain_hub.emit(
+                    "llm",
+                    "thinking",
+                    {"model": decision.model_name, "content": thinking_text},
+                )
 
         return result
 
@@ -239,6 +433,14 @@ class LLMFleet:
         Returns:
             EmbeddingResult with the embedding vector.
         """
+        backend = getattr(self._config.tier_backend, "embedding", "ollama")
+        if backend == "tabbyapi":
+            return await self._tabbyapi.embed(
+                model=self._config.models.embedding,
+                text=text,
+            )
+        if backend == "llamacpp":
+            raise RuntimeError("Embedding backend 'llamacpp' is not supported.")
         return await self._ollama.embed(
             model=self._config.models.embedding,
             text=text,
@@ -254,6 +456,14 @@ class LLMFleet:
         Returns:
             List of EmbeddingResult objects.
         """
+        backend = getattr(self._config.tier_backend, "embedding", "ollama")
+        if backend == "tabbyapi":
+            return await self._tabbyapi.embed_batch(
+                model=self._config.models.embedding,
+                texts=texts,
+            )
+        if backend == "llamacpp":
+            raise RuntimeError("Embedding backend 'llamacpp' is not supported.")
         return await self._ollama.embed_batch(
             model=self._config.models.embedding,
             texts=texts,
@@ -276,6 +486,13 @@ class LLMFleet:
         Returns:
             CompletionResult with vision model response.
         """
+        vision_backend = getattr(self._config.tier_backend, "vision", "ollama")
+        if vision_backend != "ollama":
+            raise RuntimeError(
+                "Vision chat is currently Ollama-only. Disable vision or set "
+                "llm.tier_backend.vision to 'ollama'."
+            )
+
         vision_messages = messages or []
         vision_messages.append(
             ChatMessage(
@@ -312,16 +529,20 @@ class LLMFleet:
             RoutingDecision showing which model would be selected.
         """
         return self._router.route(
-            text, task_type=task_type, force_tier=force_tier,
-            urgency=urgency, voice_mode=voice_mode,
+            text,
+            task_type=task_type,
+            force_tier=force_tier,
+            urgency=urgency,
+            voice_mode=voice_mode,
         )
 
     @property
     def is_healthy(self) -> bool:
         """True if at least one backend is operational."""
-        return self._healthy or bool(self._llamacpp._loaded_tiers)
+        return self._healthy or self._tabbyapi_healthy or bool(self._llamacpp._loaded_tiers)
 
     async def shutdown(self) -> None:
         """Close all backend clients."""
         await self._ollama.close()
+        await self._tabbyapi.close()
         await self._llamacpp.close()

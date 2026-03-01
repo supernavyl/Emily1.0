@@ -17,13 +17,15 @@ Complexity scoring rules (heuristics, nano model validates for non-trivial cases
 
 from __future__ import annotations
 
-import asyncio
 import re
 from dataclasses import dataclass
 from enum import Enum, auto
+from typing import TYPE_CHECKING
 
-from config import LLMConfig
 from observability.logger import get_logger
+
+if TYPE_CHECKING:
+    from config import LLMConfig
 
 log = get_logger(__name__)
 
@@ -36,6 +38,8 @@ class ModelTier(Enum):
     REASONING = "reasoning"
     VISION = "vision"
     EMBEDDING = "embedding"
+    CLOUD_BEST = "cloud_best"  # Claude Opus 4.6 — deep reasoning, reflection, planning
+    CLOUD_FAST = "cloud_fast"  # Claude Sonnet 4.6 — fast cloud with extended thinking
 
 
 class TaskType(Enum):
@@ -70,22 +74,67 @@ class ModelRouter:
 
     # Patterns that indicate high complexity
     _COMPLEX_PATTERNS = [
-        r"\bprove\b", r"\bderive\b", r"\boptimize\b", r"\barchitect\b",
-        r"\brefactor\b", r"\bdesign\b", r"\bdebug\b", r"\banalyze\b",
-        r"\bcompare\b.*\band\b", r"\bstep by step\b", r"\bchain of thought\b",
-        r"\bwhy\b.*\bbecause\b", r"\bexplain\b.*\bdetail",
+        r"\bprove\b",
+        r"\bderive\b",
+        r"\boptimize\b",
+        r"\barchitect\b",
+        r"\brefactor\b",
+        r"\bdesign\b",
+        r"\bdebug\b",
+        r"\banalyze\b",
+        r"\bcompare\b.*\band\b",
+        r"\bstep by step\b",
+        r"\bchain of thought\b",
+        r"\bwhy\b.*\bbecause\b",
+        r"\bexplain\b.*\bdetail",
     ]
 
     # Code-related patterns
     _CODE_PATTERNS = [
-        r"```", r"\bdef \b", r"\bclass \b", r"\bfunction\b",
-        r"\balgorithm\b", r"\bcode\b", r"\bpython\b", r"\brust\b",
+        r"```",
+        r"\bdef \b",
+        r"\bclass \b",
+        r"\bfunction\b",
+        r"\balgorithm\b",
+        r"\bcode\b",
+        r"\bpython\b",
+        r"\brust\b",
     ]
 
     # Math patterns
     _MATH_PATTERNS = [
-        r"\bsolve\b", r"\bcalculate\b", r"\bequation\b", r"\bintegral\b",
-        r"\bderivative\b", r"\bproof\b", r"\bmatrix\b", r"[=+\-*/^]{2,}",
+        r"\bsolve\b",
+        r"\bcalculate\b",
+        r"\bequation\b",
+        r"\bintegral\b",
+        r"\bderivative\b",
+        r"\bproof\b",
+        r"\bmatrix\b",
+        r"[=+\-*/^]{2,}",
+    ]
+
+    # Deep reasoning patterns — these route to QwQ-32B thinking tier
+    _REASONING_PATTERNS = [
+        r"\bthink\b.*\bthrough\b",
+        r"\breason\b.*\babout\b",
+        r"\bplan\b.*\bhow\b",
+        r"\bstrategy\b",
+        r"\bapproach\b.*\bproblem\b",
+        r"\bwhat.*\bshould\b.*\bdo\b",
+        r"\bhow.*\bshould\b.*\bapproach\b",
+        r"\btradeoffs?\b",
+        r"\bpros.*\bcons\b",
+        r"\bweigh\b.*\boptions\b",
+        r"\bdecision\b",
+        r"\bcritically\b",
+        r"\bphilosoph\b",
+        r"\bexplain.*\bwhy\b",
+        r"\broot cause\b",
+        r"\bfirst principles\b",
+        r"\bsocratic\b",
+        r"\bsynthesiz\b",
+        r"\bhypothes\b",
+        r"\binfer\b",
     ]
 
     def __init__(self, config: LLMConfig) -> None:
@@ -94,15 +143,10 @@ class ModelRouter:
             config: LLM configuration with model names and routing thresholds.
         """
         self._config = config
-        self._complex_re = re.compile(
-            "|".join(self._COMPLEX_PATTERNS), re.IGNORECASE
-        )
-        self._code_re = re.compile(
-            "|".join(self._CODE_PATTERNS), re.IGNORECASE
-        )
-        self._math_re = re.compile(
-            "|".join(self._MATH_PATTERNS), re.IGNORECASE
-        )
+        self._complex_re = re.compile("|".join(self._COMPLEX_PATTERNS), re.IGNORECASE)
+        self._code_re = re.compile("|".join(self._CODE_PATTERNS), re.IGNORECASE)
+        self._math_re = re.compile("|".join(self._MATH_PATTERNS), re.IGNORECASE)
+        self._reasoning_re = re.compile("|".join(self._REASONING_PATTERNS), re.IGNORECASE)
 
     def route(
         self,
@@ -112,6 +156,7 @@ class ModelRouter:
         streaming: bool = True,
         urgency: float = 0.5,
         voice_mode: bool = False,
+        cloud_ok: bool = False,
     ) -> RoutingDecision:
         """
         Select the appropriate model tier for the given input.
@@ -124,6 +169,9 @@ class ModelRouter:
             urgency: Urgency level 0.0 (low) to 1.0 (high). High urgency → faster model.
             voice_mode: When True, routes simple queries to the VOICE_FAST
                 tier (Qwen2.5:3b via llama-cpp-python) for sub-second latency.
+            cloud_ok: When True, allows routing to CLOUD_BEST (Opus) or CLOUD_FAST
+                (Sonnet) for high-complexity tasks. Default False keeps all traffic
+                local.
 
         Returns:
             RoutingDecision with the selected tier and model name.
@@ -150,22 +198,34 @@ class ModelRouter:
         threshold_smart = self._config.routing.complexity_threshold_smart
         voice_threshold = self._config.routing.voice_fast_complexity_threshold
 
-        if voice_mode and complexity < voice_threshold and inferred_type not in (
-            TaskType.MATH, TaskType.REASONING
+        if (
+            voice_mode
+            and complexity < voice_threshold
+            and inferred_type not in (TaskType.MATH, TaskType.REASONING)
         ):
             tier = ModelTier.VOICE_FAST
             reason = f"voice_fast complexity={complexity} < voice_threshold={voice_threshold}"
             return self._make_decision(tier, complexity, inferred_type, reason)
 
         if inferred_type in (TaskType.MATH, TaskType.REASONING):
-            tier = ModelTier.REASONING
-            reason = f"reasoning_task complexity={complexity}"
+            if cloud_ok and complexity >= 9:
+                tier = ModelTier.CLOUD_BEST
+                reason = f"cloud_escalation reasoning complexity={complexity}"
+            else:
+                tier = ModelTier.REASONING
+                reason = f"reasoning_task complexity={complexity}"
         elif complexity <= threshold_fast:
             tier = ModelTier.FAST
             reason = f"complexity={complexity} <= fast_threshold={threshold_fast}"
         elif complexity <= threshold_smart:
             tier = ModelTier.FAST if urgency > 0.7 else ModelTier.SMART
             reason = f"complexity={complexity} urgency={urgency:.1f}"
+        elif cloud_ok and complexity >= 9:
+            tier = ModelTier.CLOUD_BEST
+            reason = f"cloud_escalation complexity={complexity} (max)"
+        elif cloud_ok and complexity >= 7:
+            tier = ModelTier.CLOUD_FAST
+            reason = f"cloud_escalation complexity={complexity} > smart_threshold"
         else:
             tier = ModelTier.SMART
             reason = f"complexity={complexity} > smart_threshold={threshold_smart}"
@@ -197,6 +257,10 @@ class ModelRouter:
         if self._complex_re.search(text):
             score += 2
 
+        # Deep reasoning (routes to QwQ-32B)
+        if self._reasoning_re.search(text):
+            score += 3
+
         # Code
         if self._code_re.search(text):
             score += 1
@@ -217,6 +281,8 @@ class ModelRouter:
             return hint
         if self._math_re.search(text):
             return TaskType.MATH
+        if self._reasoning_re.search(text):
+            return TaskType.REASONING
         if self._code_re.search(text):
             return TaskType.CODE
         if re.search(r"\bsummariz|condense|tldr\b", text, re.I):
@@ -231,16 +297,8 @@ class ModelRouter:
         reason: str,
     ) -> RoutingDecision:
         """Build a RoutingDecision for the given tier."""
-        model_map = {
-            ModelTier.NANO: self._config.models.nano,
-            ModelTier.VOICE_FAST: self._config.models.voice_fast,
-            ModelTier.FAST: self._config.models.fast,
-            ModelTier.SMART: self._config.models.smart,
-            ModelTier.REASONING: self._config.models.reasoning,
-            ModelTier.VISION: self._config.models.vision,
-            ModelTier.EMBEDDING: self._config.models.embedding,
-        }
-        model_name = model_map[tier]
+        # Use getattr so new tiers (cloud_best, cloud_fast) resolve from config
+        model_name = getattr(self._config.models, tier.value, self._config.models.smart)
         decision = RoutingDecision(
             tier=tier,
             model_name=model_name,

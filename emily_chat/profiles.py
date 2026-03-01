@@ -7,9 +7,12 @@ by assigning a model to each role. Roles align with skills where applicable.
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 
 from pydantic import BaseModel, Field
+
+_log = logging.getLogger(__name__)
 
 # Role keys used in profiles. Map to skills: core=default, coding=code, etc.
 EMILY_PROFILE_ROLES: list[tuple[str, str]] = [
@@ -70,7 +73,8 @@ def load_profiles() -> list[EmilyProfile]:
         if not any(p.id == _DEFAULT_PROFILE_ID for p in profiles):
             profiles.insert(0, _default_profile())
         return profiles
-    except (json.JSONDecodeError, ValueError):
+    except (json.JSONDecodeError, ValueError) as exc:
+        _log.warning("Corrupt profiles file %s: %s", _PROFILES_FILE, exc)
         return [_default_profile()]
 
 
@@ -104,7 +108,7 @@ def resolve_model_for_skill(
         fallback_model: If profile not found or role unset, use this.
 
     Returns:
-        Registry key (e.g. codestral-2, auto, ollama-local).
+        Registry key (e.g. codestral-2, auto, emily-fast).
     """
     profile = get_profile(profiles, active_profile_id)
     if profile is None:

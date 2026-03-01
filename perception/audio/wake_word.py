@@ -15,13 +15,16 @@ from __future__ import annotations
 import asyncio
 import time
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import numpy as np
 
-from config import WakeWordConfig
 from observability.logger import get_logger
 from observability.metrics import WAKE_WORDS_DETECTED
-from perception.audio.stream import AudioChunk
+
+if TYPE_CHECKING:
+    from config import WakeWordConfig
+    from perception.audio.stream import AudioChunk
 
 log = get_logger(__name__)
 
@@ -71,6 +74,7 @@ class WakeWordDetector:
         """
         try:
             from openwakeword.model import Model  # type: ignore[import-untyped]
+
             if self.config.custom_model_path:
                 self._model = await asyncio.to_thread(
                     Model, wakeword_models=[self.config.custom_model_path]
@@ -91,7 +95,7 @@ class WakeWordDetector:
         """Return the accumulated pre-roll audio buffer."""
         if not self._pre_roll_buffer:
             return np.zeros(1024, dtype=np.float32)
-        return np.concatenate(self._pre_roll_buffer[-self._pre_roll_max_chunks:])
+        return np.concatenate(self._pre_roll_buffer[-self._pre_roll_max_chunks :])
 
     def _update_pre_roll(self, audio: np.ndarray) -> None:
         """Add audio to the pre-roll ring buffer."""

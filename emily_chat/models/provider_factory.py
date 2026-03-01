@@ -75,6 +75,13 @@ def _build_provider(provider: str) -> BaseProvider:
         host = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
         return OllamaProvider(base_url=host)
 
+    if provider == "tabbyapi":
+        from emily_chat.models.providers.tabbyapi import TabbyAPIProvider
+
+        base_url = os.environ.get("TABBYAPI_HOST", "http://localhost:5000/v1")
+        api_key = os.environ.get("TABBYAPI_API_KEY", "")
+        return TabbyAPIProvider(base_url=base_url, api_key=api_key)
+
     if provider == "llamacpp":
         from emily_chat.models.providers.llamacpp import LlamaCppProvider
 

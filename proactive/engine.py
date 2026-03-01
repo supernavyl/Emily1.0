@@ -18,12 +18,17 @@ material.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
-from typing import Any
+from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING, Any
 
-from memory.knowledge_store import KnowledgeStore
 from observability.logger import get_logger
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from memory.knowledge_store import KnowledgeStore
 
 log = get_logger(__name__)
 
@@ -32,8 +37,8 @@ log = get_logger(__name__)
 class Alert:
     """A single proactive alert from the engine."""
 
-    alert_type: str    # birthday|event|credential_health|relationship_drift|contradiction
-    severity: str      # info|warning|critical
+    alert_type: str  # birthday|event|credential_health|relationship_drift|contradiction
+    severity: str  # info|warning|critical
     title: str
     message: str
     entity_id: str = ""
@@ -42,7 +47,7 @@ class Alert:
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to a plain dict safe for JSON/TTS."""
-        return {
+        d: dict[str, Any] = {
             "type": self.alert_type,
             "severity": self.severity,
             "title": self.title,
@@ -50,6 +55,9 @@ class Alert:
             "entity_id": self.entity_id,
             "credential_id": self.credential_id,
         }
+        if self.extra:
+            d["extra"] = dict(self.extra)
+        return d
 
 
 class ProactiveEngine:
@@ -118,12 +126,9 @@ class ProactiveEngine:
             List of birthday Alerts.
         """
         people = await self._store.get_people_with_birthday_this_week()
-        alerts = []
+        alerts: list[Alert] = []
 
-        from datetime import date
-
-        today_md = date.today().strftime("%m-%d")
-        import json
+        today_md = datetime.now(UTC).strftime("%m-%d")
 
         for person in people:
             bday = person.important_dates.get("birthday", "")
@@ -133,16 +138,22 @@ class ProactiveEngine:
             is_today = bday == today_md
             name = person.full_name
 
-            alerts.append(Alert(
-                alert_type="birthday",
-                severity="info",
-                title=f"{'Today is' if is_today else 'Upcoming birthday:'} {name}'s birthday",
-                message=(
-                    f"{name}'s birthday is {'today' if is_today else 'this week'} ({bday}). "
-                    + (f"Relationship: {person.relationship_to_user}." if person.relationship_to_user else "")
-                ),
-                entity_id=person.entity_id,
-            ))
+            alerts.append(
+                Alert(
+                    alert_type="birthday",
+                    severity="info",
+                    title=f"{'Today is' if is_today else 'Upcoming birthday:'} {name}'s birthday",
+                    message=(
+                        f"{name}'s birthday is {'today' if is_today else 'this week'} ({bday}). "
+                        + (
+                            f"Relationship: {person.relationship_to_user}."
+                            if person.relationship_to_user
+                            else ""
+                        )
+                    ),
+                    entity_id=person.entity_id,
+                )
+            )
 
         return alerts
 
@@ -157,32 +168,34 @@ class ProactiveEngine:
             List of event Alerts.
         """
         events = await self._store.get_upcoming_events(limit=20)
-        alerts = []
+        alerts: list[Alert] = []
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         window_end = now + timedelta(hours=hours_ahead)
 
         for event in events:
             try:
                 event_dt = datetime.fromisoformat(event.datetime)
                 if event_dt.tzinfo is None:
-                    event_dt = event_dt.replace(tzinfo=timezone.utc)
+                    event_dt = event_dt.replace(tzinfo=UTC)
             except ValueError:
                 continue
 
             if now <= event_dt <= window_end:
                 delta_minutes = int((event_dt - now).total_seconds() / 60)
-                alerts.append(Alert(
-                    alert_type="event",
-                    severity="warning" if delta_minutes <= 30 else "info",
-                    title=f"Upcoming: {event.title}",
-                    message=(
-                        f"'{event.title}' starts in {delta_minutes} minutes"
-                        + (f" at {event.location}" if event.location else "")
-                    ),
-                    entity_id="",
-                    extra={"event_id": event.id, "datetime": event.datetime},
-                ))
+                alerts.append(
+                    Alert(
+                        alert_type="event",
+                        severity="warning" if delta_minutes <= 30 else "info",
+                        title=f"Upcoming: {event.title}",
+                        message=(
+                            f"'{event.title}' starts in {delta_minutes} minutes"
+                            + (f" at {event.location}" if event.location else "")
+                        ),
+                        entity_id="",
+                        extra={"event_id": event.id, "datetime": event.datetime},
+                    )
+                )
 
         return alerts
 
@@ -217,41 +230,37 @@ class ProactiveEngine:
         Returns:
             List of relationship drift Alerts.
         """
-        alerts = []
+        alerts: list[Alert] = []
+        now = datetime.now(UTC)
 
-        from datetime import date
-
-        cutoff_str = (
-            datetime.now(timezone.utc) - timedelta(days=self._drift_days)
-        ).isoformat()
-
-        # Find people with frequent contact who haven't been contacted recently
         people = await self._store.search_people(limit=50)
         for person in people:
             if not person.last_contact:
                 continue
             if not person.contact_frequency:
-                continue  # No baseline — can't detect drift
+                continue
 
             try:
                 last_dt = datetime.fromisoformat(person.last_contact)
                 if last_dt.tzinfo is None:
-                    last_dt = last_dt.replace(tzinfo=timezone.utc)
+                    last_dt = last_dt.replace(tzinfo=UTC)
             except ValueError:
                 continue
 
-            days_since = (datetime.now(timezone.utc) - last_dt).days
+            days_since = (now - last_dt).days
             if days_since >= self._drift_days:
-                alerts.append(Alert(
-                    alert_type="relationship_drift",
-                    severity="info",
-                    title=f"Haven't contacted {person.full_name} recently",
-                    message=(
-                        f"You last contacted {person.full_name} {days_since} days ago "
-                        f"(usual frequency: {person.contact_frequency})."
-                    ),
-                    entity_id=person.entity_id,
-                ))
+                alerts.append(
+                    Alert(
+                        alert_type="relationship_drift",
+                        severity="info",
+                        title=f"Haven't contacted {person.full_name} recently",
+                        message=(
+                            f"You last contacted {person.full_name} {days_since} days ago "
+                            f"(usual frequency: {person.contact_frequency})."
+                        ),
+                        entity_id=person.entity_id,
+                    )
+                )
 
         return alerts
 
@@ -262,33 +271,31 @@ class ProactiveEngine:
         Returns:
             List of contradiction Alerts.
         """
-        alerts = []
+        alerts: list[Alert] = []
 
-        # Find all entities and check for active facts that contradict earlier ones
         entities = await self._store.find_entities("", limit=100)
 
         for entity in entities:
-            facts = await self._store.get_facts_for_entity(
-                entity.id, include_superseded=False
-            )
-            # Group by fact_type and check for multiple active facts of the same type
-            by_type: dict[str, list] = {}
+            facts = await self._store.get_facts_for_entity(entity.id, include_superseded=False)
+            by_type: dict[str, list[Any]] = {}
             for fact in facts:
                 by_type.setdefault(fact.fact_type, []).append(fact)
 
             for fact_type, type_facts in by_type.items():
                 if len(type_facts) > 1:
-                    texts = [f.fact_text for f in type_facts]
-                    alerts.append(Alert(
-                        alert_type="contradiction",
-                        severity="warning",
-                        title=f"Conflicting facts about {entity.canonical_name}",
-                        message=(
-                            f"Multiple active facts of type '{fact_type}' for "
-                            f"{entity.canonical_name}: {' | '.join(texts[:2])}"
-                        ),
-                        entity_id=entity.id,
-                    ))
+                    texts: list[str] = [f.fact_text for f in type_facts]
+                    alerts.append(
+                        Alert(
+                            alert_type="contradiction",
+                            severity="warning",
+                            title=f"Conflicting facts about {entity.canonical_name}",
+                            message=(
+                                f"Multiple active facts of type '{fact_type}' for "
+                                f"{entity.canonical_name}: {' | '.join(texts[:2])}"
+                            ),
+                            entity_id=entity.id,
+                        )
+                    )
 
         return alerts
 
@@ -314,11 +321,10 @@ class ProactiveScheduler:
         self._engine = engine
         self._interval = check_interval_minutes * 60
         self._task: asyncio.Task[None] | None = None
-        self._alert_callbacks: list[Any] = []
+        self._alert_callbacks: list[Callable[[Alert], Any]] = []
 
-    def on_alert(self, callback: Any) -> None:
-        """
-        Register a callback to be called with each Alert.
+    def on_alert(self, callback: Callable[[Alert], Any]) -> None:
+        """Register a callback to be called with each Alert.
 
         Args:
             callback: Async or sync callable accepting an Alert.
@@ -327,6 +333,9 @@ class ProactiveScheduler:
 
     async def start(self) -> None:
         """Start the recurring check loop."""
+        if self._task is not None and not self._task.done():
+            log.warning("proactive_scheduler_already_running")
+            return
         self._task = asyncio.create_task(self._loop())
         log.info("proactive_scheduler_started", interval_s=self._interval)
 
@@ -334,10 +343,8 @@ class ProactiveScheduler:
         """Stop the recurring check loop."""
         if self._task:
             self._task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._task
-            except asyncio.CancelledError:
-                pass
         log.info("proactive_scheduler_stopped")
 
     async def _loop(self) -> None:
@@ -351,7 +358,7 @@ class ProactiveScheduler:
                             if asyncio.iscoroutinefunction(cb):
                                 await cb(alert)
                             else:
-                                cb(alert)
+                                await asyncio.to_thread(cb, alert)
                         except Exception as exc:
                             log.error("alert_callback_error", error=str(exc))
             except Exception as exc:

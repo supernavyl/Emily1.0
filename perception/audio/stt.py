@@ -16,14 +16,17 @@ from __future__ import annotations
 import asyncio
 import time
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 import numpy as np
 
-from config import STTConfig
 from observability.logger import get_logger
 from observability.metrics import STT_ERRORS_TOTAL, STT_LATENCY
 from observability.tracing import async_trace_span
-from perception.audio.vad import SpeechSegment
+
+if TYPE_CHECKING:
+    from config import STTConfig
+    from perception.audio.vad import SpeechSegment
 
 log = get_logger(__name__)
 
@@ -90,8 +93,10 @@ class FasterWhisperSTT:
                 return
             try:
                 from faster_whisper import WhisperModel  # type: ignore[import-untyped]
+
                 model = await asyncio.to_thread(
-                    self._load_model, WhisperModel
+                    self._load_model,
+                    WhisperModel,
                 )
                 self._model = model
                 log.info(
@@ -107,24 +112,26 @@ class FasterWhisperSTT:
                 if "cuda" in str(exc).lower():
                     log.warning("cuda_unavailable_falling_back_to_cpu", error=str(exc))
                     from faster_whisper import WhisperModel  # type: ignore[import-untyped]
+
                     model = await asyncio.to_thread(
-                        self._load_model_cpu, WhisperModel
+                        self._load_model_cpu,
+                        WhisperModel,
                     )
                     self._model = model
                 else:
                     raise
 
-    def _load_model(self, WhisperModel: type) -> object:
+    def _load_model(self, whisper_model_cls: type) -> object:
         """Synchronous model load for thread pool execution."""
-        return WhisperModel(
+        return whisper_model_cls(
             self.config.model,
             device=self.config.device,
             compute_type=self.config.compute_type,
         )
 
-    def _load_model_cpu(self, WhisperModel: type) -> object:
+    def _load_model_cpu(self, whisper_model_cls: type) -> object:
         """CPU fallback model load."""
-        return WhisperModel(
+        return whisper_model_cls(
             self.config.model,
             device="cpu",
             compute_type="int8",
@@ -201,11 +208,10 @@ class FasterWhisperSTT:
         Raises:
             RuntimeError: If the model has not been loaded.
         """
-        async with async_trace_span("stt.transcribe", attributes={"duration_s": f"{segment.duration_s:.2f}"}):
+        attrs = {"duration_s": f"{segment.duration_s:.2f}"}
+        async with async_trace_span("stt.transcribe", attributes=attrs):
             try:
-                result = await asyncio.to_thread(
-                    self._transcribe_sync, segment.audio
-                )
+                result = await asyncio.to_thread(self._transcribe_sync, segment.audio)
                 STT_LATENCY.observe(result.latency_ms / 1000.0)
                 log.info(
                     "stt_transcribed",
@@ -221,7 +227,11 @@ class FasterWhisperSTT:
                 log.error("stt_transcription_error", error=str(exc))
                 raise
 
-    async def transcribe_audio(self, audio: np.ndarray, sample_rate: int = 16000) -> TranscriptResult:
+    async def transcribe_audio(
+        self,
+        audio: np.ndarray,
+        sample_rate: int = 16000,
+    ) -> TranscriptResult:
         """
         Transcribe raw audio array directly (without a SpeechSegment wrapper).
 
@@ -236,6 +246,7 @@ class FasterWhisperSTT:
             audio = await asyncio.to_thread(self._resample, audio, sample_rate, 16000)
 
         from perception.audio.vad import SpeechSegment as _Seg
+
         segment = _Seg(
             audio=audio,
             sample_rate=16000,
@@ -247,11 +258,10 @@ class FasterWhisperSTT:
 
     @staticmethod
     def _resample(audio: np.ndarray, orig_rate: int, target_rate: int) -> np.ndarray:
-        """Simple linear resampling (placeholder — use resampy/librosa in production)."""
-        ratio = target_rate / orig_rate
-        n_samples = int(len(audio) * ratio)
-        return np.interp(
-            np.linspace(0, len(audio) - 1, n_samples),
-            np.arange(len(audio)),
-            audio,
-        ).astype(np.float32)
+        """Resample audio with proper anti-aliasing via polyphase FIR filter."""
+        from math import gcd
+
+        from scipy.signal import resample_poly
+
+        g = gcd(orig_rate, target_rate)
+        return resample_poly(audio, target_rate // g, orig_rate // g).astype(np.float32)

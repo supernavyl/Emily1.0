@@ -12,11 +12,21 @@ Handles:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import io
+import math
 import wave
-from typing import AsyncIterator
+from typing import TYPE_CHECKING
 
 import numpy as np
+
+try:
+    from scipy.signal import resample_poly as _resample_poly
+except ImportError:
+    _resample_poly = None
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
 
 from observability.logger import get_logger
 
@@ -41,7 +51,7 @@ def normalize_audio(
     Returns:
         Normalized float32 audio.
     """
-    rms = float(np.sqrt(np.mean(audio ** 2)))
+    rms = float(np.sqrt(np.mean(audio**2)))
     if rms < 1e-8:
         return audio
 
@@ -111,9 +121,7 @@ class AudioOutputStream:
             is_mp3 = False
             first_chunk_raw = True
 
-            drain_task = asyncio.create_task(
-                self._drain_playback_queue(sd, sample_rate)
-            )
+            drain_task = asyncio.create_task(self._drain_playback_queue(sd, sample_rate))
 
             async for chunk in chunk_iter:
                 if self._interrupt_event.is_set():
@@ -140,7 +148,7 @@ class AudioOutputStream:
                 pending_mp3.seek(0)
                 mp3_bytes = pending_mp3.read()
                 if mp3_bytes and not self._interrupt_event.is_set():
-                    audio, actual_rate = self._decode_mp3(mp3_bytes)
+                    audio, _ = self._decode_mp3(mp3_bytes)
                     if len(audio) > 0:
                         audio = normalize_audio(audio)
                         await self._playback_queue.put(audio)
@@ -151,10 +159,8 @@ class AudioOutputStream:
                 await drain_task
             else:
                 drain_task.cancel()
-                try:
+                with contextlib.suppress(asyncio.CancelledError):
                     await drain_task
-                except asyncio.CancelledError:
-                    pass
 
         except ImportError:
             log.warning("sounddevice_not_available_tts_audio_discarded")
@@ -165,9 +171,30 @@ class AudioOutputStream:
         finally:
             self._playing = False
 
+    def _get_hw_rate(self) -> int:
+        """Detect the output device's native sample rate."""
+        import sounddevice as sd_mod
+
+        dev = self._output_device if self._output_device is not None else sd_mod.default.device[1]
+        info = sd_mod.query_devices(dev, "output")
+        return int(info["default_samplerate"])
+
+    def _resample(self, audio: np.ndarray, src_rate: int, dst_rate: int) -> np.ndarray:
+        if src_rate == dst_rate:
+            return audio
+        if _resample_poly is None:
+            log.warning(
+                "scipy_not_available_skipping_resample", src_rate=src_rate, dst_rate=dst_rate
+            )
+            return audio
+        g = math.gcd(dst_rate, src_rate)
+        return _resample_poly(audio, dst_rate // g, src_rate // g).astype(np.float32)
+
     async def _drain_playback_queue(self, sd: object, sample_rate: int) -> None:
         """Drain the playback queue, playing each chunk through sounddevice."""
         import sounddevice as sd_mod
+
+        hw_rate = self._get_hw_rate()
 
         while True:
             audio = await self._playback_queue.get()
@@ -177,8 +204,13 @@ class AudioOutputStream:
                 break
 
             try:
+                play_audio = self._resample(audio, sample_rate, hw_rate)
                 await asyncio.to_thread(
-                    sd_mod.play, audio, samplerate=sample_rate, blocking=True
+                    sd_mod.play,
+                    play_audio,
+                    samplerate=hw_rate,
+                    device=self._output_device,
+                    blocking=True,
                 )
             except Exception as exc:
                 log.error("chunk_playback_error", error=str(exc))
@@ -222,6 +254,7 @@ class AudioOutputStream:
     async def _get_sounddevice() -> object:
         """Lazily import and return sounddevice module."""
         import sounddevice as sd
+
         return sd
 
     @staticmethod
@@ -239,10 +272,20 @@ class AudioOutputStream:
 
         proc = subprocess.run(
             [
-                "ffmpeg", "-hide_banner", "-loglevel", "error",
-                "-i", "pipe:0",
-                "-f", "s16le", "-acodec", "pcm_s16le",
-                "-ac", "1", "-ar", "24000",
+                "ffmpeg",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-i",
+                "pipe:0",
+                "-f",
+                "s16le",
+                "-acodec",
+                "pcm_s16le",
+                "-ac",
+                "1",
+                "-ar",
+                "24000",
                 "pipe:1",
             ],
             input=data,

@@ -1,5 +1,3 @@
-version: "3.9"
-
 # Emily infrastructure services
 # These run alongside Emily (which runs bare-metal for GPU access).
 # Start with: docker compose up -d

@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import asyncio
 import time
-import uuid
 from typing import Any
 
 from agents.base import BaseAgent
@@ -23,7 +22,7 @@ from llm.critic_loop import CriticLoop
 from llm.prompt_builder import PromptBuilder
 from llm.react_loop import ReActLoop
 from llm.recency_detector import needs_web_search, needs_web_search_voice
-from llm.router import ModelTier, TaskType
+from llm.router import ModelTier
 from llm.streaming import StreamProcessor
 from observability.logger import get_logger
 from plugins.base import BaseTool, ExecutionContext
@@ -101,7 +100,11 @@ class ConversationAgent(BaseAgent):
         if not text or confidence < 0.4:
             return
 
-        self._log.info("processing_transcript", text_preview=text[:60], confidence=f"{confidence:.2f}")
+        self._log.info(
+            "processing_transcript",
+            text_preview=text[:60],
+            confidence=f"{confidence:.2f}",
+        )
         await self._generate_response(text, message.task_id, voice_mode=True)
 
     async def _handle_text_input(self, message: Message) -> None:
@@ -120,7 +123,8 @@ class ConversationAgent(BaseAgent):
         """
         Generate a response, optionally using the voice pipeline.
 
-        When ``voice_mode`` is True the VOICE_FAST model tier is always used.
+        When ``voice_mode`` is True the pipeline prefers VOICE_FAST for low
+        complexity turns, but allows escalation for harder requests.
         RAG retrieval is skipped for simple queries (complexity below
         ``voice_skip_rag_below``), web search only fires on explicit intent,
         and the CriticAgent is bypassed.
@@ -136,12 +140,9 @@ class ConversationAgent(BaseAgent):
         await self._memory.add_user_turn(user_text, importance=0.6)
 
         routing = self._fleet.route(user_text, voice_mode=voice_mode)
-        skip_rag = (
-            voice_mode
-            and routing.complexity_score < routing_cfg.voice_skip_rag_below
-        )
+        skip_rag = voice_mode and routing.complexity_score < routing_cfg.voice_skip_rag_below
 
-        if voice_mode:
+        if voice_mode and routing.complexity_score < routing_cfg.voice_fast_complexity_threshold:
             force_tier: ModelTier | None = ModelTier.VOICE_FAST
         else:
             force_tier = None
@@ -162,11 +163,20 @@ class ConversationAgent(BaseAgent):
         context_block = self._prompts.build_rag_context_block(
             rag_chunks + web_chunks,
         )
-        system_prompt = self._prompts.get_system_prompt(
-            user_profile=self._memory.procedural.user_profile,
-        )
+
+        # Use QwQ-32B reasoning prompt when the reasoning tier is selected
+        effective_tier = force_tier or routing.tier
+        if effective_tier == ModelTier.REASONING:
+            system_prompt = self._prompts.get_reasoning_system_prompt(  # noqa
+                user_profile=self._memory.procedural.user_profile,
+            )
+        else:
+            system_prompt = self._prompts.get_system_prompt(  # noqa
+                user_profile=self._memory.procedural.user_profile,
+            )
+
         messages = self._prompts.build_messages(
-            system_prompt=system_prompt,
+            system_prompt=system_prompt,  # noqa
             conversation_history=self._memory.working.to_dict_list()[:-1],
             user_message=user_text,
             context_block=context_block,
@@ -174,9 +184,10 @@ class ConversationAgent(BaseAgent):
 
         self._log.info(
             "routing_decision",
-            tier=(force_tier or routing.tier).value,
+            tier=effective_tier.value,
             model=routing.model_name,
             complexity=routing.complexity_score,
+            task_type=routing.task_type.name,
             voice_mode=voice_mode,
             skip_rag=skip_rag,
             n_rag_chunks=len(rag_chunks),
@@ -186,7 +197,10 @@ class ConversationAgent(BaseAgent):
         full_response = ""
         async for sentence in self._stream_processor.iter_sentences(
             self._fleet.chat_stream(
-                user_text, messages, force_tier=force_tier,
+                user_text,
+                messages,
+                task_type=routing.task_type,
+                force_tier=force_tier,
             )
         ):
             if self._interrupted.is_set():
@@ -282,11 +296,13 @@ class ConversationAgent(BaseAgent):
             title = item.get("title", "")
             snippet = item.get("snippet", "")
             url = item.get("url", "")
-            chunks.append({
-                "content": f"{title}\n{snippet}" if title else snippet,
-                "source": url or "web_search",
-                "score": 0.75,
-            })
+            chunks.append(
+                {
+                    "content": f"{title}\n{snippet}" if title else snippet,
+                    "source": url or "web_search",
+                    "score": 0.75,
+                }
+            )
         return chunks
 
     async def _handle_session_start(self, message: Message) -> None:

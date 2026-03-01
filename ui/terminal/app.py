@@ -7,6 +7,7 @@ Provides a rich TUI with:
 - Memory panel (working memory entries, episodic session info)
 - Capability gaps panel
 - Log viewer
+- Command system with help and application launchers
 
 Run with:
     python -m ui.terminal.app
@@ -14,21 +15,18 @@ Run with:
 
 from __future__ import annotations
 
-import asyncio
-import time
 from datetime import datetime
-from typing import Any
+from typing import ClassVar
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Container, Horizontal, Vertical
+from textual.containers import Horizontal, Vertical
 from textual.reactive import reactive
 from textual.widgets import (
     DataTable,
     Footer,
     Header,
     Input,
-    Label,
     Log,
     RichLog,
     Static,
@@ -36,10 +34,17 @@ from textual.widgets import (
     TabPane,
 )
 
-from config import get_settings
-from observability.logger import get_logger
+try:
+    from observability.logger import get_logger
 
-log = get_logger(__name__)
+    log = get_logger(__name__)
+except ImportError:
+    # Fallback logger if observability is not available
+    import logging
+
+    log = logging.getLogger(__name__)
+
+from .commands import execute_command
 
 
 class ConversationPanel(RichLog):
@@ -87,9 +92,14 @@ class StatusPanel(Static):
 
     def render(self) -> str:  # type: ignore[override]
         state_color = {
-            "IDLE": "green", "LISTENING": "blue", "PROCESSING": "yellow",
-            "RESPONDING": "magenta", "TOOL_USE": "cyan", "REFLECTING": "dim",
-            "ERROR": "red", "SHUTDOWN": "red",
+            "IDLE": "green",
+            "LISTENING": "blue",
+            "PROCESSING": "yellow",
+            "RESPONDING": "magenta",
+            "TOOL_USE": "cyan",
+            "REFLECTING": "dim",
+            "ERROR": "red",
+            "SHUTDOWN": "red",
         }.get(self.fsm_state, "white")
 
         return (
@@ -110,13 +120,125 @@ class EmilyTUI(App[None]):
     SUB_TITLE = "v1.0"
     CSS_PATH = None
 
-    BINDINGS = [
+    BINDINGS: ClassVar[list] = [
         Binding("ctrl+c", "quit", "Quit", show=True),
         Binding("ctrl+l", "clear_log", "Clear", show=True),
         Binding("f1", "show_tab('chat')", "Chat", show=True),
         Binding("f2", "show_tab('memory')", "Memory", show=True),
         Binding("f3", "show_tab('logs')", "Logs", show=True),
     ]
+
+    CSS = """
+    /* Hacker/Matrix Theme - Green on Black */
+    Screen {
+        background: #000000;
+    }
+
+    Header {
+        background: #001a00;
+        color: #00ff00;
+        text-style: bold;
+    }
+
+    Footer {
+        background: #001a00;
+        color: #00ff00;
+    }
+
+    Footer > .footer--key {
+        background: #003300;
+        color: #00ff00;
+    }
+
+    Input {
+        background: #001a00;
+        border: tall #00ff00;
+        color: #00ff00;
+    }
+
+    Input:focus {
+        border: tall #00ff41;
+        background: #002200;
+    }
+
+    ConversationPanel {
+        background: #000000;
+        border: round #00ff00;
+        color: #00ff00;
+    }
+
+    StatusPanel {
+        background: #001100;
+        border: round #00ff00;
+        color: #00ff00;
+    }
+
+    DataTable {
+        background: #000000;
+        color: #00ff00;
+    }
+
+    DataTable > .datatable--header {
+        background: #003300;
+        color: #00ff00;
+        text-style: bold;
+    }
+
+    DataTable > .datatable--cursor {
+        background: #004400;
+        color: #00ff41;
+    }
+
+    Log {
+        background: #000000;
+        border: round #00ff00;
+        color: #00ff00;
+    }
+
+    TabbedContent {
+        background: #000000;
+    }
+
+    Tabs {
+        background: #001100;
+    }
+
+    Tab {
+        background: #001a00;
+        color: #00cc00;
+    }
+
+    Tab.-active {
+        background: #003300;
+        color: #00ff00;
+        text-style: bold;
+    }
+
+    TabPane {
+        background: #000000;
+    }
+
+    Static {
+        background: #001100;
+        color: #00ff00;
+    }
+
+    #main-content {
+        background: #000000;
+    }
+
+    #sidebar {
+        background: #000000;
+        width: 35;
+    }
+
+    #gap-panel {
+        border: round #00ff00;
+        margin: 1 0;
+        padding: 1;
+        height: auto;
+    }
+    """
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -147,10 +269,8 @@ class EmilyTUI(App[None]):
         # Show a welcome message
         conv = self.query_one("#conversation", ConversationPanel)
         conv.add_system_event("Emily initialized. Voice pipeline ready.")
-        conv.add_emily_turn(
-            "Hello! I'm Emily. I'm online and listening. "
-            "How can I help you today?"
-        )
+        conv.add_emily_turn("Hello! I'm Emily. I'm online and listening. How can I help you today?")
+        conv.add_system_event("Type /help for available commands and application launchers.")
 
         # Start background polling
         self.set_interval(2.0, self._poll_status)
@@ -159,23 +279,48 @@ class EmilyTUI(App[None]):
         """Poll system status and update the status panel."""
         try:
             import psutil
+
             panel = self.query_one("#status-panel", StatusPanel)
-            panel.cpu_pct = psutil.cpu_percent(interval=None)
+            cpu_val = psutil.cpu_percent(interval=None)
+            panel.cpu_pct = cpu_val if isinstance(cpu_val, float) else 0.0
             ram = psutil.virtual_memory()
-            panel.ram_pct = ram.percent
+            panel.ram_pct = float(ram.percent)
         except ImportError:
             pass
 
-    async def on_input_submitted(self, event: Input.Submitted) -> None:
+    async def on_input_submitted(self, message: Input.Submitted) -> None:
         """Handle chat input submission."""
-        text = event.value.strip()
+        text = message.value.strip()
         if not text:
             return
+
         self.query_one("#chat-input", Input).clear()
         conv = self.query_one("#conversation", ConversationPanel)
-        conv.add_user_turn(text)
-        # In production, this would route to the ConversationAgent via the AgentBus
-        conv.add_system_event(f"Processing: {text[:60]}...")
+
+        # Check if this is a command
+        if text.startswith("/"):
+            conv.add_user_turn(text)
+            result = await execute_command(text)
+
+            if result.success:
+                if result.message == "CLEAR_SCREEN":
+                    conv.clear()
+                    conv.add_system_event("Terminal cleared")
+                else:
+                    # Format command output nicely
+                    lines = result.message.split("\n")
+                    for line in lines:
+                        if line.strip():
+                            conv.add_system_event(line)
+                        else:
+                            conv.add_system_event("  ")  # Empty line for spacing
+            else:
+                conv.add_system_event(f"Error: {result.message}")
+        else:
+            # Regular chat message
+            conv.add_user_turn(text)
+            # In production, this would route to the ConversationAgent via the AgentBus
+            conv.add_system_event(f"Processing: {text[:60]}...")
 
     def action_clear_log(self) -> None:
         """Clear the conversation panel."""

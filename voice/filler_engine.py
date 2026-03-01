@@ -25,12 +25,13 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import numpy.typing as npt
 
 from observability.logger import get_logger
 
 log = get_logger(__name__)
 
-FILLER_ASSETS_DIR = Path("assets/fillers")
+FILLER_ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets" / "fillers"
 
 
 class FillerCategory(Enum):
@@ -44,16 +45,27 @@ class FillerCategory(Enum):
 
 _FILLER_TEXTS: dict[FillerCategory, list[str]] = {
     FillerCategory.IMMEDIATE: [
-        "[breath]", "hmm", "mm",
+        "[breath]",
+        "hmm",
+        "mm",
     ],
     FillerCategory.SHORT: [
-        "let me think", "good question", "so", "right so", "hmm",
-        "well", "okay so", "let's see",
+        "let me think",
+        "good question",
+        "so",
+        "right so",
+        "hmm",
+        "well",
+        "okay so",
+        "let's see",
     ],
     FillerCategory.MEDIUM: [
         "that's a good point, let me think about that",
-        "hmm, so", "okay so", "right, let me consider that",
-        "interesting question", "let me think for a moment",
+        "hmm, so",
+        "okay so",
+        "right, let me consider that",
+        "interesting question",
+        "let me think for a moment",
     ],
     FillerCategory.LONG: [
         "give me just a second on that",
@@ -70,7 +82,7 @@ class PreRenderedFiller:
 
     category: FillerCategory
     text: str
-    audio: np.ndarray
+    audio: npt.NDArray[np.float32]
     duration_ms: float
     sample_rate: int = 24000
 
@@ -86,8 +98,6 @@ class FillerEngine:
     - Filler blends into the first word of the real response
     """
 
-    _COOLDOWN_S = 300
-
     def __init__(self) -> None:
         self._pools: dict[FillerCategory, list[PreRenderedFiller]] = {
             cat: [] for cat in FillerCategory
@@ -102,6 +112,7 @@ class FillerEngine:
         for wav_path in FILLER_ASSETS_DIR.glob("*.wav"):
             try:
                 import wave
+
                 with wave.open(str(wav_path)) as wf:
                     raw = wf.readframes(wf.getnframes())
                     sr = wf.getframerate()
@@ -109,15 +120,17 @@ class FillerEngine:
                     duration_ms = len(audio) / sr * 1000
 
                     cat = self._categorize_by_duration(duration_ms)
-                    self._pools[cat].append(PreRenderedFiller(
-                        category=cat,
-                        text=wav_path.stem,
-                        audio=audio,
-                        duration_ms=duration_ms,
-                        sample_rate=sr,
-                    ))
+                    self._pools[cat].append(
+                        PreRenderedFiller(
+                            category=cat,
+                            text=wav_path.stem,
+                            audio=audio,
+                            duration_ms=duration_ms,
+                            sample_rate=sr,
+                        )
+                    )
             except Exception as exc:
-                log.debug("filler_load_error", path=str(wav_path), error=str(exc))
+                log.warning("filler_load_error", path=str(wav_path), error=str(exc))
 
         self._generate_fallback_fillers()
         total = sum(len(p) for p in self._pools.values())
@@ -136,24 +149,30 @@ class FillerEngine:
                     audio = self._synthesize_hmm(cat)
 
                 duration_ms = len(audio) / 24000 * 1000
-                self._pools[cat].append(PreRenderedFiller(
-                    category=cat,
-                    text=text,
-                    audio=audio,
-                    duration_ms=duration_ms,
-                ))
+                self._pools[cat].append(
+                    PreRenderedFiller(
+                        category=cat,
+                        text=text,
+                        audio=audio,
+                        duration_ms=duration_ms,
+                    )
+                )
 
     @staticmethod
-    def _synthesize_breath() -> np.ndarray:
+    def _synthesize_breath() -> npt.NDArray[np.float32]:
         """Synthesize a breath intake sound (filtered noise)."""
         sr = 24000
         duration = 0.4
         n = int(sr * duration)
         noise = np.random.randn(n).astype(np.float32) * 0.02
 
-        from scipy.signal import butter, lfilter
-        b, a = butter(4, [200, 2500], btype="band", fs=sr)
-        breath = lfilter(b, a, noise).astype(np.float32)
+        try:
+            from scipy.signal import butter, lfilter
+
+            b, a = butter(4, [200, 2500], btype="band", fs=sr)
+            breath = lfilter(b, a, noise).astype(np.float32)
+        except ImportError:
+            breath = noise
 
         fade_in = int(sr * 0.08)
         fade_out = int(sr * 0.1)
@@ -163,7 +182,7 @@ class FillerEngine:
         return breath * 0.15
 
     @staticmethod
-    def _synthesize_hmm(category: FillerCategory) -> np.ndarray:
+    def _synthesize_hmm(category: FillerCategory) -> npt.NDArray[np.float32]:
         """Synthesize a basic 'hmm' thinking sound."""
         sr = 24000
         durations = {
@@ -180,18 +199,18 @@ class FillerEngine:
         f0_contour = f0 - t * 15
 
         phase = np.cumsum(2 * np.pi * f0_contour / sr)
-        audio = np.sin(phase) * 0.2
-        audio += np.sin(phase * 2) * 0.08
-        audio += np.sin(phase * 3) * 0.03
+        audio = np.sin(phase).astype(np.float32) * 0.2
+        audio += np.sin(phase * 2).astype(np.float32) * 0.08
+        audio += np.sin(phase * 3).astype(np.float32) * 0.03
 
         audio += np.random.randn(n).astype(np.float32) * 0.005
 
         fade_in = int(sr * 0.05)
         fade_out = int(sr * 0.08)
-        audio[:fade_in] *= np.linspace(0, 1, fade_in)
-        audio[-fade_out:] *= np.linspace(1, 0, fade_out)
+        audio[:fade_in] *= np.linspace(0, 1, fade_in, dtype=np.float32)
+        audio[-fade_out:] *= np.linspace(1, 0, fade_out, dtype=np.float32)
 
-        return audio.astype(np.float32)
+        return audio
 
     @staticmethod
     def _categorize_by_duration(duration_ms: float) -> FillerCategory:
@@ -209,7 +228,7 @@ class FillerEngine:
         expected_latency_ms: int,
         emotion_context: Any = None,
         topic_register: str = "neutral",
-    ) -> np.ndarray | None:
+    ) -> npt.NDArray[np.float32] | None:
         """
         Get an appropriate filler guaranteed shorter than expected latency.
 
@@ -234,7 +253,8 @@ class FillerEngine:
             return None
 
         available = [
-            f for f in pool
+            f
+            for f in pool
             if f.text not in self._recent_fillers and f.duration_ms < expected_latency_ms
         ]
         if not available:
@@ -251,10 +271,10 @@ class FillerEngine:
 
     @staticmethod
     def blend_filler_to_response(
-        filler: np.ndarray,
-        response_start: np.ndarray,
+        filler: npt.NDArray[np.float32],
+        response_start: npt.NDArray[np.float32],
         crossfade_ms: int = 50,
-    ) -> np.ndarray:
+    ) -> npt.NDArray[np.float32]:
         """
         Crossfade the end of a filler into the start of a response.
 
@@ -273,19 +293,20 @@ class FillerEngine:
         if fade_samples < 10:
             return np.concatenate([filler, response_start])
 
-        result = np.concatenate([
-            filler[:-fade_samples],
-            np.zeros(fade_samples, dtype=np.float32),
-            response_start[fade_samples:],
-        ])
+        result = np.concatenate(
+            [
+                filler[:-fade_samples],
+                np.zeros(fade_samples, dtype=np.float32),
+                response_start[fade_samples:],
+            ]
+        )
 
         fade_out = np.linspace(1.0, 0.0, fade_samples, dtype=np.float32)
         fade_in = np.linspace(0.0, 1.0, fade_samples, dtype=np.float32)
 
         crossfade_region = (
-            filler[-fade_samples:] * fade_out +
-            response_start[:fade_samples] * fade_in
+            filler[-fade_samples:] * fade_out + response_start[:fade_samples] * fade_in
         )
-        result[len(filler) - fade_samples:len(filler)] = crossfade_region
+        result[len(filler) - fade_samples : len(filler)] = crossfade_region
 
         return result

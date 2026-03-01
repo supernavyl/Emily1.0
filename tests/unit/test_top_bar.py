@@ -102,9 +102,9 @@ class TestGroupModels:
                 assert key not in seen, f"Duplicate key: {key}"
                 seen.add(key)
 
-    def test_thinking_category_first(self) -> None:
+    def test_emily_local_category_first(self) -> None:
         groups = group_models()
-        assert "THINKING" in groups[0][0].upper()
+        assert "EMILY" in groups[0][0].upper()
 
     def test_all_registry_models_included(self) -> None:
         from emily_chat.models.registry import EMILY_MODEL_REGISTRY
@@ -125,19 +125,31 @@ class TestConversationTopBarSignals:
         pytest.importorskip("PySide6.QtWidgets")
 
     def test_has_model_changed_signal(self) -> None:
-        assert hasattr(ConversationTopBar, "model_changed")
+        from PySide6.QtCore import Signal
+
+        assert isinstance(ConversationTopBar.model_changed, Signal)
 
     def test_has_skill_changed_signal(self) -> None:
-        assert hasattr(ConversationTopBar, "skill_changed")
+        from PySide6.QtCore import Signal
+
+        assert isinstance(ConversationTopBar.skill_changed, Signal)
 
     def test_has_clear_requested_signal(self) -> None:
-        assert hasattr(ConversationTopBar, "clear_requested")
+        from PySide6.QtCore import Signal
+
+        assert isinstance(ConversationTopBar.clear_requested, Signal)
 
     def test_has_fork_requested_signal(self) -> None:
-        assert hasattr(ConversationTopBar, "fork_requested")
+        from PySide6.QtCore import Signal
+
+        assert isinstance(ConversationTopBar.fork_requested, Signal)
 
     def test_has_export_requested_signal(self) -> None:
-        assert hasattr(ConversationTopBar, "export_requested")
+        from PySide6.QtCore import Signal
+
+        assert isinstance(ConversationTopBar.export_requested, Signal)
 
     def test_has_system_prompt_edit_signal(self) -> None:
-        assert hasattr(ConversationTopBar, "system_prompt_edit_requested")
+        from PySide6.QtCore import Signal
+
+        assert isinstance(ConversationTopBar.system_prompt_edit_requested, Signal)

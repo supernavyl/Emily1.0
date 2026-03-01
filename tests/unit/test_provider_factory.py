@@ -17,12 +17,13 @@ import respx
 
 from emily_chat.models.provider_factory import (
     ProviderUnavailableError,
-    _cache,
+    _cache,  # pyright: ignore[reportPrivateUsage]
     close_all,
     get_provider,
 )
 from emily_chat.models.providers.ollama import OllamaProvider
 from emily_chat.models.providers.openai import OpenAIProvider
+from emily_chat.models.providers.tabbyapi import TabbyAPIProvider
 from emily_chat.models.registry import EMILY_MODEL_REGISTRY, ModelSpec
 from emily_chat.models.streaming_engine import (
     ChunkType,
@@ -31,13 +32,14 @@ from emily_chat.models.streaming_engine import (
     StreamChunk,
 )
 
-_LOCAL_SPEC = EMILY_MODEL_REGISTRY["ollama-local"]
+_LOCAL_SPEC = EMILY_MODEL_REGISTRY["emily-fast"]  # TabbyAPI (abliterated fast model)
+_OLLAMA_SPEC = EMILY_MODEL_REGISTRY["emily-vision"]  # Ollama (vision — still on Ollama)
 _OLLAMA_CHAT_URL = "http://localhost:11434/api/chat"
 
 
 def _json_line(content: str, done: bool = False, **kwargs: int) -> str:
     """Build a single Ollama JSON-line response."""
-    obj: dict = {"message": {"content": content}, "done": done}
+    obj: dict[str, object] = {"message": {"content": content}, "done": done}
     obj.update(kwargs)
     return json.dumps(obj) + "\n"
 
@@ -52,11 +54,11 @@ def _plain_stream(text: str = "Hello from Emily") -> str:
 
 
 @pytest.fixture(autouse=True)
-def _clear_cache():
-    """Ensure the provider cache is empty before and after each test."""
+async def _clear_cache():  # pyright: ignore[reportUnusedFunction]
+    """Ensure the provider cache is empty and providers are closed."""
     _cache.clear()
     yield
-    _cache.clear()
+    await close_all()
 
 
 # ------------------------------------------------------------------
@@ -68,9 +70,14 @@ class TestGetProvider:
     """Provider resolution and caching."""
 
     def test_ollama_no_key_required(self) -> None:
-        """Ollama should always be available without an API key."""
-        provider = get_provider(_LOCAL_SPEC)
+        """Ollama should always be available without an API key (vision tier)."""
+        provider = get_provider(_OLLAMA_SPEC)
         assert isinstance(provider, OllamaProvider)
+
+    def test_tabbyapi_no_key_required(self) -> None:
+        """TabbyAPI should always be available without an API key."""
+        provider = get_provider(_LOCAL_SPEC)
+        assert isinstance(provider, TabbyAPIProvider)
 
     def test_ollama_cached(self) -> None:
         """Repeat calls should return the same instance."""
@@ -80,19 +87,22 @@ class TestGetProvider:
 
     def test_missing_key_raises(self) -> None:
         """Requesting a cloud provider without API key should raise."""
-        spec = EMILY_MODEL_REGISTRY.get("claude-sonnet-4-5")
+        spec = EMILY_MODEL_REGISTRY.get("claude-sonnet-4-6")
         if spec is None:
-            pytest.skip("claude-sonnet-4-5 not in registry")
-        with patch.dict(os.environ, {}, clear=True):
-            os.environ.pop("ANTHROPIC_API_KEY", None)
-            with pytest.raises(ProviderUnavailableError, match="ANTHROPIC_API_KEY"):
-                get_provider(spec)
+            pytest.skip("claude-sonnet-4-6 not in registry")
+        assert spec is not None
+        with (
+            patch.dict(os.environ, {"ANTHROPIC_API_KEY": ""}, clear=False),
+            pytest.raises(ProviderUnavailableError, match="ANTHROPIC_API_KEY"),
+        ):
+            get_provider(spec)
 
     def test_openai_with_key(self) -> None:
         """OpenAI provider should be created when key is set."""
         openai_spec = EMILY_MODEL_REGISTRY.get("gpt-5")
         if openai_spec is None:
             pytest.skip("gpt-5 not in registry")
+        assert openai_spec is not None
         with patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test-key"}):
             provider = get_provider(openai_spec)
             assert isinstance(provider, OpenAIProvider)
@@ -149,9 +159,11 @@ class TestStreamChunks:
             chunk_types: list[ChunkType] = []
 
             async for chunk in engine.stream_chunks(
-                provider, _LOCAL_SPEC,
+                provider,
+                _LOCAL_SPEC,
                 [{"role": "user", "content": "hi"}],
-                "You are Emily.", settings,
+                "You are Emily.",
+                settings,
             ):
                 chunk_types.append(chunk.type)
                 if chunk.type == ChunkType.TEXT:
@@ -181,9 +193,11 @@ class TestStreamChunks:
 
             usage_chunks: list[StreamChunk] = []
             async for chunk in engine.stream_chunks(
-                provider, _LOCAL_SPEC,
+                provider,
+                _LOCAL_SPEC,
                 [{"role": "user", "content": "hi"}],
-                "sys", settings,
+                "sys",
+                settings,
             ):
                 if chunk.type == ChunkType.USAGE:
                     usage_chunks.append(chunk)
@@ -206,17 +220,17 @@ class TestStreamChunks:
         engine = EmilyStreamingEngine(persona)
 
         with respx.mock:
-            respx.post(_OLLAMA_CHAT_URL).mock(
-                side_effect=httpx.ConnectError("refused")
-            )
+            respx.post(_OLLAMA_CHAT_URL).mock(side_effect=httpx.ConnectError("refused"))
             provider = OllamaProvider()
             settings = GenerationSettings()
 
             chunks: list[StreamChunk] = []
             async for chunk in engine.stream_chunks(
-                provider, _LOCAL_SPEC,
+                provider,
+                _LOCAL_SPEC,
                 [{"role": "user", "content": "hi"}],
-                "sys", settings,
+                "sys",
+                settings,
             ):
                 chunks.append(chunk)
 
@@ -241,17 +255,17 @@ class TestStreamChunks:
         stream_data = "".join(lines)
 
         with respx.mock:
-            respx.post(_OLLAMA_CHAT_URL).mock(
-                return_value=httpx.Response(200, text=stream_data)
-            )
+            respx.post(_OLLAMA_CHAT_URL).mock(return_value=httpx.Response(200, text=stream_data))
             provider = OllamaProvider()
             settings = GenerationSettings()
 
             texts: list[str] = []
             async for chunk in engine.stream_chunks(
-                provider, _LOCAL_SPEC,
+                provider,
+                _LOCAL_SPEC,
                 [{"role": "user", "content": "who are you?"}],
-                "You are Emily.", settings,
+                "You are Emily.",
+                settings,
             ):
                 if chunk.type == ChunkType.TEXT:
                     texts.append(chunk.content)
@@ -278,10 +292,12 @@ class TestStreamChunks:
             settings = GenerationSettings()
 
             count = 0
-            async for chunk in engine.stream_chunks(
-                provider, _LOCAL_SPEC,
+            async for _chunk in engine.stream_chunks(
+                provider,
+                _LOCAL_SPEC,
                 [{"role": "user", "content": "test"}],
-                "sys", settings,
+                "sys",
+                settings,
             ):
                 count += 1
                 if count >= 3:

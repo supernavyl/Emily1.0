@@ -8,13 +8,12 @@ conversation-level actions (edit, retry, branch, feedback).
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
-from typing import Any
+import logging
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 
 from PySide6.QtCore import QObject
 
-from emily_chat.config import AppSettings
-from emily_chat.profiles import load_profiles, resolve_model_for_skill
 from emily_chat.emily.persona import EmilyPersonaEngine, PrivacyGrants, SessionContext
 from emily_chat.emily.skills import EmilySkill, get_skill, save_custom_skill
 from emily_chat.export.engine import ExportEngine
@@ -34,15 +33,21 @@ from emily_chat.models.streaming_engine import (
     GenerationSettings,
     StreamChunk,
 )
+from emily_chat.profiles import load_profiles, resolve_model_for_skill
 from emily_chat.storage.database import ConversationDatabase
 from emily_chat.storage.models import ConversationSummary
 from emily_chat.ui.async_bridge import AsyncRunner
-from emily_chat.ui.conversation_stream import ConversationStream
-from emily_chat.ui.input_panel import InputPanel
-from emily_chat.ui.left_sidebar import LeftSidebar
 from emily_chat.ui.right_panel import RightPanel, compute_session_stats
-from emily_chat.ui.search_overlay import GlobalSearchOverlay
-from emily_chat.ui.top_bar import ConversationTopBar
+
+if TYPE_CHECKING:
+    from emily_chat.config import AppSettings
+    from emily_chat.ui.conversation_stream import ConversationStream
+    from emily_chat.ui.input_panel import InputPanel
+    from emily_chat.ui.left_sidebar import LeftSidebar
+    from emily_chat.ui.search_overlay import GlobalSearchOverlay
+    from emily_chat.ui.top_bar import ConversationTopBar
+
+_log = logging.getLogger(__name__)
 
 
 class ChatController(QObject):
@@ -122,6 +127,7 @@ class ChatController(QObject):
 
         self._web_search_enabled = False
         self._one_shot_skill: str | None = None
+        self._pending_user_text: str = ""
 
         # --- wire conversation stream signals (Phase 12) ---
         self._stream_view.edit_requested.connect(self._on_edit_message)
@@ -134,9 +140,7 @@ class ChatController(QObject):
         if self._top_bar is not None:
             self._top_bar.model_changed.connect(self._on_model_changed)
             self._top_bar.skill_changed.connect(self._on_skill_changed)
-            self._top_bar.clear_requested.connect(
-                lambda: self._stream_view.clear_messages()
-            )
+            self._top_bar.clear_requested.connect(lambda: self._stream_view.clear_messages())
             self._top_bar.set_active_model(self._settings.default_model)
             self._top_bar.set_active_skill(self._settings.active_skill_id)
             self._top_bar.export_requested.connect(self._on_topbar_export)
@@ -159,13 +163,42 @@ class ChatController(QObject):
         token = self._runner.submit(self._db.init())
         self._pending[token] = "init"
 
+    async def _discover_tabbyapi_models(self) -> int:
+        """Discover TabbyAPI models and register them in the registry.
+
+        Returns:
+            Number of additional models registered beyond Emily's fleet.
+        """
+        import os
+
+        from emily_chat.models.providers.tabbyapi import TabbyAPIProvider
+
+        base_url = os.environ.get("TABBYAPI_HOST", "http://localhost:5000/v1")
+        api_key = os.environ.get("TABBYAPI_API_KEY", "")
+        provider = TabbyAPIProvider(base_url=base_url, api_key=api_key)
+        discovered = await provider.discover_models()
+        await provider.close()
+        count = 0
+        for m in discovered:
+            name = m.get("name", "").strip()
+            if not name:
+                continue
+            key = "tabbyapi-" + name.replace(" ", "-")
+            if get_model(key) is not None:
+                continue
+            spec = TabbyAPIProvider.create_local_spec(name)
+            register_dynamic_model(key, spec)
+            count += 1
+        return count
+
     async def _discover_ollama_models(self) -> int:
         """Discover Ollama models and register them in the registry.
 
         Returns:
-            Number of models registered (excluding the static ollama-local).
+            Number of additional models registered beyond Emily's fleet.
         """
         import os
+
         from emily_chat.models.providers.ollama import OllamaProvider
 
         host = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
@@ -223,15 +256,11 @@ class ChatController(QObject):
         self._pending[token] = "load_messages"
 
     def _rename_conversation(self, conversation_id: str) -> None:
-        token = self._runner.submit(
-            self._db.rename_conversation(conversation_id, "Renamed")
-        )
+        token = self._runner.submit(self._db.rename_conversation(conversation_id, "Renamed"))
         self._pending[token] = "refresh"
 
     def _pin_conversation(self, conversation_id: str, pinned: bool) -> None:
-        token = self._runner.submit(
-            self._db.pin_conversation(conversation_id, pinned)
-        )
+        token = self._runner.submit(self._db.pin_conversation(conversation_id, pinned))
         self._pending[token] = "refresh"
 
     def _archive_conversation(self, conversation_id: str) -> None:
@@ -273,9 +302,7 @@ class ChatController(QObject):
         self._stream_view.append_user_message(text)
 
         # Save user message to DB (fire-and-forget for speed)
-        self._runner.submit(
-            self._db.add_message(conv_id, "user", text)
-        )
+        self._runner.submit(self._db.add_message(conv_id, "user", text))
 
         # Append to in-memory conversation history for LLM context
         self._conversation_messages.append({"role": "user", "content": text})
@@ -324,19 +351,17 @@ class ChatController(QObject):
 
         # Build system prompt
         is_probe = self._persona.detect_identity_probe(text)
+        active_tools: list[str] = []
+        if self._web_search_enabled:
+            active_tools.append("web_search")
         session_ctx = SessionContext(
-            current_datetime=datetime.now(tz=timezone.utc).strftime(
-                "%Y-%m-%d %H:%M UTC"
-            ),
+            current_datetime=datetime.now(tz=UTC).strftime("%Y-%m-%d %H:%M UTC"),
             provider_name=model_spec.provider,
+            active_tools=active_tools,
         )
-        system_prompt = self._persona.build_system_prompt(
-            skill, self._privacy_grants, session_ctx
-        )
+        system_prompt = self._persona.build_system_prompt(skill, self._privacy_grants, session_ctx)  # noqa
         if is_probe:
-            system_prompt = (
-                self._persona.get_identity_reinforcement() + "\n\n" + system_prompt
-            )
+            system_prompt = self._persona.get_identity_reinforcement() + "\n\n" + system_prompt  # noqa
 
         # Full conversation history for LLM context
         messages = list(self._conversation_messages)
@@ -352,7 +377,11 @@ class ChatController(QObject):
 
         async def _stream_gen():
             async for chunk in engine.stream_chunks(
-                provider, model_spec, messages, system_prompt, settings,
+                provider,
+                model_spec,
+                messages,
+                system_prompt,
+                settings,
             ):
                 yield chunk
 
@@ -367,10 +396,17 @@ class ChatController(QObject):
         self._finish_generation(stopped=True)
 
     def _get_active_skill(self) -> EmilySkill:
-        """Return the currently active skill."""
-        skill = get_skill(self._settings.active_skill_id)
+        """Return the currently active skill, consuming any one-shot override."""
+        skill_id = self._settings.active_skill_id
+
+        if self._one_shot_skill is not None:
+            skill_id = self._one_shot_skill
+            self._one_shot_skill = None
+
+        skill = get_skill(skill_id)
         if skill is None:
             from emily_chat.emily.skills import EmilySkill
+
             skill = EmilySkill(name="Normal Chat")
         return skill
 
@@ -429,9 +465,7 @@ class ChatController(QObject):
         elif cmd_id == "export":
             if self._top_bar:
                 self._top_bar.export_requested.emit("markdown")
-        elif cmd_id == "fork":
-            pass
-        elif cmd_id == "settings":
+        elif cmd_id in ("fork", "settings"):
             pass
 
     # ── export handlers (Phase 19) ──────────────────────────────
@@ -472,8 +506,6 @@ class ChatController(QObject):
             fmt: Export format.
             messages: List of Message objects.
         """
-        from emily_chat.storage.models import ConversationSummary
-
         conv_result = await self._db.get_conversation(conv_id)
         if conv_result is None:
             return
@@ -516,13 +548,7 @@ class ChatController(QObject):
             fmt = argument.strip() or "markdown"
             if self._top_bar:
                 self._top_bar.export_requested.emit(fmt)
-        elif command == "/retry":
-            pass
-        elif command == "/branch":
-            pass
-        elif command == "/cost":
-            pass
-        elif command == "/summarize":
+        elif command in ("/retry", "/branch", "/cost", "/summarize"):
             pass
 
     def _on_web_search_toggled(self, enabled: bool) -> None:
@@ -659,14 +685,18 @@ class ChatController(QObject):
         self._right_panel.set_metadata(metadata)
 
         # Accumulate session-level stats and update right panel
-        self._session_messages.append({
-            "model": model_spec.display,
-            "tokens_in": self._gen_usage.get("input_tokens", 0),
-            "tokens_out": self._gen_usage.get("output_tokens", 0),
-            "tokens_thinking": len(self._gen_thinking_text) // 4 if self._gen_thinking_text else 0,
-            "cost_usd": self._gen_usage.get("cost_usd", 0.0),
-            "latency_ms": self._gen_usage.get("latency_ms", 0),
-        })
+        self._session_messages.append(
+            {
+                "model": model_spec.display,
+                "tokens_in": self._gen_usage.get("input_tokens", 0),
+                "tokens_out": self._gen_usage.get("output_tokens", 0),
+                "tokens_thinking": len(self._gen_thinking_text) // 4
+                if self._gen_thinking_text
+                else 0,
+                "cost_usd": self._gen_usage.get("cost_usd", 0.0),
+                "latency_ms": self._gen_usage.get("latency_ms", 0),
+            }
+        )
         session_stats = compute_session_stats(self._session_messages)
         self._right_panel.set_session_stats(session_stats)
 
@@ -708,10 +738,12 @@ class ChatController(QObject):
 
         if action == "init":
             self._reload_conversations()
-            token = self._runner.submit(self._discover_ollama_models())
-            self._pending[token] = "ollama_discovery"
-            token2 = self._runner.submit(self._discover_llamacpp_models())
-            self._pending[token2] = "llamacpp_discovery"
+            token = self._runner.submit(self._discover_tabbyapi_models())
+            self._pending[token] = "tabbyapi_discovery"
+            token2 = self._runner.submit(self._discover_ollama_models())
+            self._pending[token2] = "ollama_discovery"
+            token3 = self._runner.submit(self._discover_llamacpp_models())
+            self._pending[token3] = "llamacpp_discovery"
             return
 
         if action == "create":
@@ -733,13 +765,15 @@ class ChatController(QObject):
                 self._settings.save()
                 self._stream_view.clear_messages()
                 self._conversation_messages = []
-                text = getattr(self, "_pending_user_text", "")
+                text = self._pending_user_text
                 if text:
                     self._do_send(result.id, text)
-                    self._pending_user_text = ""  # type: ignore[attr-defined]
+                    self._pending_user_text = ""
             self._reload_conversations()
             return
 
+        if action == "tabbyapi_discovery":
+            return
         if action == "ollama_discovery":
             return
         if action == "llamacpp_discovery":
@@ -784,18 +818,21 @@ class ChatController(QObject):
                 conv_id, fmt = parts[1], parts[2]
                 self._runner.submit(self._perform_export(conv_id, fmt, result))
 
-        if action == "overlay_search":
-            if isinstance(result, list) and self._search_overlay is not None:
-                formatted = [
-                    {
-                        "conv_id": r.conversation_id,
-                        "title": r.title,
-                        "excerpt": r.excerpt,
-                        "meta": f"rank: {r.match_rank:.1f}",
-                    }
-                    for r in result
-                ]
-                self._search_overlay.set_results(formatted)
+        if (
+            action == "overlay_search"
+            and isinstance(result, list)
+            and self._search_overlay is not None
+        ):
+            formatted = [
+                {
+                    "conv_id": r.conversation_id,
+                    "title": r.title,
+                    "excerpt": r.excerpt,
+                    "meta": f"rank: {r.match_rank:.1f}",
+                }
+                for r in result
+            ]
+            self._search_overlay.set_results(formatted)
 
     def _on_error(self, token: str, tb: str) -> None:
         """Log async errors (future: show toast in UI)."""
@@ -803,12 +840,9 @@ class ChatController(QObject):
         if token == self._active_stream_token:
             self._active_stream_token = None
             self._input_panel.set_generating(False)
-            self._stream_view.append_emily_text(
-                f"\n\n[Error: generation failed]\n"
-            )
+            self._stream_view.append_emily_text("\n\n[Error: generation failed]\n")
             self._stream_view.finish_emily_message()
-        import sys
-        print(f"[ChatController] async error:\n{tb}", file=sys.stderr)
+        _log.error("async_error", traceback=tb)
 
     # ── helpers ─────────────────────────────────────────────────
 

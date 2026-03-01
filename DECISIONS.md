@@ -107,9 +107,9 @@ Updated after each phase that introduces a new dependency.
 **Rationale:**
 - CSM (Sesame Conversational Speech Model): 1B-parameter model producing the most natural conversational speech. Runs via HuggingFace `transformers` (fp16, ~4-6 GB VRAM). Best quality option when latency budget allows.
 - Kokoro: Sub-50ms latency as speed-first engine. Ideal as primary for real-time voice mode where first-audio latency matters most.
-- XTTS v2: Retained for voice cloning use cases and expressive prosody via style vectors. 200ms latency acceptable as fallback.
-- Edge TTS: Always-available last resort (cloud, no GPU needed).  
+- XTTS v2: Retained for voice cloning use cases and expressive prosody via style vectors. 200ms latency acceptable as fallback.  
 **Rejected:**
+- Edge TTS — cloud-based, violates zero-egress policy, buffers all audio before decode defeating streaming
 - StyleTTS2 — excellent prosody but no voice cloning, complex inference setup
 - Piper — fastest (<20ms) but noticeably robotic at high speeds
 - Matcha-TTS — strong quality but less mature ecosystem

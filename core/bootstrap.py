@@ -13,16 +13,21 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
+import re
 import signal
 import time
 from pathlib import Path
-from types import TracebackType
-from typing import Any, Self
+from typing import TYPE_CHECKING, Any, Self
+
+if TYPE_CHECKING:
+    from collections.abc import Coroutine
+    from types import TracebackType
 
 from agents.registry import AgentRegistry
 from config import EmilySettings, get_settings
-from core.bus import AgentBus, Message, PerceptionBus, Priority
+from core.bus import AgentBus, PerceptionBus
 from core.fsm import SystemFSM, SystemState
 from core.scheduler import Scheduler
 from llm.fleet import LLMFleet
@@ -34,16 +39,44 @@ from perception.audio.pipeline import AudioPipeline
 from perception.vision.pipeline import VisionPipeline
 from security.manager import SecurityManager
 from self_improvement.engine import SelfImprovementEngine
+from users.owner_identity import OwnerIdentityManager
 from voice.output_stream import AudioOutputStream
+from voice.singing import SingingManager
 from voice.tts import TTSManager
+
+_automation_available = True
+try:
+    from integrations.automation import AutomationEngine
+except ImportError:
+    _automation_available = False
 
 log = get_logger(__name__)
 
-_VOICE_ENGINE_AVAILABLE = True
+# Patterns that indicate the user wants Emily to sing / generate music.
+_SING_RE = re.compile(
+    r"\b(?:"
+    r"sing(?:\s+(?:me\s+)?(?:a\s+)?(?:song|tune|melody|lullaby|ballad|jingle))?"
+    r"|serenade\s+me"
+    r"|(?:can|could|please|would)\s+you\s+sing"
+    r"|start\s+singing"
+    r"|perform\s+(?:a\s+)?(?:song|tune)"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def _is_singing_request(text: str) -> bool:
+    return bool(_SING_RE.search(text))
+
+
+_voice_engine_available = True
 try:
-    from conversation.voice_engine import VoiceEngine
+    from voice_engine.config import VoiceEngineConfig as VE13Config
+    from voice_engine.conversation import VoiceConversation
+    from voice_engine.providers.llm.emily_llm import EmilyLLMProvider
+    from voice_engine.providers.tts.emily_tts import EmilyTTSProvider
 except ImportError:
-    _VOICE_ENGINE_AVAILABLE = False
+    _voice_engine_available = False
 
 
 class Bootstrap:
@@ -65,13 +98,18 @@ class Bootstrap:
         self.vision_pipeline: VisionPipeline | None = None
         self.audio_pipeline: AudioPipeline | None = None
         self.tts_manager: TTSManager | None = None
+        self.singing_manager: SingingManager | None = None
         self.audio_output: AudioOutputStream | None = None
         self.voice_engine_instance: object | None = None
         self.security: SecurityManager = SecurityManager(settings.security)
         self.self_improvement: SelfImprovementEngine = SelfImprovementEngine()
         self.fleet: LLMFleet = LLMFleet(settings.llm, brain_hub=brain_hub)
         self.memory: MemoryManager = MemoryManager(settings, brain_hub=brain_hub)
+        self.identity_manager: OwnerIdentityManager = OwnerIdentityManager(
+            data_path=settings.owner.identity_file
+        )
         self.registry: AgentRegistry | None = None
+        self.automation_engine: object | None = None
         self._background_tasks: list[asyncio.Task[None]] = []
         self._shutdown_event = asyncio.Event()
 
@@ -81,8 +119,10 @@ class Bootstrap:
 
     @classmethod
     def create(
-        cls, config_path: str = "config.yaml", brain_hub: Any | None = None,
-    ) -> "Bootstrap":
+        cls,
+        config_path: str = "config.yaml",
+        brain_hub: Any | None = None,
+    ) -> Bootstrap:
         """
         Factory: load settings and return an unstarted Bootstrap instance.
 
@@ -116,11 +156,19 @@ class Bootstrap:
 
         log.info("emily_starting", version=s.version, name=s.name)
 
-        if self.brain_hub is not None:
+        hub = self.brain_hub
+        if hub is not None:
+
             async def _on_fsm_change(old: Any, new: Any) -> None:
-                await self.brain_hub.emit("fsm", "state_change", {
-                    "old": old.name, "new": new.name,
-                })
+                await hub.emit(
+                    "fsm",
+                    "state_change",
+                    {
+                        "old": old.name,
+                        "new": new.name,
+                    },
+                )
+
             self.fsm.on_transition(_on_fsm_change)
 
         # 2. Ensure data directories exist
@@ -150,6 +198,12 @@ class Bootstrap:
         await self.memory.startup()
         await self._wire_retriever()
 
+        # Load owner identity (non-critical)
+        try:
+            await self.identity_manager.load()
+        except Exception as exc:
+            log.warning("identity_manager_load_failed", error=str(exc))
+
         # 9. Agent registry
         self.registry = AgentRegistry(self.agent_bus, self.fleet, self.memory)
         await self.registry.start_all()
@@ -168,36 +222,85 @@ class Bootstrap:
             log.warning("vision_pipeline_start_failed", error=str(exc))
             self.vision_pipeline = None
 
-        # 8–10. Voice mode selection
+        # 8-10. Voice mode selection
         self._voice_mode_enabled = (
-            _VOICE_ENGINE_AVAILABLE
-            and hasattr(s, "voice_engine")
-            and s.voice_engine.enabled
+            _voice_engine_available and hasattr(s, "voice_engine") and s.voice_engine.enabled
         )
 
-        # TTS is always loaded (used by both new engine and legacy bridge)
+        # TTS is always loaded (used by API routes and legacy bridge)
         self.tts_manager = TTSManager(s.tts)
-        self.audio_output = AudioOutputStream()
+        self.audio_output = AudioOutputStream(output_device=s.audio.output_device)
         self.add_background_task(self._load_tts())
 
+        # Singing engine (non-critical — degrades gracefully if no engines installed)
+        if s.singing.enabled:
+            self.singing_manager = SingingManager(s.singing)
+            self.add_background_task(self._load_singing())
+
         if self._voice_mode_enabled:
-            log.info("voice_mode_new_engine",
-                     msg="Using new full-duplex voice engine — legacy AudioPipeline skipped")
-            self.voice_engine_instance = VoiceEngine(
-                s,
-                self.perception_bus,
-                agent_bus=self.agent_bus,
+            log.info("voice_mode_v13", msg="Using VoiceEngine 1.3 integrated with Emily brain")
+            from llm.prompt_builder import PromptBuilder
+
+            ve_config = VE13Config(  # type: ignore[possibly-undefined]
+                stt_provider=s.voice_engine.stt_provider,
+                stt_model=s.stt.model,
+                vad_threshold=s.voice_engine.vad_threshold,
+                min_speech_ms=s.voice_engine.min_speech_ms,
+                min_silence_ms=s.voice_engine.min_silence_ms,
+            )
+
+            # Adapter: routes voice LLM calls through Emily's fleet + memory
+            emily_llm = EmilyLLMProvider(  # type: ignore[possibly-undefined]
                 fleet=self.fleet,
                 memory=self.memory,
-                brain_hub=self.brain_hub,
+                prompt_builder=PromptBuilder(),
+                identity_manager=self.identity_manager,
+            )
+            # Adapter: reuses Emily's already-loaded Kokoro TTS instance
+            emily_tts = EmilyTTSProvider(tts_manager=self.tts_manager)  # type: ignore[possibly-undefined]
+
+            self.voice_engine_instance = VoiceConversation(  # type: ignore[possibly-undefined]
+                ve_config,
+                llm=emily_llm,
+                tts=emily_tts,
             )
             self.add_background_task(self._start_voice_engine())
         else:
-            log.info("voice_mode_legacy",
-                     msg="Using legacy half-duplex pipeline + bridge")
+            log.info("voice_mode_legacy", msg="Using legacy half-duplex pipeline + bridge")
             self.audio_pipeline = AudioPipeline(settings=s, bus=self.perception_bus)
             self.add_background_task(self._start_audio_pipeline())
             self.add_background_task(self._perception_tts_bridge())
+
+        # 11b. Automation engine (integrations layer)
+        if _automation_available:
+            try:
+                from plugins.registry import PluginRegistry
+
+                plugin_reg = PluginRegistry()
+                plugin_reg.load_builtins(
+                    tool_kwargs={
+                        "discord": {
+                            "bot_token": getattr(
+                                getattr(s, "integrations", None), "discord", {}
+                            ).get("bot_token", "")
+                            if hasattr(s, "integrations")
+                            else "",
+                            "default_channel_id": getattr(
+                                getattr(s, "integrations", None), "discord", {}
+                            ).get("default_channel_id", "")
+                            if hasattr(s, "integrations")
+                            else "",
+                        },
+                    }
+                )
+                self.automation_engine = AutomationEngine(  # type: ignore[possibly-undefined]
+                    plugin_registry=plugin_reg,
+                    fleet=self.fleet,
+                )
+                self.add_background_task(self.automation_engine.start())  # type: ignore[union-attr]
+                log.info("automation_engine_initialized")
+            except Exception as exc:
+                log.warning("automation_engine_init_failed", error=str(exc)[:200])
 
         # Wire voice engine refs into API routes
         self._wire_api_voice_state()
@@ -227,12 +330,11 @@ class Bootstrap:
         if self._background_tasks:
             await asyncio.gather(*self._background_tasks, return_exceptions=True)
 
-        # Stop voice engine
-        if self.voice_engine_instance is not None:
-            try:
-                await self.voice_engine_instance.stop()  # type: ignore[union-attr]
-            except Exception as exc:
-                log.error("voice_engine_stop_error", error=str(exc))
+        # Voice engine (VoiceConversation) stops when its task is cancelled above
+
+        # Stop automation engine
+        if self.automation_engine is not None:
+            await self.automation_engine.stop()  # type: ignore[union-attr]
 
         # Stop audio pipeline
         if self.audio_pipeline:
@@ -264,7 +366,10 @@ class Bootstrap:
         log.info("shutdown_signal_received")
         self._shutdown_event.set()
 
-    def add_background_task(self, coro: asyncio.coroutines) -> asyncio.Task[None]:  # type: ignore[type-arg]
+    def add_background_task(
+        self,
+        coro: Coroutine[Any, Any, None],
+    ) -> asyncio.Task[None]:
         """
         Register and start a long-running background coroutine.
 
@@ -274,7 +379,7 @@ class Bootstrap:
         Returns:
             The created asyncio Task.
         """
-        task: asyncio.Task[None] = asyncio.create_task(coro)
+        task = asyncio.create_task(coro)
         self._background_tasks.append(task)
         return task
 
@@ -327,13 +432,31 @@ class Bootstrap:
             assert self.tts_manager is not None
             await self.tts_manager.load()
             log.info("tts_engines_loaded")
+            if self.audio_output is not None:
+                ai = getattr(self, "identity_manager", None)
+                name = ai.ai_name if ai else "Emily"
+                greeting = f"Hey, {name} here. What's on your mind?"
+                log.info("startup_greeting_speaking")
+                chunks = self.tts_manager.speak(text=greeting)
+                await self.audio_output.play_stream(chunks)
+                log.info("startup_greeting_complete")
         except Exception as exc:
             log.error("tts_load_failed", error=str(exc))
+
+    async def _load_singing(self) -> None:
+        """Background task: load singing engine models."""
+        try:
+            assert self.singing_manager is not None
+            await self.singing_manager.load()
+            log.info("singing_engines_loaded")
+        except Exception as exc:
+            log.warning("singing_load_failed", error=str(exc)[:200])
 
     def _wire_api_voice_state(self) -> None:
         """Inject voice engine and audio state into API route modules."""
         try:
             from api.routes import audio as audio_routes
+
             audio_routes.set_audio_state(
                 input_device=self.settings.audio.input_device,
                 output_device=self.settings.audio.output_device,
@@ -346,22 +469,72 @@ class Bootstrap:
 
         try:
             from api.routes.voice_engine import configure_voice_engine_routes
+
             configure_voice_engine_routes(engine=self.voice_engine_instance)
         except ImportError:
             pass
 
+        try:
+            from api.routes.settings import set_identity_manager
+
+            set_identity_manager(self.identity_manager)
+        except ImportError:
+            pass
+
+        try:
+            from api.routes.integrations import configure as configure_integrations
+
+            configure_integrations(
+                automation_engine=self.automation_engine,
+                fleet=self.fleet,
+            )
+        except ImportError:
+            pass
+
+        try:
+            from api.routes.singing import configure as configure_singing
+
+            if self.singing_manager is not None:
+                configure_singing(self.singing_manager)
+        except ImportError:
+            pass
+
     async def _start_voice_engine(self) -> None:
-        """Background task: start the full-duplex voice engine."""
+        """Background task: run the VoiceEngine 1.3 conversation loop."""
         try:
             assert self.voice_engine_instance is not None
-            log.info("voice_engine_starting")
-            await self.voice_engine_instance.start()  # type: ignore[union-attr]
+            log.info("voice_engine_v13_starting")
+
+            # First-run onboarding: trigger before conversation loop if no owner
+            if not self.identity_manager.has_owner and self.tts_manager is not None:
+                try:
+                    from users.onboarding_enhanced import run_owner_onboarding
+
+                    ve = self.voice_engine_instance
+
+                    async def _speak(text: str) -> None:
+                        chunks = self.tts_manager.speak(text=text)  # type: ignore[union-attr]
+                        if self.audio_output:
+                            await self.audio_output.play_stream(chunks)
+
+                    async def _listen() -> str:
+                        return await ve.listen_once()  # type: ignore[union-attr]
+
+                    log.info("first_run_onboarding_starting")
+                    await run_owner_onboarding(
+                        fleet=self.fleet,
+                        memory=self.memory,
+                        identity_manager=self.identity_manager,
+                        speak=_speak,
+                        listen=_listen,
+                    )
+                    log.info("first_run_onboarding_complete")
+                except Exception as exc:
+                    log.warning("onboarding_failed", error=str(exc))
+
+            await self.voice_engine_instance.run()  # type: ignore[union-attr]
         except Exception as exc:
             log.error("voice_engine_start_failed", error=str(exc)[:200])
-            try:
-                await self.voice_engine_instance.stop()  # type: ignore[union-attr]
-            except Exception:
-                pass
             self.voice_engine_instance = None
             log.info("falling_back_to_legacy_bridge")
             await self._perception_tts_bridge()
@@ -395,16 +568,13 @@ class Bootstrap:
                     await self.fsm.force_transition(SystemState.IDLE)
 
                 elif event.type == "audio.wake_word_detected":
-                    log.info("wake_word_detected_in_bridge",
-                             keyword=event.payload.get("keyword"))
+                    log.info("wake_word_detected_in_bridge", keyword=event.payload.get("keyword"))
                     await self.fsm.force_transition(SystemState.LISTENING)
 
             except Exception as exc:
                 log.error("perception_bridge_error", error=str(exc))
-                try:
+                with contextlib.suppress(Exception):
                     await self.fsm.force_transition(SystemState.IDLE)
-                except Exception:
-                    pass
 
     async def _stream_llm_and_speak(self, user_text: str) -> str:
         """
@@ -412,6 +582,7 @@ class Bootstrap:
         immediately for low perceived latency.
 
         Falls back to batch mode (full response then speak) on error.
+        Intercepts singing requests before they reach the LLM.
 
         Args:
             user_text: Transcribed user speech.
@@ -419,11 +590,48 @@ class Bootstrap:
         Returns:
             Full response text.
         """
+        if self.singing_manager is not None and _is_singing_request(user_text):
+            return await self._sing_response(user_text)
         try:
             return await self._streaming_pipeline(user_text)
         except Exception as exc:
             log.warning("streaming_pipeline_unavailable_batch_fallback", error=str(exc))
             return await self._batch_pipeline(user_text)
+
+    async def _sing_response(self, user_text: str) -> str:
+        """Handle a singing request from the voice bridge.
+
+        Streams audio from SingingManager directly to the audio output device.
+
+        Args:
+            user_text: The original user utterance (used as the song prompt).
+
+        Returns:
+            Acknowledgment string written to the transcript.
+        """
+        assert self.singing_manager is not None
+
+        # Tell the user something before generation starts (can take a few seconds).
+        if self.tts_manager and self.audio_output:
+            intro = "Sure, let me sing something for you!"
+            chunks = self.tts_manager.speak(text=intro)
+            await self.audio_output.play_stream(chunks)
+
+        await self.fsm.force_transition(SystemState.RESPONDING)
+        log.info("singing_request_detected", prompt=user_text[:80])
+
+        try:
+            if self.audio_output:
+                await self.audio_output.play_stream(self.singing_manager.sing(user_text, mode=None))
+        except RuntimeError as exc:
+            log.error("singing_failed", error=str(exc)[:200])
+            if self.tts_manager and self.audio_output:
+                msg = "Sorry, no singing engine is available right now."
+                chunks = self.tts_manager.speak(text=msg)
+                await self.audio_output.play_stream(chunks)
+            return "Sorry, no singing engine is available right now."
+
+        return f"[sang: {user_text[:60]}]"
 
     async def _streaming_pipeline(self, user_text: str) -> str:
         """
@@ -432,22 +640,24 @@ class Bootstrap:
         Each sentence is synthesized and played as soon as it is complete,
         without waiting for the full LLM response.
         """
-        from llm.client import ChatMessage as CM, OllamaClient
+        from llm.client import ChatMessage
         from llm.streaming import StreamProcessor
+        from llm.tabbyapi_client import TabbyAPIClient
 
-        client = OllamaClient(base_url=self.settings.llm.ollama_base_url)
+        client = TabbyAPIClient(
+            base_url=self.settings.llm.tabbyapi_base_url,
+            api_key=self.settings.llm.tabbyapi_api_key,
+        )
         processor = StreamProcessor(tts_chunk_min_chars=40)
         full_response = ""
 
         try:
+            from llm.prompt_builder import PromptBuilder
+
+            _voice_prompt = PromptBuilder().build_voice_system_prompt()
             messages = [
-                CM(role="system", content=(
-                    "You are Emily, a warm and helpful AI assistant. "
-                    "Keep responses concise and conversational — you're "
-                    "speaking out loud, not writing an essay. "
-                    "1-3 sentences is ideal. Do not use markdown or emojis."
-                )),
-                CM(role="user", content=user_text),
+                ChatMessage(role="system", content=_voice_prompt),
+                ChatMessage(role="user", content=user_text),
             ]
 
             async def _token_iter():
@@ -513,22 +723,21 @@ class Bootstrap:
             LLM response text.
         """
         try:
-            from llm.client import ChatMessage, OllamaClient
+            from llm.client import ChatMessage
+            from llm.tabbyapi_client import TabbyAPIClient
 
-            client = OllamaClient(base_url=self.settings.llm.ollama_base_url)
+            client = TabbyAPIClient(
+                base_url=self.settings.llm.tabbyapi_base_url,
+                api_key=self.settings.llm.tabbyapi_api_key,
+            )
             try:
+                from llm.prompt_builder import PromptBuilder
+
+                _voice_prompt = PromptBuilder().build_voice_system_prompt()
                 result = await client.chat(
                     model=self.settings.llm.models.fast,
                     messages=[
-                        ChatMessage(
-                            role="system",
-                            content=(
-                                "You are Emily, a warm and helpful AI assistant. "
-                                "Keep responses concise and conversational — you're "
-                                "speaking out loud, not writing an essay. "
-                                "1-3 sentences is ideal."
-                            ),
-                        ),
+                        ChatMessage(role="system", content=_voice_prompt),
                         ChatMessage(role="user", content=user_text),
                     ],
                 )

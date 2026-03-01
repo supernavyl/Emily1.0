@@ -9,19 +9,16 @@ from __future__ import annotations
 
 from typing import Any
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
-    QFrame,
     QHBoxLayout,
     QLabel,
     QMenu,
     QPushButton,
-    QVBoxLayout,
     QWidget,
-    QWidgetAction,
 )
 
-from emily_chat.emily.skills import EMILY_SKILLS, EmilySkill
+from emily_chat.emily.skills import EMILY_SKILLS
 from emily_chat.models.registry import (
     EMILY_MODEL_REGISTRY,
     ModelSpec,
@@ -34,26 +31,77 @@ _CTX_WARN_YELLOW = 75
 _CTX_WARN_RED = 90
 
 _MODEL_CATEGORIES: list[tuple[str, list[str]]] = [
-    ("\U0001f9e0 THINKING MODELS", [
-        "o3", "o4-mini", "gemini-3-pro", "gemini-3-flash", "gemini-2-5-pro",
-        "groq-deepseek-r1", "deepseek-r2", "qwen3-72b", "kimi-k2-thinking",
-        "glm-4-7-thinking",
-    ]),
-    ("\u2696\ufe0f BALANCED", [
-        "gpt-5-2", "gpt-5", "gpt-4o", "grok-4-1", "qwen3-235b",
-    ]),
-    ("\u26a1 FAST", [
-        "groq-llama-70b", "mistral-small-3",
-    ]),
-    ("\U0001f4bb CODE SPECIALIST", [
-        "codestral-2", "deepseek-v3-2",
-    ]),
-    ("\U0001f310 MASSIVE CONTEXT", [
-        "llama-4-scout", "llama-4-maverick",
-    ]),
-    ("\U0001f1ea\U0001f1fa EU / PRIVACY", [
-        "mistral-large-3",
-    ]),
+    (
+        "\U0001f9e0 EMILY (LOCAL BRAIN)",
+        [
+            "emily-fast",
+            "emily-think",
+            "emily-nano",
+            "emily-vision",
+        ],
+    ),
+    (
+        "\U0001f9e0 THINKING MODELS",
+        [
+            "o3",
+            "o4-mini",
+            "gemini-3-pro",
+            "gemini-3-flash",
+            "gemini-2-5-pro",
+            "groq-deepseek-r1",
+            "deepseek-r2",
+            "qwen3-72b",
+            "kimi-k2-thinking",
+            "glm-4-7-thinking",
+        ],
+    ),
+    (
+        "\u2696\ufe0f BALANCED",
+        [
+            "gpt-5-2",
+            "gpt-5",
+            "gpt-4o",
+            "grok-4-1",
+            "qwen3-235b",
+        ],
+    ),
+    (
+        "\u26a1 FAST",
+        [
+            "groq-llama-70b",
+            "mistral-small-3",
+        ],
+    ),
+    (
+        "\U0001f4bb CODE SPECIALIST",
+        [
+            "codestral-2",
+            "deepseek-v3-2",
+        ],
+    ),
+    (
+        "\U0001f310 MASSIVE CONTEXT",
+        [
+            "llama-4-scout",
+            "llama-4-maverick",
+        ],
+    ),
+    (
+        "\U0001f1ea\U0001f1fa EU / PRIVACY",
+        [
+            "mistral-large-3",
+        ],
+    ),
+    (
+        "\U0001f193 FREE (CLOUD)",
+        [
+            "or-free-deepseek-r1",
+            "or-free-qwen3-235b",
+            "or-free-llama-70b",
+            "or-free-gpt-oss-120b",
+            "or-free-qwen3-vl-235b",
+        ],
+    ),
 ]
 
 
@@ -74,8 +122,19 @@ def group_models() -> list[tuple[str, list[tuple[str, ModelSpec]]]]:
                 seen.add(k)
         if items:
             result.append((label, items))
-    # LOCAL (Ollama): all registry entries with provider ollama (static + discovered)
-    ollama_models = get_models_for_provider("ollama")
+    # LOCAL (TabbyAPI): ExLlamaV2 abliterated models
+    tabbyapi_models = {
+        k: v for k, v in get_models_for_provider("tabbyapi").items() if k not in seen
+    }
+    if tabbyapi_models:
+        items_tabbyapi = sorted(
+            tabbyapi_models.items(),
+            key=lambda p: (p[1].display, p[0]),
+        )
+        result.append(("\U0001f3e0 LOCAL (TabbyAPI)", items_tabbyapi))
+        seen.update(tabbyapi_models.keys())
+    # LOCAL (Ollama): vision + embedding models
+    ollama_models = {k: v for k, v in get_models_for_provider("ollama").items() if k not in seen}
     if ollama_models:
         items_ollama = sorted(
             ollama_models.items(),
@@ -83,8 +142,10 @@ def group_models() -> list[tuple[str, list[tuple[str, ModelSpec]]]]:
         )
         result.append(("\U0001f3e0 LOCAL (Ollama)", items_ollama))
         seen.update(ollama_models.keys())
-    # LOCAL (LlamaCpp / GGUF): from main config + discovered .gguf files
-    llamacpp_models = get_models_for_provider("llamacpp")
+    # LOCAL (LlamaCpp / GGUF): nano + voice_fast in-process models
+    llamacpp_models = {
+        k: v for k, v in get_models_for_provider("llamacpp").items() if k not in seen
+    }
     if llamacpp_models:
         items_llamacpp = sorted(
             llamacpp_models.items(),
@@ -92,9 +153,7 @@ def group_models() -> list[tuple[str, list[tuple[str, ModelSpec]]]]:
         )
         result.append(("\U0001f3e0 LOCAL (LlamaCpp)", items_llamacpp))
         seen.update(llamacpp_models.keys())
-    leftover = [
-        (k, v) for k, v in EMILY_MODEL_REGISTRY.items() if k not in seen
-    ]
+    leftover = [(k, v) for k, v in EMILY_MODEL_REGISTRY.items() if k not in seen]
     if leftover:
         result.append(("OTHER", leftover))
     return result
@@ -206,7 +265,16 @@ class ConversationTopBar(QWidget):
         stats_layout.setSpacing(12)
 
         self._stat_labels: dict[str, QLabel] = {}
-        for key in ("tokens_in", "tokens_out", "tokens_think", "cost", "context", "time", "first_token"):
+        _stat_keys = (
+            "tokens_in",
+            "tokens_out",
+            "tokens_think",
+            "cost",
+            "context",
+            "time",
+            "first_token",
+        )
+        for key in _stat_keys:
             lbl = QLabel("\u2014")
             lbl.setObjectName("statLabel")
             stats_layout.addWidget(lbl)
@@ -222,10 +290,15 @@ class ConversationTopBar(QWidget):
 
         layout.addWidget(self._stats_bar)
 
-        self._warning_label = QLabel("")
-        self._warning_label.setObjectName("costWarning")
-        self._warning_label.setVisible(False)
-        layout.addWidget(self._warning_label)
+        self._cost_warning_label = QLabel("")
+        self._cost_warning_label.setObjectName("costWarning")
+        self._cost_warning_label.setVisible(False)
+        layout.addWidget(self._cost_warning_label)
+
+        self._context_warning_label = QLabel("")
+        self._context_warning_label.setObjectName("contextWarning")
+        self._context_warning_label.setVisible(False)
+        layout.addWidget(self._context_warning_label)
 
         self._options_btn = QPushButton("\u22ee")
         self._options_btn.setObjectName("actionBtn")
@@ -272,46 +345,59 @@ class ConversationTopBar(QWidget):
                 ``latency_ms``, ``first_token_ms``.
         """
         if "input_tokens" in data:
-            self._stat_labels["tokens_in"].setText(f"in: {format_tokens(data['input_tokens'])}")
+            txt = f"in: {format_tokens(data['input_tokens'])}"
+            self._stat_labels["tokens_in"].setText(txt)
         if "output_tokens" in data:
-            self._stat_labels["tokens_out"].setText(f"out: {format_tokens(data['output_tokens'])}")
+            txt = f"out: {format_tokens(data['output_tokens'])}"
+            self._stat_labels["tokens_out"].setText(txt)
         if "tokens_thinking" in data:
-            self._stat_labels["tokens_think"].setText(f"think: {format_tokens(data['tokens_thinking'])}")
+            txt = f"think: {format_tokens(data['tokens_thinking'])}"
+            self._stat_labels["tokens_think"].setText(txt)
         if "cost_usd" in data:
             cost = data["cost_usd"]
             self._stat_labels["cost"].setText(format_cost(cost))
             level = cost_warning_level(cost)
             if level != "none":
-                self._warning_label.setText(
+                self._cost_warning_label.setText(
                     f"{'Cost > $0.20!' if level == 'red' else 'Cost > $0.05'}"
                 )
-                self._warning_label.setObjectName(
-                    "contextWarning" if level == "red" else "costWarning"
-                )
-                self._warning_label.setVisible(True)
+                self._cost_warning_label.setVisible(True)
             else:
-                self._warning_label.setVisible(False)
+                self._cost_warning_label.setVisible(False)
         if "context_pct" in data:
             pct = data["context_pct"]
             self._stat_labels["context"].setText(f"ctx: {pct:.0f}%")
             level = context_warning_level(pct)
-            if level != "none" and not self._warning_label.isVisible():
-                self._warning_label.setText(
+            if level != "none":
+                self._context_warning_label.setText(
                     f"{'Context > 90%!' if level == 'red' else 'Context > 75%'}"
                 )
-                self._warning_label.setVisible(True)
+                self._context_warning_label.setVisible(True)
+            else:
+                self._context_warning_label.setVisible(False)
         if "latency_ms" in data:
-            self._stat_labels["time"].setText(f"{data['latency_ms'] / 1000:.1f}s")
+            val = data["latency_ms"]
+            if val is not None:
+                self._stat_labels["time"].setText(f"{val / 1000:.1f}s")
         if "first_token_ms" in data:
-            self._stat_labels["first_token"].setText(f"{data['first_token_ms']}ms first")
+            val = data["first_token_ms"]
+            if val is not None:
+                self._stat_labels["first_token"].setText(f"{val}ms first")
 
     def clear_stats(self) -> None:
         """Reset all stats to dashes."""
+        prefixes = {
+            "tokens_in": "in",
+            "tokens_out": "out",
+            "tokens_think": "think",
+            "cost": "$",
+            "context": "ctx",
+        }
         for key, lbl in self._stat_labels.items():
-            prefix = {"tokens_in": "in", "tokens_out": "out", "tokens_think": "think",
-                       "cost": "$", "context": "ctx"}.get(key, "")
+            prefix = prefixes.get(key, "")
             lbl.setText(f"{prefix}: \u2014" if prefix else "\u2014")
-        self._warning_label.setVisible(False)
+        self._cost_warning_label.setVisible(False)
+        self._context_warning_label.setVisible(False)
 
     def _show_model_menu(self) -> None:
         """Display the categorized model selector menu."""
@@ -328,9 +414,7 @@ class ConversationTopBar(QWidget):
             menu.addSection(category)
             for key, spec in items:
                 cost_str = f"${spec.input_usd:.2f}/{spec.output_usd:.2f}"
-                action = menu.addAction(
-                    f"{spec.display}  \u2014  {cost_str}  [{spec.speed}]"
-                )
+                action = menu.addAction(f"{spec.display}  \u2014  {cost_str}  [{spec.speed}]")
                 action.triggered.connect(lambda checked=False, k=key: self._select_model(k))
                 if key == self._active_model_key:
                     action.setEnabled(False)
@@ -358,9 +442,7 @@ class ConversationTopBar(QWidget):
 
         for skill_id, skill in EMILY_SKILLS.items():
             action = menu.addAction(f"{skill.icon} {skill.name}")
-            action.triggered.connect(
-                lambda checked=False, sid=skill_id: self._select_skill(sid)
-            )
+            action.triggered.connect(lambda checked=False, sid=skill_id: self._select_skill(sid))
             if skill_id == self._active_skill_id:
                 action.setEnabled(False)
 
@@ -383,13 +465,11 @@ class ConversationTopBar(QWidget):
         menu.addSeparator()
         menu.addAction("Clear conversation", lambda: self.clear_requested.emit())
         menu.addAction("Fork conversation", lambda: self.fork_requested.emit())
-        menu.addAction("Duplicate conversation")
+        menu.addAction("Duplicate conversation", lambda: self.fork_requested.emit())
         menu.addSeparator()
 
         export_menu = menu.addMenu("Export")
         for fmt in ("Markdown", "PDF", "HTML", "JSON"):
-            export_menu.addAction(
-                fmt, lambda f=fmt: self.export_requested.emit(f.lower())
-            )
+            export_menu.addAction(fmt, lambda f=fmt: self.export_requested.emit(f.lower()))
 
         menu.exec(self._options_btn.mapToGlobal(self._options_btn.rect().bottomLeft()))

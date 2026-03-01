@@ -15,8 +15,6 @@ These are NOT noise and must never be suppressed.
 
 from __future__ import annotations
 
-import asyncio
-import time
 from dataclasses import dataclass
 
 import numpy as np
@@ -63,16 +61,12 @@ class SNRMonitor:
         Returns:
             Estimated SNR in dB.
         """
-        rms = float(np.sqrt(np.mean(audio ** 2) + 1e-10))
+        rms = float(np.sqrt(np.mean(audio**2) + 1e-10))
 
         if not is_speech:
-            self._noise_floor_rms = (
-                (1 - self._alpha) * self._noise_floor_rms + self._alpha * rms
-            )
+            self._noise_floor_rms = (1 - self._alpha) * self._noise_floor_rms + self._alpha * rms
         else:
-            self._speech_rms = (
-                (1 - self._alpha) * self._speech_rms + self._alpha * rms
-            )
+            self._speech_rms = (1 - self._alpha) * self._speech_rms + self._alpha * rms
 
         if self._noise_floor_rms < 1e-8:
             return 60.0
@@ -118,7 +112,7 @@ class SpeechFeatureProtector:
         )
 
         speech_energy = float(np.mean(spectrum[speech_band] ** 2)) if np.any(speech_band) else 0
-        total_energy = float(np.mean(spectrum ** 2)) + 1e-10
+        total_energy = float(np.mean(spectrum**2)) + 1e-10
         speech_ratio = speech_energy / total_energy
 
         mask = np.ones(len(freqs), dtype=np.float32)
@@ -152,14 +146,14 @@ class SpeechFeatureProtector:
         n_bins = len(orig_fft)
         if len(mask) < n_bins:
             extended = np.ones(n_bins, dtype=np.float32)
-            extended[:len(mask)] = mask
+            extended[: len(mask)] = mask
             mask = extended
         elif len(mask) > n_bins:
             mask = mask[:n_bins]
 
         protection = mask * 0.3
         blended_fft = clean_fft * (1 - protection) + orig_fft * protection
-        result = np.fft.irfft(blended_fft, n=n_fft)[:len(original)]
+        result = np.fft.irfft(blended_fft, n=n_fft)[: len(original)]
         return result.astype(np.float32)
 
 
@@ -189,13 +183,15 @@ class NoiseSuppressionEngine:
         """Load noise suppression engines."""
         try:
             import noisereduce  # noqa: F401
+
             self._noisereduce_available = True
             log.info("noisereduce_loaded")
         except ImportError:
             log.warning("noisereduce_not_available", hint="pip install noisereduce")
 
         try:
-            from df import enhance, init_df
+            from df import init_df
+
             self._deepfilter_model, self._deepfilter_state, _ = init_df()
             self._deepfilter_available = True
             log.info("deepfilternet_loaded")
@@ -222,7 +218,7 @@ class NoiseSuppressionEngine:
         audio = chunk.data.copy()
         snr = self.snr_monitor.estimate(audio, is_speech)
 
-        if float(np.mean(audio ** 2)) < 1e-10:
+        if float(np.mean(audio**2)) < 1e-10:
             return chunk
 
         protection_mask = self._protector.create_protection_mask(audio, chunk.sample_rate)
@@ -258,8 +254,8 @@ class NoiseSuppressionEngine:
     def _apply_deepfilter(self, audio: np.ndarray, sr: int) -> np.ndarray:
         """Apply GPU neural noise suppression via DeepFilterNet."""
         try:
-            from df import enhance
             import torch
+            from df import enhance
 
             audio_tensor = torch.from_numpy(audio).unsqueeze(0)
             enhanced = enhance(self._deepfilter_model, self._deepfilter_state, audio_tensor)

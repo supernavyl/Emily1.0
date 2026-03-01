@@ -11,19 +11,16 @@ Verifies:
 from __future__ import annotations
 
 import pytest
-import numpy as np
 
 from conversation.turn_detector import (
+    BACKCHANNEL_THRESHOLD,
+    RESPONSE_THRESHOLD,
+    SIGNAL_WEIGHTS,
     ConversationState,
     TurnAction,
     TurnDetectionEngine,
-    TurnSignal,
-    SIGNAL_WEIGHTS,
-    RESPONSE_THRESHOLD,
-    BACKCHANNEL_THRESHOLD,
 )
 from perception.audio.prosody_analyzer import ProsodyFeatures, SpeakerBaseline
-from perception.audio.emotion_detector import EmotionState, UserEmotion
 
 
 @pytest.fixture
@@ -227,3 +224,27 @@ class TestFusion:
         for name in SIGNAL_WEIGHTS:
             assert name in signal.confidence_breakdown
             assert 0.0 <= signal.confidence_breakdown[name] <= 1.0
+
+
+class TestThresholdOverrides:
+    def test_custom_thresholds_are_applied(self) -> None:
+        state = ConversationState(
+            prosody=ProsodyFeatures(
+                f0_hz=120,
+                f0_trajectory="falling",
+                intensity_trajectory="falling",
+                pause_duration_ms=500,
+                pause_type="breath",
+                final_lengthening_ratio=1.4,
+            ),
+            baseline=SpeakerBaseline(f0_mean=150, f0_std=20),
+            partial_text="I think that is enough for now.",
+            committed_text="I think that is enough for now.",
+            speaking_duration_s=2.0,
+        )
+        default_signal = TurnDetectionEngine().compute(state)
+        strict_signal = TurnDetectionEngine(response_threshold=0.95).compute(state)
+
+        assert default_signal.score == pytest.approx(strict_signal.score)
+        assert default_signal.action in (TurnAction.RESPOND, TurnAction.BACKCHANNEL)
+        assert strict_signal.action in (TurnAction.BACKCHANNEL, TurnAction.LISTEN)

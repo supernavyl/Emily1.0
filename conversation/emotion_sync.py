@@ -14,9 +14,8 @@ Rules:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-
-import numpy as np
+from collections import deque
+from dataclasses import dataclass
 
 from observability.logger import get_logger
 from perception.audio.emotion_detector import EmotionState, UserEmotion
@@ -39,44 +38,94 @@ class ResponseStyleParameters:
 
 _STYLE_RULES: dict[UserEmotion, dict[str, float]] = {
     UserEmotion.NEUTRAL: {
-        "rate_mod": 1.0, "pitch_mod": 1.0, "energy_mod": 1.0,
-        "warmth": 0.7, "pause_freq": 0.5, "sent_len": 12, "vocab": 0.6,
+        "rate_mod": 1.0,
+        "pitch_mod": 1.0,
+        "energy_mod": 1.0,
+        "warmth": 0.7,
+        "pause_freq": 0.5,
+        "sent_len": 12,
+        "vocab": 0.6,
     },
     UserEmotion.HAPPY: {
-        "rate_mod": 1.05, "pitch_mod": 1.15, "energy_mod": 1.1,
-        "warmth": 0.85, "pause_freq": 0.4, "sent_len": 14, "vocab": 0.6,
+        "rate_mod": 1.05,
+        "pitch_mod": 1.15,
+        "energy_mod": 1.1,
+        "warmth": 0.85,
+        "pause_freq": 0.4,
+        "sent_len": 14,
+        "vocab": 0.6,
     },
     UserEmotion.EXCITED: {
-        "rate_mod": 1.1, "pitch_mod": 1.2, "energy_mod": 1.15,
-        "warmth": 0.9, "pause_freq": 0.3, "sent_len": 10, "vocab": 0.5,
+        "rate_mod": 1.1,
+        "pitch_mod": 1.2,
+        "energy_mod": 1.15,
+        "warmth": 0.9,
+        "pause_freq": 0.3,
+        "sent_len": 10,
+        "vocab": 0.5,
     },
     UserEmotion.ANXIOUS: {
-        "rate_mod": 0.9, "pitch_mod": 0.9, "energy_mod": 0.85,
-        "warmth": 0.85, "pause_freq": 0.6, "sent_len": 8, "vocab": 0.4,
+        "rate_mod": 0.9,
+        "pitch_mod": 0.9,
+        "energy_mod": 0.85,
+        "warmth": 0.85,
+        "pause_freq": 0.6,
+        "sent_len": 8,
+        "vocab": 0.4,
     },
     UserEmotion.FRUSTRATED: {
-        "rate_mod": 0.95, "pitch_mod": 0.95, "energy_mod": 0.9,
-        "warmth": 0.8, "pause_freq": 0.5, "sent_len": 8, "vocab": 0.4,
+        "rate_mod": 0.95,
+        "pitch_mod": 0.95,
+        "energy_mod": 0.9,
+        "warmth": 0.8,
+        "pause_freq": 0.5,
+        "sent_len": 8,
+        "vocab": 0.4,
     },
     UserEmotion.SAD: {
-        "rate_mod": 0.85, "pitch_mod": 0.85, "energy_mod": 0.8,
-        "warmth": 0.9, "pause_freq": 0.7, "sent_len": 8, "vocab": 0.4,
+        "rate_mod": 0.85,
+        "pitch_mod": 0.85,
+        "energy_mod": 0.8,
+        "warmth": 0.9,
+        "pause_freq": 0.7,
+        "sent_len": 8,
+        "vocab": 0.4,
     },
     UserEmotion.CONFUSED: {
-        "rate_mod": 0.9, "pitch_mod": 1.0, "energy_mod": 0.95,
-        "warmth": 0.8, "pause_freq": 0.6, "sent_len": 8, "vocab": 0.3,
+        "rate_mod": 0.9,
+        "pitch_mod": 1.0,
+        "energy_mod": 0.95,
+        "warmth": 0.8,
+        "pause_freq": 0.6,
+        "sent_len": 8,
+        "vocab": 0.3,
     },
     UserEmotion.CURIOUS: {
-        "rate_mod": 1.0, "pitch_mod": 1.1, "energy_mod": 1.05,
-        "warmth": 0.8, "pause_freq": 0.5, "sent_len": 12, "vocab": 0.7,
+        "rate_mod": 1.0,
+        "pitch_mod": 1.1,
+        "energy_mod": 1.05,
+        "warmth": 0.8,
+        "pause_freq": 0.5,
+        "sent_len": 12,
+        "vocab": 0.7,
     },
     UserEmotion.BORED: {
-        "rate_mod": 1.05, "pitch_mod": 1.1, "energy_mod": 1.1,
-        "warmth": 0.85, "pause_freq": 0.4, "sent_len": 8, "vocab": 0.5,
+        "rate_mod": 1.05,
+        "pitch_mod": 1.1,
+        "energy_mod": 1.1,
+        "warmth": 0.85,
+        "pause_freq": 0.4,
+        "sent_len": 8,
+        "vocab": 0.5,
     },
     UserEmotion.TIRED: {
-        "rate_mod": 0.85, "pitch_mod": 0.9, "energy_mod": 0.8,
-        "warmth": 0.9, "pause_freq": 0.6, "sent_len": 6, "vocab": 0.3,
+        "rate_mod": 0.85,
+        "pitch_mod": 0.9,
+        "energy_mod": 0.8,
+        "warmth": 0.9,
+        "pause_freq": 0.6,
+        "sent_len": 6,
+        "vocab": 0.3,
     },
 }
 
@@ -93,7 +142,7 @@ class EmotionSynchronizer:
 
     def __init__(self) -> None:
         self._current_style = ResponseStyleParameters()
-        self._emotion_history: list[UserEmotion] = []
+        self._emotion_history: deque[UserEmotion] = deque(maxlen=100)
 
     def compute_response_style(
         self,
@@ -114,7 +163,7 @@ class EmotionSynchronizer:
         confidence = user_emotion.confidence
         rules = _STYLE_RULES.get(emotion, _STYLE_RULES[UserEmotion.NEUTRAL])
 
-        scaled_rules = {}
+        scaled_rules: dict[str, float] = {}
         neutral = _STYLE_RULES[UserEmotion.NEUTRAL]
         for key, val in rules.items():
             neutral_val = neutral[key]
@@ -147,14 +196,17 @@ class EmotionSynchronizer:
     ) -> ResponseStyleParameters:
         """EMA smoothing to prevent jarring style jumps."""
         a = self._SMOOTHING_ALPHA
+        b = 1 - a
         return ResponseStyleParameters(
-            speaking_rate_modifier=(1 - a) * prev.speaking_rate_modifier + a * new.speaking_rate_modifier,
-            pitch_range_modifier=(1 - a) * prev.pitch_range_modifier + a * new.pitch_range_modifier,
-            energy_modifier=(1 - a) * prev.energy_modifier + a * new.energy_modifier,
-            warmth_level=(1 - a) * prev.warmth_level + a * new.warmth_level,
-            pause_frequency=(1 - a) * prev.pause_frequency + a * new.pause_frequency,
-            sentence_length_target=int((1 - a) * prev.sentence_length_target + a * new.sentence_length_target),
-            vocabulary_complexity=(1 - a) * prev.vocabulary_complexity + a * new.vocabulary_complexity,
+            speaking_rate_modifier=b * prev.speaking_rate_modifier + a * new.speaking_rate_modifier,
+            pitch_range_modifier=b * prev.pitch_range_modifier + a * new.pitch_range_modifier,
+            energy_modifier=b * prev.energy_modifier + a * new.energy_modifier,
+            warmth_level=b * prev.warmth_level + a * new.warmth_level,
+            pause_frequency=b * prev.pause_frequency + a * new.pause_frequency,
+            sentence_length_target=int(
+                b * prev.sentence_length_target + a * new.sentence_length_target,
+            ),
+            vocabulary_complexity=b * prev.vocabulary_complexity + a * new.vocabulary_complexity,
         )
 
     def get_llm_style_instructions(self, style: ResponseStyleParameters) -> str:
@@ -167,7 +219,7 @@ class EmotionSynchronizer:
         Returns:
             Instructions to include in the LLM prompt.
         """
-        instructions = []
+        instructions: list[str] = []
 
         if style.warmth_level > 0.8:
             instructions.append("Be warm and empathetic in your response.")
@@ -196,7 +248,8 @@ class EmotionSynchronizer:
         """The most common user emotion in recent history."""
         if not self._emotion_history:
             return "neutral"
-        recent = self._emotion_history[-20:]
         from collections import Counter
+
+        recent = list(self._emotion_history)[-20:]
         most_common = Counter(recent).most_common(1)
         return most_common[0][0].value if most_common else "neutral"

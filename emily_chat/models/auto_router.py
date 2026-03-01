@@ -11,10 +11,13 @@ from __future__ import annotations
 
 import os
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-from emily_chat.emily.skills import EmilySkill
 from emily_chat.models.registry import EMILY_MODEL_REGISTRY, ModelSpec
+
+if TYPE_CHECKING:
+    from emily_chat.emily.skills import EmilySkill
 
 _MATH_PATTERNS = re.compile(
     r"\b(solve|proof|prove|theorem|integral|derivative|equations?|math|"
@@ -129,10 +132,7 @@ def estimate_cost(
     Returns:
         Estimated cost in USD.
     """
-    return (
-        model.input_usd * input_tokens / 1_000_000
-        + model.output_usd * output_tokens / 1_000_000
-    )
+    return model.input_usd * input_tokens / 1_000_000 + model.output_usd * output_tokens / 1_000_000
 
 
 def _has_api_key(provider: str) -> bool:
@@ -155,11 +155,12 @@ def _has_api_key(provider: str) -> bool:
         "mistral": "MISTRAL_API_KEY",
         "openrouter": "OPENROUTER_API_KEY",
         "ollama": "OLLAMA_HOST",
+        "tabbyapi": "TABBYAPI_HOST",
     }
     key = env_map.get(provider)
     if key is None:
         return False
-    if provider == "ollama":
+    if provider in ("ollama", "tabbyapi", "llamacpp"):
         return True
     return bool(os.environ.get(key))
 
@@ -198,10 +199,14 @@ class EmilyAutoRouter:
             The selected :class:`ModelSpec`.
         """
         if request.context_tokens > 500_000:
-            result = first_available([
-                "gemini-3-pro", "gemini-3-flash", "llama-4-scout",
-                "gemini-2-5-pro",
-            ])
+            result = first_available(
+                [
+                    "gemini-3-pro",
+                    "gemini-3-flash",
+                    "llama-4-scout",
+                    "gemini-2-5-pro",
+                ]
+            )
             if result:
                 return result
 
@@ -211,95 +216,160 @@ class EmilyAutoRouter:
                 return result
 
         if request.has_image:
-            result = first_available([
-                "gemini-3-pro", "gpt-5", "gpt-4o", "grok-4-1",
-                "llama-4-maverick",
-            ])
+            result = first_available(
+                [
+                    "gemini-3-pro",
+                    "gpt-5",
+                    "gpt-4o",
+                    "grok-4-1",
+                    "llama-4-maverick",
+                    "or-free-qwen3-vl-235b",
+                ]
+            )
             if result:
                 return result
 
         if request.thinking_enabled and request.is_math_or_logic:
-            result = first_available([
-                "o3", "deepseek-r2", "gemini-3-pro", "groq-deepseek-r1",
-                "o4-mini",
-            ])
+            result = first_available(
+                [
+                    "o3",
+                    "deepseek-r2",
+                    "gemini-3-pro",
+                    "groq-deepseek-r1",
+                    "o4-mini",
+                    "or-free-deepseek-r1",
+                ]
+            )
             if result:
                 return result
 
         if request.is_math_or_logic:
-            result = first_available([
-                "o4-mini", "o3", "deepseek-r2", "gemini-3-flash",
-            ])
+            result = first_available(
+                [
+                    "o4-mini",
+                    "o3",
+                    "deepseek-r2",
+                    "gemini-3-flash",
+                    "or-free-deepseek-r1",
+                ]
+            )
             if result:
                 return result
 
         if request.is_code_request:
-            result = first_available([
-                "codestral-2", "deepseek-v3-2", "o4-mini",
-                "gemini-3-flash",
-            ])
+            result = first_available(
+                [
+                    "codestral-2",
+                    "deepseek-v3-2",
+                    "o4-mini",
+                    "gemini-3-flash",
+                    "or-free-qwen3-235b",
+                ]
+            )
             if result:
                 return result
 
         if request.is_creative:
-            result = first_available([
-                "grok-4-1", "gpt-5-2", "gpt-5", "gemini-3-pro",
-            ])
+            result = first_available(
+                [
+                    "grok-4-1",
+                    "gpt-5-2",
+                    "gpt-5",
+                    "gemini-3-pro",
+                ]
+            )
             if result:
                 return result
 
         if request.is_non_english:
-            result = first_available([
-                "qwen3-235b", "qwen3-72b", "mistral-large-3",
-                "gemini-3-flash",
-            ])
+            result = first_available(
+                [
+                    "qwen3-235b",
+                    "qwen3-72b",
+                    "mistral-large-3",
+                    "gemini-3-flash",
+                ]
+            )
             if result:
                 return result
 
         if request.require_eu_hosting:
-            result = first_available([
-                "mistral-large-3", "mistral-small-3",
-            ])
+            result = first_available(
+                [
+                    "mistral-large-3",
+                    "mistral-small-3",
+                ]
+            )
             if result:
                 return result
 
         if request.estimated_tool_calls > 5:
-            result = first_available([
-                "kimi-k2-thinking", "glm-4-7-thinking", "o4-mini",
-            ])
+            result = first_available(
+                [
+                    "kimi-k2-thinking",
+                    "glm-4-7-thinking",
+                    "o4-mini",
+                ]
+            )
             if result:
                 return result
 
         if request.priority == "speed":
-            result = first_available([
-                "groq-llama-70b", "gemini-3-flash", "mistral-small-3",
-            ])
+            result = first_available(
+                [
+                    "groq-llama-70b",
+                    "gemini-3-flash",
+                    "mistral-small-3",
+                ]
+            )
             if result:
                 return result
 
         if request.priority == "cost":
-            result = first_available([
-                "gemini-3-flash", "mistral-small-3", "groq-llama-70b",
-                "deepseek-v3-2",
-            ])
+            result = first_available(
+                [
+                    "or-free-llama-70b",
+                    "or-free-qwen3-235b",
+                    "or-free-deepseek-r1",
+                    "gemini-3-flash",
+                    "mistral-small-3",
+                    "groq-llama-70b",
+                    "deepseek-v3-2",
+                ]
+            )
             if result:
                 return result
 
         if request.priority == "quality":
-            result = first_available([
-                "gpt-5-2", "gemini-3-pro", "gpt-5", "o3",
-            ])
+            result = first_available(
+                [
+                    "gpt-5-2",
+                    "gemini-3-pro",
+                    "gpt-5",
+                    "o3",
+                ]
+            )
             if result:
                 return result
 
-        result = first_available([
-            "gpt-5", "gemini-3-flash", "gpt-4o", "deepseek-v3-2",
-            "groq-llama-70b", "ollama-local",
-        ])
+        result = first_available(
+            [
+                "gpt-5",
+                "gemini-3-flash",
+                "gpt-4o",
+                "deepseek-v3-2",
+                "groq-llama-70b",
+                "or-free-llama-70b",
+                "emily-ollama",
+                "emily-fast",
+            ]
+        )
         if result:
             return result
 
-        fallback = EMILY_MODEL_REGISTRY.get("ollama-local")
+        fallback = EMILY_MODEL_REGISTRY.get("emily-ollama") or EMILY_MODEL_REGISTRY.get(
+            "emily-fast"
+        )
         if fallback is not None:
             return fallback
 

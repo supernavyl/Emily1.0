@@ -8,13 +8,16 @@ Normalises Anthropic's streaming events (``content_block_start``,
 from __future__ import annotations
 
 import os
-from typing import AsyncIterator
+from typing import TYPE_CHECKING
 
 from emily_chat.models.base import BaseProvider, GenerationSettings, StreamChunk
 
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
 
 class AnthropicProvider(BaseProvider):
-    """Streams Claude 4.5 responses with extended-thinking extraction.
+    """Streams Claude 4.6 responses with extended-thinking extraction.
 
     The provider lazily creates the async client on first use so the
     import doesn't fail when the ``anthropic`` package is missing.
@@ -35,9 +38,7 @@ class AnthropicProvider(BaseProvider):
             return self._client
 
         if not self._api_key:
-            raise ValueError(
-                "No Anthropic API key. Set ANTHROPIC_API_KEY or pass api_key=."
-            )
+            raise ValueError("No Anthropic API key. Set ANTHROPIC_API_KEY or pass api_key=.")
 
         import anthropic  # type: ignore[import-untyped]
 
@@ -46,10 +47,12 @@ class AnthropicProvider(BaseProvider):
 
     async def stream(
         self,
-        model_id: str,
         messages: list[dict[str, str]],
         system_prompt: str,
         settings: GenerationSettings,
+        model_spec: object | None = None,
+        *,
+        model_id: str | None = None,
     ) -> AsyncIterator[StreamChunk]:
         """Stream a Claude completion, yielding normalised chunks.
 
@@ -57,19 +60,26 @@ class AnthropicProvider(BaseProvider):
         and the model supports it.
 
         Args:
-            model_id: Anthropic model identifier (e.g.
-                ``"claude-sonnet-4-5-20260101"``).
             messages: Conversation history.
             system_prompt: The full Emily system prompt.
             settings: Generation parameters.
+            model_spec: ModelSpec with model_id (preferred).
+            model_id: Explicit model ID override.
 
         Yields:
             :class:`StreamChunk` instances.
         """
+        # Resolve model ID from model_spec or explicit kwarg
+        resolved_model_id = model_id
+        if resolved_model_id is None and model_spec is not None:
+            resolved_model_id = getattr(model_spec, "model_id", None)
+        if resolved_model_id is None:
+            resolved_model_id = "claude-sonnet-4-6"
+
         client = self._get_client()
 
         kwargs: dict = {
-            "model": model_id,
+            "model": resolved_model_id,
             "max_tokens": settings.max_tokens,
             "system": system_prompt,
             "messages": messages,
@@ -92,7 +102,9 @@ class AnthropicProvider(BaseProvider):
         input_tokens = 0
         output_tokens = 0
 
-        async with client.messages.stream(**{k: v for k, v in kwargs.items() if k != "stream"}) as stream:  # type: ignore[union-attr]
+        async with client.messages.stream(
+            **{k: v for k, v in kwargs.items() if k != "stream"}
+        ) as stream:  # type: ignore[union-attr]
             async for event in stream:
                 chunk = _map_event(event)
                 if chunk is not None:

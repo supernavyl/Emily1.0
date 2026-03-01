@@ -15,6 +15,7 @@ POST /audio/voice/test-tts    — test TTS with sample text
 
 from __future__ import annotations
 
+import contextlib
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -75,15 +76,15 @@ _audio_state: dict[str, Any] = {
     "audio_pipeline": None,
     "tts_manager": None,
     "voice_engine": None,
-    "tts_voice": "en-US-AvaMultilingualNeural",
-    "tts_provider": "edge_tts",
+    "tts_voice": "af_heart",
+    "tts_provider": "kokoro",
 }
 
 
 def set_audio_state(
     *,
-    input_device: str | None = None,
-    output_device: str | None = None,
+    input_device: str | int | None = None,
+    output_device: str | int | None = None,
     audio_pipeline: Any = None,
     tts_manager: Any = None,
     voice_engine: Any = None,
@@ -97,6 +98,7 @@ def set_audio_state(
         _audio_state["audio_pipeline"] = audio_pipeline
     if tts_manager is not None:
         _audio_state["tts_manager"] = tts_manager
+    # voice_engine kept for backward compat but not required
     if voice_engine is not None:
         _audio_state["voice_engine"] = voice_engine
 
@@ -105,8 +107,8 @@ def _query_devices() -> tuple[list[DeviceInfo], list[DeviceInfo], int | None, in
     """Query sounddevice for available audio devices."""
     try:
         import sounddevice as sd  # type: ignore[import-untyped]
-    except ImportError:
-        raise HTTPException(503, "sounddevice not installed")
+    except ImportError as err:
+        raise HTTPException(503, "sounddevice not installed") from err
 
     devices = sd.query_devices()
 
@@ -213,10 +215,8 @@ async def set_output_device(req: DeviceSetRequest) -> dict[str, Any]:
 
     device_val = req.device
     if device_val is not None:
-        try:
+        with contextlib.suppress(TypeError, ValueError):
             device_val = int(device_val)
-        except (TypeError, ValueError):
-            pass
 
     _audio_state["output_device"] = str(device_val) if device_val is not None else None
 
@@ -284,22 +284,10 @@ class VoiceSettingsRequest(BaseModel):
 async def list_voices() -> dict[str, Any]:
     """List available TTS voices grouped by provider."""
     voices: dict[str, list[dict[str, str]]] = {
-        "csm": [], "edge_tts": [], "xtts_v2": [], "kokoro": [],
+        "csm": [],
+        "xtts_v2": [],
+        "kokoro": [],
     }
-
-    try:
-        import edge_tts  # type: ignore[import-untyped]
-        all_voices = await edge_tts.list_voices()
-        for v in all_voices:
-            if v["Locale"].startswith("en-"):
-                voices["edge_tts"].append({
-                    "id": v["ShortName"],
-                    "name": v["ShortName"].replace("Neural", "").replace("Multilingual", "ML"),
-                    "gender": v["Gender"],
-                    "locale": v["Locale"],
-                })
-    except Exception:
-        pass
 
     tts_mgr = _audio_state.get("tts_manager")
     if tts_mgr:
@@ -307,20 +295,33 @@ async def list_voices() -> dict[str, Any]:
             if not eng._available:
                 continue
             if eng.name == "csm":
-                voices["csm"].append({
-                    "id": "csm_default", "name": "CSM (Sesame)",
-                    "gender": "Any", "locale": "en",
-                })
+                voices["csm"].append(
+                    {
+                        "id": "csm_default",
+                        "name": "CSM (Sesame)",
+                        "gender": "Any",
+                        "locale": "en",
+                    }
+                )
             elif eng.name == "xtts_v2":
-                voices["xtts_v2"].append({
-                    "id": "xtts_v2_default", "name": "XTTS v2 (clone)",
-                    "gender": "Any", "locale": "en",
-                })
+                voices["xtts_v2"].append(
+                    {
+                        "id": "xtts_v2_default",
+                        "name": "XTTS v2 (clone)",
+                        "gender": "Any",
+                        "locale": "en",
+                    }
+                )
             elif eng.name == "kokoro":
-                voices["kokoro"].append({
-                    "id": "af_sky", "name": "Sky",
-                    "gender": "Female", "locale": "en-US",
-                })
+                kokoro_voice = getattr(eng, "_voice", "af_heart")
+                voices["kokoro"].append(
+                    {
+                        "id": kokoro_voice,
+                        "name": kokoro_voice,
+                        "gender": "Female",
+                        "locale": "en-US",
+                    }
+                )
 
     return {
         "voices": voices,
@@ -332,12 +333,12 @@ async def list_voices() -> dict[str, Any]:
 @router.get("/voice/settings", response_model=VoiceSettingsResponse)
 async def get_voice_settings() -> VoiceSettingsResponse:
     """Get current voice and provider settings."""
-    available = ["edge_tts"]
+    available: list[str] = []
     tts_mgr = _audio_state.get("tts_manager")
     if tts_mgr:
         for eng in getattr(tts_mgr, "_engine_list", []):
             if eng._available and eng.name not in available:
-                available.insert(0, eng.name)
+                available.append(eng.name)
 
     return VoiceSettingsResponse(
         voice=_audio_state["tts_voice"],
@@ -355,10 +356,11 @@ async def set_voice_settings(req: VoiceSettingsRequest) -> dict[str, Any]:
 
     if req.voice is not None:
         _audio_state["tts_voice"] = req.voice
-        tts_mgr = _audio_state.get("tts_manager")
-        if tts_mgr and hasattr(tts_mgr, "_edge"):
-            tts_mgr._edge._VOICE = req.voice
         log.info("tts_voice_changed", voice=req.voice)
+        # Propagate to live TTS engine
+        tts_mgr = _audio_state.get("tts_manager")
+        if tts_mgr and hasattr(tts_mgr, "set_voice"):
+            tts_mgr.set_voice(req.voice)
 
     return {
         "voice": _audio_state["tts_voice"],
@@ -384,12 +386,13 @@ async def test_tts(req: TTSTestRequest) -> dict[str, str]:
     engine = req.engine or _audio_state.get("tts_provider")
 
     try:
+        from config import get_settings
         from voice.output_stream import AudioOutputStream
 
-        output = AudioOutputStream()
+        output = AudioOutputStream(output_device=get_settings().audio.output_device)
         chunks = tts_mgr.speak(text=req.text, force_engine=engine)
         await output.play_stream(chunks)
         return {"status": "ok", "text": req.text}
     except Exception as exc:
         log.error("tts_test_failed", error=str(exc))
-        raise HTTPException(500, f"TTS test failed: {exc}")
+        raise HTTPException(500, f"TTS test failed: {exc}") from exc

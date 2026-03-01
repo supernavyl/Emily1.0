@@ -5,12 +5,10 @@ Implements a multi-tier TTS system driven by ``config.yaml``:
   - CSM    — Sesame Conversational Speech Model, highest conversational quality
   - Kokoro  — ultra-fast (<50ms), high quality preset voices
   - XTTS v2 — expressive, supports voice cloning, ~200ms first-audio
-  - Edge TTS — cloud-based, zero local GPU (MP3 decoded to PCM automatically)
 
 Engine priority is determined by ``tts.primary`` and ``tts.fallback`` in
-config, with Edge TTS as the last-resort fallback.  All engines yield
-**raw int16 PCM at 24 kHz** so downstream code never needs to care about
-format differences.
+config.  All engines yield **raw int16 PCM at 24 kHz** so downstream code
+never needs to care about format differences.
 
 Architecture:
     text → ProsodyController → per-sentence TTSEngine.stream() → PCM bytes → speaker
@@ -20,42 +18,25 @@ from __future__ import annotations
 
 import asyncio
 import io
-import subprocess
 import sys
 import time
 from abc import ABC, abstractmethod
-from typing import AsyncIterator
+from typing import TYPE_CHECKING
 
 import numpy as np
 
-from config import TTSConfig
 from observability.logger import get_logger
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
+    from config import TTSConfig
 from observability.metrics import TTS_FIRST_AUDIO_LATENCY
+from voice.breath_injector import BreathInjector
+from voice.expressive_engine import AudioSegment, ExpressiveEngine, TextSegment
 from voice.prosody import ProsodyController, ProsodyParams
 
 log = get_logger(__name__)
-
-
-def _decode_mp3_to_pcm(mp3_data: bytes) -> bytes:
-    """Decode MP3 bytes to raw int16 PCM at 24 kHz mono via ffmpeg.
-
-    Returns:
-        Raw int16 PCM bytes.
-    """
-    proc = subprocess.run(
-        [
-            "ffmpeg", "-hide_banner", "-loglevel", "error",
-            "-i", "pipe:0",
-            "-f", "s16le", "-acodec", "pcm_s16le",
-            "-ac", "1", "-ar", "24000",
-            "pipe:1",
-        ],
-        input=mp3_data,
-        capture_output=True,
-    )
-    if proc.returncode != 0:
-        raise RuntimeError(f"ffmpeg MP3→PCM failed: {proc.stderr.decode()[:200]}")
-    return proc.stdout
 
 
 def crossfade(
@@ -88,9 +69,7 @@ def crossfade(
 
     result = np.empty(len(prev) + len(curr) - overlap, dtype=np.float32)
     result[: len(prev) - overlap] = prev[:-overlap]
-    result[len(prev) - overlap : len(prev)] = (
-        prev[-overlap:] * fade_out + curr[:overlap] * fade_in
-    )
+    result[len(prev) - overlap : len(prev)] = prev[-overlap:] * fade_out + curr[:overlap] * fade_in
     result[len(prev) :] = curr[overlap:]
     return result
 
@@ -149,6 +128,7 @@ class XTTSv2Engine(TTSEngine):
         """Load XTTS v2 model into GPU memory."""
         try:
             from TTS.api import TTS  # type: ignore[import-untyped]
+
             self._tts = await asyncio.to_thread(
                 TTS,
                 model_name=self._config.xtts.model_name,
@@ -219,16 +199,14 @@ class KokoroEngine(TTSEngine):
         """
         try:
             from kokoro import KPipeline  # type: ignore[import-untyped]
-            self._pipeline = await asyncio.to_thread(
-                KPipeline, lang_code="a"
-            )
+
+            self._pipeline = await asyncio.to_thread(KPipeline, lang_code="a")
             self._available = True
             log.info("kokoro_loaded", voice=self._config.kokoro.voice)
         except ImportError:
             log.warning("kokoro_not_installed")
         except Exception as exc:
-            log.warning("kokoro_default_g2p_failed_trying_espeak",
-                        error=str(exc)[:120])
+            log.warning("kokoro_default_g2p_failed_trying_espeak", error=str(exc)[:120])
             await self._try_espeak_pipeline()
 
     async def _try_espeak_pipeline(self) -> None:
@@ -239,7 +217,6 @@ class KokoroEngine(TTSEngine):
         ``importlib`` and constructing a self-contained pipeline object.
         """
         try:
-            import importlib.util
             import types
 
             import torch
@@ -247,12 +224,19 @@ class KokoroEngine(TTSEngine):
             from misaki.espeak import EspeakG2P  # type: ignore[import-untyped]
 
             def _build() -> object:
-                kokoro_pkg = "/".join(__import__(
-                    "kokoro.model", fromlist=[""]
-                ).__spec__.origin.split("/")[:-1]) if "kokoro" in sys.modules else None
+                import importlib.util
+
+                kokoro_pkg = (
+                    "/".join(
+                        __import__("kokoro.model", fromlist=[""]).__spec__.origin.split("/")[:-1]
+                    )
+                    if "kokoro" in sys.modules
+                    else None
+                )
 
                 if kokoro_pkg is None:
                     import importlib.metadata
+
                     dist = importlib.metadata.distribution("kokoro")
                     kokoro_pkg = str(dist._path.parent / "kokoro")  # type: ignore[union-attr]
 
@@ -269,11 +253,11 @@ class KokoroEngine(TTSEngine):
                 sys.modules["kokoro.model"] = mod
                 spec.loader.exec_module(mod)
 
-                KModel = mod.KModel
+                kmodel_cls = mod.KModel
                 device = "cuda" if torch.cuda.is_available() else "cpu"
-                model = KModel().to(device).eval()
+                model = kmodel_cls().to(device).eval()
                 g2p = EspeakG2P(language="en-us")
-                repo_id = KModel.REPO_ID
+                repo_id = kmodel_cls.REPO_ID
 
                 class _EspeakPipeline:
                     """Minimal Kokoro pipeline using espeak G2P only."""
@@ -289,9 +273,7 @@ class KokoroEngine(TTSEngine):
                                 repo_id=repo_id,
                                 filename=f"voices/{voice}.pt",
                             )
-                            self.voices[voice] = torch.load(
-                                path, weights_only=True
-                            )
+                            self.voices[voice] = torch.load(path, weights_only=True)
                         return self.voices[voice]
 
                     def __call__(
@@ -303,10 +285,10 @@ class KokoroEngine(TTSEngine):
                     ):
                         """Yield (graphemes, phonemes, audio) tuples."""
                         import re
+
                         pack = self._load_voice(voice).to(self.model.device)
                         segments = (
-                            re.split(split_pattern, text.strip())
-                            if split_pattern else [text]
+                            re.split(split_pattern, text.strip()) if split_pattern else [text]
                         )
                         for segment in segments:
                             ps = self.g2p(segment)
@@ -314,9 +296,7 @@ class KokoroEngine(TTSEngine):
                                 continue
                             if len(ps) > 510:
                                 ps = ps[:510]
-                            out = self.model(
-                                ps, pack[len(ps) - 1], speed, return_output=True
-                            )
+                            out = self.model(ps, pack[len(ps) - 1], speed, return_output=True)
                             yield segment, ps, out.audio
 
                 return _EspeakPipeline()
@@ -330,6 +310,11 @@ class KokoroEngine(TTSEngine):
                 error=str(exc)[:120],
                 hint="Install espeak-ng: sudo pacman -S espeak-ng",
             )
+
+    def set_voice(self, voice: str) -> None:
+        """Switch the active Kokoro voice at runtime."""
+        self._config.kokoro.voice = voice
+        log.info("kokoro_voice_changed", voice=voice)
 
     async def stream(self, text: str, prosody: ProsodyParams) -> AsyncIterator[bytes]:
         """
@@ -370,66 +355,10 @@ class KokoroEngine(TTSEngine):
                 log.info("kokoro_first_chunk", latency_ms=f"{latency_ms:.0f}")
                 first = False
 
-            audio_int16 = (np.clip(audio, -1.0, 1.0) * 32767).astype(np.int16)
+            audio_np = np.asarray(audio, dtype=np.float32)
+            audio_int16 = (np.clip(audio_np, -1.0, 1.0) * 32767).astype(np.int16)
             yield audio_int16.tobytes()
             await asyncio.sleep(0)
-
-
-class EdgeTTSEngine(TTSEngine):
-    """
-    Microsoft Edge TTS engine — high quality, zero local GPU, works via API.
-
-    Uses the edge-tts library to stream audio from Microsoft's neural TTS.
-    """
-
-    _VOICE = "en-US-AvaMultilingualNeural"
-
-    def __init__(self, config: TTSConfig) -> None:
-        self._config = config
-        self._available = False
-
-    @property
-    def name(self) -> str:
-        return "edge_tts"
-
-    async def load(self) -> None:
-        """Verify edge-tts is importable."""
-        try:
-            import edge_tts  # type: ignore[import-untyped]  # noqa: F401
-            self._available = True
-            log.info("edge_tts_loaded", voice=self._VOICE)
-        except ImportError:
-            log.warning("edge_tts_not_installed")
-        except Exception as exc:
-            log.error("edge_tts_load_failed", error=str(exc))
-
-    async def stream(self, text: str, prosody: ProsodyParams) -> AsyncIterator[bytes]:
-        """Stream audio from Microsoft Edge TTS, decoded to int16 PCM."""
-        if not self._available:
-            raise RuntimeError("edge-tts not available")
-
-        import edge_tts  # type: ignore[import-untyped]
-
-        t0 = time.monotonic()
-        rate_pct = int((prosody.speed - 1.0) * 100)
-        rate_str = f"{rate_pct:+d}%"
-
-        communicate = edge_tts.Communicate(text, self._VOICE, rate=rate_str)
-
-        mp3_buf = bytearray()
-        first = True
-        async for chunk in communicate.stream():
-            if chunk["type"] == "audio":
-                if first:
-                    latency_ms = (time.monotonic() - t0) * 1000.0
-                    TTS_FIRST_AUDIO_LATENCY.labels(engine="edge_tts").observe(latency_ms / 1000.0)
-                    log.info("edge_tts_first_chunk", latency_ms=f"{latency_ms:.0f}")
-                    first = False
-                mp3_buf.extend(chunk["data"])
-
-        if mp3_buf:
-            pcm = await asyncio.to_thread(_decode_mp3_to_pcm, bytes(mp3_buf))
-            yield pcm
 
 
 class CSMEngine(TTSEngine):
@@ -469,7 +398,15 @@ class CSMEngine(TTSEngine):
                     csm_cfg.model_id,
                     torch_dtype=dtype,
                     device_map="cuda",
+                    low_cpu_mem_usage=True,
                 )
+                # Compile for faster inference on CUDA (first call is slow, rest are fast)
+                if hasattr(torch, "compile"):
+                    try:
+                        model = torch.compile(model, mode="reduce-overhead")
+                        log.info("csm_torch_compiled")
+                    except Exception:
+                        pass  # torch.compile not supported on all setups
                 return model, processor
 
             self._model, self._processor = await asyncio.to_thread(_load)
@@ -505,7 +442,7 @@ class CSMEngine(TTSEngine):
                 prompt, add_special_tokens=True
             ).to(self._model.device)  # type: ignore[union-attr]
 
-            with torch.no_grad():
+            with torch.inference_mode():
                 audio_tensor = self._model.generate(  # type: ignore[union-attr]
                     **inputs,
                     output_audio=True,
@@ -531,13 +468,12 @@ class CSMEngine(TTSEngine):
 
             if first:
                 latency_ms = (time.monotonic() - t0) * 1000.0
-                TTS_FIRST_AUDIO_LATENCY.labels(engine="csm").observe(
-                    latency_ms / 1000.0
-                )
+                TTS_FIRST_AUDIO_LATENCY.labels(engine="csm").observe(latency_ms / 1000.0)
                 log.info("csm_first_chunk", latency_ms=f"{latency_ms:.0f}")
                 first = False
 
-            audio_int16 = (np.clip(audio, -1.0, 1.0) * 32767).astype(np.int16)
+            audio_np = np.asarray(audio, dtype=np.float32)
+            audio_int16 = (np.clip(audio_np, -1.0, 1.0) * 32767).astype(np.int16)
             yield audio_int16.tobytes()
             await asyncio.sleep(0)
 
@@ -546,7 +482,6 @@ _ENGINE_CLASSES: dict[str, type[TTSEngine]] = {
     "csm": CSMEngine,
     "xtts_v2": XTTSv2Engine,
     "kokoro": KokoroEngine,
-    "edge_tts": EdgeTTSEngine,
 }
 
 
@@ -554,8 +489,10 @@ class TTSManager:
     """TTS manager with config-driven engine priority and per-sentence prosody.
 
     Engine order is built from ``tts.primary`` and ``tts.fallback`` in
-    config, with Edge TTS always present as the last-resort fallback.
+    config, plus any remaining registered engines as extra fallbacks.
     All engines yield raw int16 PCM at 24 kHz.
+
+    Integrates breath injection between sentences for natural speech rhythm.
     """
 
     def __init__(self, config: TTSConfig) -> None:
@@ -565,10 +502,12 @@ class TTSManager:
         """
         self._config = config
         self._prosody = ProsodyController()
+        self._breather: BreathInjector | None = None
+        self._expressive = ExpressiveEngine(voice_pitch_hz=210.0)
 
         seen: set[str] = set()
         self._engine_list: list[TTSEngine] = []
-        for name in (config.primary, config.fallback, "edge_tts"):
+        for name in (config.primary, config.fallback):
             if name in seen:
                 continue
             seen.add(name)
@@ -578,21 +517,24 @@ class TTSManager:
                 continue
             self._engine_list.append(cls(config))
 
-        for name, cls in _ENGINE_CLASSES.items():
-            if name not in seen:
-                self._engine_list.append(cls(config))
+        # Only load configured primary + fallback — skip unused engines
+        # (avoids loading CSM which requires gated HF access)
 
     async def load(self) -> None:
-        """Load all TTS engines concurrently."""
+        """Load all TTS engines and the breath injector concurrently."""
+        self._breather = BreathInjector()
         await asyncio.gather(
             *(eng.load() for eng in self._engine_list),
+            self._breather.load(),
             return_exceptions=True,
         )
         log.info(
             "tts_manager_ready",
             primary_available=self._engine_list[0]._available if self._engine_list else False,
-            fallback_available=self._engine_list[1]._available if len(self._engine_list) > 1 else False,
-            edge_available=any(e._available for e in self._engine_list if e.name == "edge_tts"),
+            fallback_available=(
+                self._engine_list[1]._available if len(self._engine_list) > 1 else False
+            ),
+            breath_injector="loaded",
         )
 
     @property
@@ -632,7 +574,21 @@ class TTSManager:
         if not sentences:
             sentences = [text]
 
-        for sentence in sentences:
+        _EMOTIONAL_WORDS = {
+            "love",
+            "hate",
+            "miss",
+            "sorry",
+            "afraid",
+            "worried",
+            "excited",
+            "amazing",
+            "terrible",
+            "beautiful",
+            "hurt",
+        }
+
+        for idx, sentence in enumerate(sentences):
             prosody = self._prosody.compute(sentence, emotional_state, whisper_mode)
             log.info(
                 "tts_speaking",
@@ -643,25 +599,89 @@ class TTSManager:
                 energy=prosody.energy,
             )
 
+            # --- Breath injection before sentence ---
+            is_emotional = bool(set(sentence.lower().split()) & _EMOTIONAL_WORDS)
+            if self._breather:
+                breath_evt = self._breather.should_breathe(
+                    sentence,
+                    position="before",
+                    is_emotional=is_emotional,
+                    sentence_index=idx,
+                )
+                if breath_evt:
+                    breath_pcm = self._breather.inject(
+                        breath_evt,
+                        np.array([], dtype=np.float32),
+                    )
+                    breath_int16 = (np.clip(breath_pcm, -1.0, 1.0) * 32767).astype(np.int16)
+                    yield breath_int16.tobytes()
+
             if prosody.pause_before_ms > 0:
                 silence_samples = int(24000 * prosody.pause_before_ms / 1000)
                 yield np.zeros(silence_samples, dtype=np.int16).tobytes()
 
-            try:
-                async for chunk in engine.stream(sentence, prosody):
-                    yield chunk
-            except Exception as exc:
-                log.error("tts_engine_failed", engine=engine.name, error=str(exc)[:200])
-                for fallback in self._engines:
-                    if fallback is engine or not fallback._available:
-                        continue
-                    log.info("tts_falling_back", to=fallback.name)
-                    try:
-                        async for chunk in fallback.stream(sentence, prosody):
+            # --- Expressive processing: split sentence into text + audio segments ---
+            segments = self._expressive.process(sentence)
+            has_expressives = any(isinstance(s, AudioSegment) for s in segments)
+
+            if has_expressives:
+                for seg in segments:
+                    if isinstance(seg, AudioSegment) and len(seg.audio) > 0:
+                        # Yield pre-rendered expressive audio directly (float32 → int16)
+                        expr_int16 = (np.clip(seg.audio, -1.0, 1.0) * 32767).astype(np.int16)
+                        yield expr_int16.tobytes()
+                        log.info("expressive_played", label=seg.label, samples=len(seg.audio))
+                    elif isinstance(seg, TextSegment) and seg.text.strip():
+                        # Synthesize remaining text through the TTS engine
+                        async for chunk in self._synth_with_fallback(engine, seg.text, prosody):
                             yield chunk
-                        break
-                    except Exception:
-                        continue
+            else:
+                # No expressives — pass entire sentence to TTS as before
+                async for chunk in self._synth_with_fallback(engine, sentence, prosody):
+                    yield chunk
+
+            # --- Breath injection after sentence ---
+            if self._breather:
+                breath_evt = self._breather.should_breathe(
+                    sentence,
+                    position="after",
+                    is_emotional=is_emotional,
+                    sentence_index=idx,
+                )
+                if breath_evt:
+                    breath_pcm = self._breather.inject(
+                        breath_evt,
+                        np.array([], dtype=np.float32),
+                    )
+                    breath_int16 = (np.clip(breath_pcm, -1.0, 1.0) * 32767).astype(np.int16)
+                    yield breath_int16.tobytes()
+
+    def set_voice(self, voice: str) -> None:
+        """Switch the active voice on all engines that support it."""
+        for eng in self._engine_list:
+            if hasattr(eng, "set_voice"):
+                eng.set_voice(voice)
+        log.info("tts_manager_voice_changed", voice=voice)
+
+    async def _synth_with_fallback(
+        self, engine: TTSEngine, text: str, prosody: ProsodyParams
+    ) -> AsyncIterator[bytes]:
+        """Synthesize text with the given engine, falling back on error."""
+        try:
+            async for chunk in engine.stream(text, prosody):
+                yield chunk
+        except Exception as exc:
+            log.error("tts_engine_failed", engine=engine.name, error=str(exc)[:200])
+            for fallback in self._engines:
+                if fallback is engine or not fallback._available:
+                    continue
+                log.info("tts_falling_back", to=fallback.name)
+                try:
+                    async for chunk in fallback.stream(text, prosody):
+                        yield chunk
+                    break
+                except Exception:
+                    continue
 
     def _select_engine(self, force: str | None) -> TTSEngine:
         """Select the appropriate TTS engine."""
@@ -673,6 +693,5 @@ class TTSManager:
             if eng._available:
                 return eng
         raise RuntimeError(
-            "No TTS engine available. Install one of: "
-            "transformers (csm), TTS (coqui), kokoro, or edge-tts."
+            "No TTS engine available. Install one of: transformers (csm), TTS (coqui), or kokoro."
         )

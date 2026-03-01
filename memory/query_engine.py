@@ -24,12 +24,15 @@ import asyncio
 import json
 import re
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from llm.client import ChatMessage, OllamaClient
+from llm.client import ChatMessage
 from llm.prompt_builder import PromptBuilder
-from memory.knowledge_store import KnowledgeStore
 from observability.logger import get_logger
+
+if TYPE_CHECKING:
+    from llm.base import LLMClientProtocol
+    from memory.knowledge_store import KnowledgeStore
 
 log = get_logger(__name__)
 
@@ -99,11 +102,13 @@ class QueryClassifier:
     to "general_search" intent if classification fails.
     """
 
-    def __init__(self, llm_client: OllamaClient, nano_model: str = "phi3:mini") -> None:
+    def __init__(
+        self, llm_client: LLMClientProtocol, nano_model: str = "Qwen2.5-14B-Instruct-abliterated"
+    ) -> None:
         """
         Args:
-            llm_client: Shared Ollama client.
-            nano_model: Lightweight model to use for query classification.
+            llm_client: LLM client satisfying LLMClientProtocol.
+            nano_model: Model name to use for query classification.
         """
         self._llm = llm_client
         self._model = nano_model
@@ -188,16 +193,16 @@ class MemoryQueryEngine:
 
     def __init__(
         self,
-        llm_client: OllamaClient,
+        llm_client: LLMClientProtocol,
         knowledge_store: KnowledgeStore,
-        vault: Any | None = None,          # CredentialVault, optional
-        vector_store: Any | None = None,   # KnowledgeVectorStore, optional
-        graph_store: Any | None = None,    # NetworkX GraphStore, optional
-        nano_model: str = "phi3:mini",
+        vault: Any | None = None,  # CredentialVault, optional
+        vector_store: Any | None = None,  # KnowledgeVectorStore, optional
+        graph_store: Any | None = None,  # NetworkX GraphStore, optional
+        nano_model: str = "Qwen2.5-14B-Instruct-abliterated",
     ) -> None:
         """
         Args:
-            llm_client: Shared Ollama async client.
+            llm_client: LLM client satisfying LLMClientProtocol.
             knowledge_store: Connected KnowledgeStore.
             vault: Optional CredentialVault (used for metadata-only searches).
             vector_store: Optional KnowledgeVectorStore for semantic search.
@@ -277,7 +282,10 @@ class MemoryQueryEngine:
             Dict with keys: entities, facts, events, relationships.
         """
         out: dict[str, list[dict[str, Any]]] = {
-            "entities": [], "facts": [], "events": [], "relationships": []
+            "entities": [],
+            "facts": [],
+            "events": [],
+            "relationships": [],
         }
 
         intent = classification.get("intent", "general_search")
@@ -297,54 +305,58 @@ class MemoryQueryEngine:
                 unique_entities.append(e)
 
         out["entities"] = [
-            {"id": e.id, "name": e.canonical_name, "type": e.type}
-            for e in unique_entities
+            {"id": e.id, "name": e.canonical_name, "type": e.type} for e in unique_entities
         ]
 
         # Pull facts and relationships for found entities
         for entity in unique_entities:
             facts = await self._store.get_facts_for_entity(entity.id)
-            out["facts"].extend([
-                {
-                    "entity_id": f.entity_id,
-                    "entity_name": entity.canonical_name,
-                    "type": f.fact_type,
-                    "text": f.fact_text,
-                    "confidence": f.confidence,
-                }
-                for f in facts
-            ])
+            out["facts"].extend(
+                [
+                    {
+                        "entity_id": f.entity_id,
+                        "entity_name": entity.canonical_name,
+                        "type": f.fact_type,
+                        "text": f.fact_text,
+                        "confidence": f.confidence,
+                    }
+                    for f in facts
+                ]
+            )
 
             if intent in ("relationship_query", "general_search"):
                 rels = await self._store.get_relationships_for_entity(entity.id)
-                out["relationships"].extend([
-                    {
-                        "from": r.from_entity_id,
-                        "to": r.to_entity_id,
-                        "type": r.relationship_type,
-                        "label": r.relationship_label,
-                    }
-                    for r in rels
-                ])
+                out["relationships"].extend(
+                    [
+                        {
+                            "from": r.from_entity_id,
+                            "to": r.to_entity_id,
+                            "type": r.relationship_type,
+                            "label": r.relationship_label,
+                        }
+                        for r in rels
+                    ]
+                )
 
             if intent in ("event_query", "general_search"):
                 events = await self._store.get_events_for_entity(entity.id, limit=5)
-                out["events"].extend([
-                    {
-                        "id": ev.id,
-                        "title": ev.title,
-                        "datetime": ev.datetime,
-                        "type": ev.event_type,
-                    }
-                    for ev in events
-                ])
+                out["events"].extend(
+                    [
+                        {
+                            "id": ev.id,
+                            "title": ev.title,
+                            "datetime": ev.datetime,
+                            "type": ev.event_type,
+                        }
+                        for ev in events
+                    ]
+                )
 
         # Fallback: birthday / upcoming event queries
         if intent == "event_query" and not unique_entities:
             upcoming = await self._store.get_upcoming_events(limit=5)
             out["events"] = [
-                {"id": ev.id, "title": ev.title, "datetime": ev.datetime}
-                for ev in upcoming
+                {"id": ev.id, "title": ev.title, "datetime": ev.datetime} for ev in upcoming
             ]
 
         return out

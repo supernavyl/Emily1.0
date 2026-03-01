@@ -16,16 +16,19 @@ import time
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
+import numpy.typing as npt
 
 from observability.logger import get_logger
-from perception.audio.prosody_analyzer import ProsodyFeatures
+
+if TYPE_CHECKING:
+    from perception.audio.prosody_analyzer import ProsodyFeatures
 
 log = get_logger(__name__)
 
-BACKCHANNEL_ASSETS_DIR = Path("assets/backchannels")
+BACKCHANNEL_ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets" / "backchannels"
 
 
 class BackchannelType(Enum):
@@ -51,29 +54,76 @@ class BackchannelEvent:
 
 _TOKEN_POOLS: dict[BackchannelType, list[str]] = {
     BackchannelType.CONTINUER: [
-        "mmhm", "mhm", "yeah", "uh-huh", "mm", "right",
-        "yep", "uh huh", "mmm", "yup",
+        "mmhm",
+        "mhm",
+        "yeah",
+        "uh-huh",
+        "mm",
+        "right",
+        "yep",
+        "uh huh",
+        "mmm",
+        "yup",
     ],
     BackchannelType.ACKNOWLEDGMENT: [
-        "I see", "got it", "okay", "right", "ah", "understood",
-        "sure", "alright", "I hear you", "gotcha",
+        "I see",
+        "got it",
+        "okay",
+        "right",
+        "ah",
+        "understood",
+        "sure",
+        "alright",
+        "I hear you",
+        "gotcha",
     ],
     BackchannelType.AGREEMENT: [
-        "exactly", "absolutely", "definitely", "totally", "for sure",
-        "that's right", "indeed", "precisely", "true", "yes",
+        "exactly",
+        "absolutely",
+        "definitely",
+        "totally",
+        "for sure",
+        "that's right",
+        "indeed",
+        "precisely",
+        "true",
+        "yes",
     ],
     BackchannelType.EMPATHY: [
-        "oh wow", "of course", "that makes sense", "oh no",
-        "I understand", "oh", "that's tough", "I can imagine",
-        "oh man", "I hear you",
+        "oh wow",
+        "of course",
+        "that makes sense",
+        "oh no",
+        "I understand",
+        "oh",
+        "that's tough",
+        "I can imagine",
+        "oh man",
+        "I hear you",
     ],
     BackchannelType.SURPRISE: [
-        "oh really?", "huh", "wait", "no way", "wow",
-        "seriously?", "oh?", "whoa", "interesting", "is that right?",
+        "oh really?",
+        "huh",
+        "wait",
+        "no way",
+        "wow",
+        "seriously?",
+        "oh?",
+        "whoa",
+        "interesting",
+        "is that right?",
     ],
     BackchannelType.COMPLETION: [
-        "right", "yeah", "exactly", "of course", "sure",
-        "makes sense", "naturally", "obviously", "clearly", "got it",
+        "right",
+        "yeah",
+        "exactly",
+        "of course",
+        "sure",
+        "makes sense",
+        "naturally",
+        "obviously",
+        "clearly",
+        "got it",
     ],
 }
 
@@ -96,7 +146,7 @@ class BackchannelEngine:
     def __init__(self) -> None:
         self._last_bc_time: float = 0.0
         self._last_tokens: list[str] = []
-        self._prerecorded: dict[str, np.ndarray] = {}
+        self._prerecorded: dict[str, npt.NDArray[np.float32]] = {}
         self._session_bc_count = 0
 
     async def load_prerecorded(self) -> None:
@@ -105,6 +155,7 @@ class BackchannelEngine:
         for wav_path in BACKCHANNEL_ASSETS_DIR.glob("*.wav"):
             try:
                 import wave
+
                 with wave.open(str(wav_path)) as wf:
                     raw = wf.readframes(wf.getnframes())
                     audio = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
@@ -136,10 +187,7 @@ class BackchannelEngine:
         if prosody.pause_type not in safe_pause_types:
             return False
 
-        if prosody.stress_pattern and prosody.stress_pattern[-1] > 0.7:
-            return False
-
-        return True
+        return not (prosody.stress_pattern and prosody.stress_pattern[-1] > 0.7)
 
     async def should_backchannel(
         self,
@@ -172,7 +220,9 @@ class BackchannelEngine:
             return None
 
         bc_type = self._select_type(
-            partial_text, emotion, completion_prediction_score,
+            partial_text,
+            emotion,
+            completion_prediction_score,
         )
         if bc_type is None:
             return None
@@ -217,8 +267,7 @@ class BackchannelEngine:
 
         lower = text.lower().strip()
 
-        elicitors = ("you know", "right?", "know what i mean", "get it?",
-                     "makes sense?", "you see")
+        elicitors = ("you know", "right?", "know what i mean", "get it?", "makes sense?", "you see")
         for e in elicitors:
             if lower.endswith(e) or lower.endswith(e.rstrip("?")):
                 return BackchannelType.CONTINUER
@@ -235,8 +284,13 @@ class BackchannelEngine:
         if any(w in lower for w in emotional_words):
             return BackchannelType.EMPATHY
 
-        surprise_indicators = ("you won't believe", "guess what", "surprisingly",
-                               "turns out", "actually,")
+        surprise_indicators = (
+            "you won't believe",
+            "guess what",
+            "surprisingly",
+            "turns out",
+            "actually,",
+        )
         if any(w in lower for w in surprise_indicators):
             return BackchannelType.SURPRISE
 
@@ -260,7 +314,7 @@ class BackchannelEngine:
 
         return random.choice(available)
 
-    async def render_backchannel(self, event: BackchannelEvent) -> np.ndarray | None:
+    async def render_backchannel(self, event: BackchannelEvent) -> npt.NDArray[np.float32] | None:
         """
         Render a backchannel event to audio.
 
@@ -284,7 +338,7 @@ class BackchannelEngine:
         return audio
 
     @staticmethod
-    def _generate_placeholder(token: str, volume: float) -> np.ndarray:
+    def _generate_placeholder(token: str, volume: float) -> npt.NDArray[np.float32]:
         """
         Generate a short audio placeholder for a backchannel token.
 

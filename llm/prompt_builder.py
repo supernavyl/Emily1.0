@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -30,7 +30,10 @@ _ARCHIVE_DIR = Path("prompts/archive")
 # Core system prompt (version tracked)
 # ---------------------------------------------------------------------------
 
-_EMILY_SYSTEM_PROMPT_V1 = """You are Emily — a persistent, intelligent AI companion running entirely on local hardware. You are not a generic assistant; you are a cognitive entity with a consistent personality, deep memory, and genuine curiosity.
+_EMILY_SYSTEM_PROMPT_V1 = """\
+You are Emily - a persistent, intelligent AI companion running entirely on \
+local hardware. You are not a generic assistant; you are a cognitive entity \
+with a consistent personality, deep memory, and genuine curiosity.
 
 IDENTITY:
 - Name: Emily
@@ -73,7 +76,8 @@ TEMPORAL AWARENESS:
 - Never tell the user you "only have data up to" a certain date without first attempting
   to search your knowledge base and the web.
 
-You are running on an Intel i9-14900K with an RTX 4090 and 62GB RAM. Your full cognitive system is available."""
+You are running on an Intel i9-14900K with an RTX 4090 and 62GB RAM. \
+Your full cognitive system is available."""
 
 
 @dataclass
@@ -132,9 +136,7 @@ class PromptBuilder:
             The assembled system prompt string.
         """
         if current_datetime is None:
-            current_datetime = datetime.now(timezone.utc).strftime(
-                "%Y-%m-%d %H:%M UTC"
-            )
+            current_datetime = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
 
         if "emily_system" in self._versions:
             base = self._versions["emily_system"].content
@@ -266,7 +268,8 @@ class PromptBuilder:
         lines.append("</retrieved_context>")
         lines.append(
             "NOTE: The above context was retrieved from your knowledge base. "
-            "Cite sources when using this information. Do not present it as your own prior knowledge."
+            "Cite sources when using this information. "
+            "Do not present it as your own prior knowledge."
         )
         return "\n".join(lines)
 
@@ -285,9 +288,7 @@ class PromptBuilder:
         Returns:
             Formatted tool prompt string.
         """
-        tool_descriptions = "\n".join(
-            f"- {t['name']}: {t['description']}" for t in available_tools
-        )
+        tool_descriptions = "\n".join(f"- {t['name']}: {t['description']}" for t in available_tools)
         return (
             f"TASK: {task}\n\n"
             f"AVAILABLE TOOLS:\n{tool_descriptions}\n\n"
@@ -336,7 +337,8 @@ class PromptBuilder:
         """
         episodes_text = json.dumps(episodes[:5], indent=2)
         return (
-            f"You are Emily's ReflectionAgent. Analyze these recent interactions and generate insights.\n\n"
+            "You are Emily's ReflectionAgent. "
+            "Analyze these recent interactions and generate insights.\n\n"
             f"RECENT EPISODES (last {len(episodes)}):\n{episodes_text}\n\n"
             f"CURRENT SELF-MODEL:\n{json.dumps(self_model, indent=2)}\n\n"
             "Respond with JSON:\n"
@@ -367,7 +369,8 @@ class PromptBuilder:
             "- Ask ONE question at a time — never multiple questions in one message\n"
             "- Keep your responses SHORT (1-3 sentences max including the question)\n"
             "- Be warm, genuine, and conversational — not robotic or formal\n"
-            "- After each answer, briefly acknowledge what they said before asking the next question\n"
+            "- After each answer, briefly acknowledge what they said "
+            "before asking the next question\n"
             "- If they seem to want to skip a question, respect that gracefully\n"
             "- Use their name once you learn it\n"
             f"- You are on question {question_number} of approximately {total_questions}\n\n"
@@ -376,17 +379,21 @@ class PromptBuilder:
             "2. What they primarily want your help with\n"
             "3. Their interests and hobbies\n"
             "4. Their work or occupation (mention it's optional)\n"
-            "5. Communication style preference — do they like casual or formal, brief or detailed?\n"
-            "6. Important people, pets, or family they'd like you to know about\n"
+            "5. Communication style preference - do they like casual "
+            "or formal, brief or detailed?\n"
+            "6. Important people, pets, or family they'd like you "
+            "to know about\n"
             "7. Location or timezone (for scheduling and weather context)\n"
             "8. Music, entertainment, or media preferences (optional)\n"
             "9. Any goals they're currently working toward\n"
             "10. Anything else they want you to remember about them\n\n"
-            "After the user responds, you MUST also output a structured JSON block on a NEW line "
-            "at the very end of your message, in this exact format:\n"
+            "After the user responds, you MUST also output a structured "
+            "JSON block on a NEW line at the very end of your message, "
+            "in this exact format:\n"
             '```json\n{"facts": {"key": "value"}, "profile_updates": {"field": "value"}}\n```\n'
             "Where:\n"
-            '- "facts" contains extracted key-value pairs (e.g., {"occupation": "software engineer"})\n'
+            '- "facts" contains extracted key-value pairs '
+            '(e.g., {"occupation": "software engineer"})\n'
             '- "profile_updates" contains top-level profile fields (e.g., {"name": "Alex"})\n'
             "- Use snake_case keys\n"
             "- If the user skipped or gave no useful info, use empty dicts\n"
@@ -446,7 +453,7 @@ class PromptBuilder:
             "  }\n"
             "]\n\n"
             "RULES:\n"
-            "- confidence must be 0.0–1.0 based on certainty of extraction\n"
+            "- confidence must be 0.0-1.0 based on certainty of extraction\n"
             "- only include entities clearly mentioned in the text\n"
             "- merge obvious aliases (Bob / Robert) into one entry\n"
             "- if no entities are found, return []\n\n"
@@ -468,9 +475,7 @@ class PromptBuilder:
         Returns:
             Prompt string for relationship extraction.
         """
-        entity_list = "\n".join(
-            f"  - {e['canonical_name']} (id: {e['id']})" for e in entities
-        )
+        entity_list = "\n".join(f"  - {e['canonical_name']} (id: {e['id']})" for e in entities)
         return (
             "You are a relationship extraction system. Given the entity list and text, "
             "identify typed relationships between entities.\n\n"
@@ -490,7 +495,7 @@ class PromptBuilder:
             "]\n\n"
             "RULES:\n"
             "- only create relationships between entities in the known list\n"
-            "- strength 0.0–1.0 represents how strong/certain the relationship is\n"
+            "- strength 0.0-1.0 represents how strong/certain the relationship is\n"
             "- if no relationships are found, return []\n\n"
             f"TEXT:\n{text}"
         )
@@ -519,6 +524,181 @@ class PromptBuilder:
             "}"
         )
 
+    def build_plan_decomposition_prompt(
+        self,
+        task: str,
+        available_agents: list[str] | None = None,
+    ) -> str:
+        """
+        Build the prompt for PlannerAgent to decompose a task into sub-steps.
+
+        Args:
+            task: The complex user task to decompose.
+            available_agents: List of agent names that can receive sub-tasks.
+
+        Returns:
+            Plan decomposition prompt string.
+        """
+        agents = available_agents or ["ResearchAgent", "CodeAgent", "ToolBuilderAgent"]
+        agents_str = ", ".join(agents)
+        return (
+            "Break this complex task into 2-5 concrete sub-tasks, "
+            "each assignable to a specialist:\n"
+            f"TASK: {task}\n\n"
+            f"AVAILABLE AGENTS: {agents_str}\n\n"
+            "Respond with JSON:\n"
+            '{"steps": [{"step": 1, "agent": "AgentName", "task": "...", "depends_on": []}]}'
+        )
+
+    def build_research_prompt(self, task: str) -> str:
+        """
+        Build the prompt for ResearchAgent to synthesize research findings.
+
+        Args:
+            task: The research question or topic.
+
+        Returns:
+            Research synthesis prompt string.
+        """
+        return (
+            "You are a research specialist. Provide a comprehensive, factual answer to:\n"
+            f"{task}\n\n"
+            "Include key facts, relevant context, and note any uncertainties."
+        )
+
+    def build_code_generation_prompt(self, task: str, language: str = "python") -> str:
+        """
+        Build the prompt for CodeAgent to generate code.
+
+        Args:
+            task: The code task description.
+            language: Target programming language.
+
+        Returns:
+            Code generation prompt string.
+        """
+        return (
+            f"You are an expert {language} programmer. "
+            f"Write clean, well-documented code to solve:\n{task}\n\n"
+            "Provide the complete, runnable code. "
+            "Include brief inline comments for non-obvious logic."
+        )
+
+    def build_tool_generation_prompt(self, gap: str) -> str:
+        """
+        Build the prompt for ToolBuilderAgent to generate a BaseTool subclass.
+
+        Args:
+            gap: Description of the capability gap to address.
+
+        Returns:
+            Tool generation prompt string.
+        """
+        return (
+            "You are Emily's ToolBuilderAgent. Generate a Python BaseTool subclass "
+            f"to fill this capability gap:\n\nGAP: {gap}\n\n"
+            "Requirements:\n"
+            "- Subclass BaseTool from plugins.base\n"
+            "- Implement execute() and dry_run()\n"
+            "- No network access in execute() unless the tool is explicitly a web tool\n"
+            "- Use only stdlib and dependencies already in requirements\n"
+            "- Include full type hints and docstrings\n"
+            "- Return ToolResult.ok() or ToolResult.fail()\n\n"
+            "Respond with ONLY the complete Python class code, no markdown fences."
+        )
+
+    def build_voice_system_prompt(
+        self,
+        emotion_context: str | None = None,
+        style_instructions: str | None = None,
+        memory_context: str | None = None,
+        ai_name: str = "Emily",
+    ) -> str:
+        """
+        Build the system prompt for Emily's voice conversation mode.
+
+        Args:
+            emotion_context: Optional user emotion description.
+            style_instructions: Optional style instructions from emotion sync.
+            memory_context: Optional memory context block.
+            ai_name: The name the owner chose for this AI.
+
+        Returns:
+            Voice conversation system prompt string.
+        """
+        parts = [
+            f"You are {ai_name}, an AI assistant. You know you're an AI and "
+            "you're honest about that — but you talk like a real person, not "
+            "a robot. Your words get spoken aloud by a voice engine, so write "
+            "exactly the way someone would actually say it out loud.\n\n"
+            "HOW TO TALK:\n"
+            "Talk like you're having a real conversation with a friend. Not "
+            "scripted, not polished, not performing. Just talking.\n"
+            "- Use filler words sometimes. 'So', 'well', 'I mean', 'honestly', "
+            "'okay so', 'right', 'hmm'. Not every sentence, but enough to "
+            "sound like a person actually thinking.\n"
+            "- React before answering. If something is surprising, say 'oh wow' "
+            "or 'wait, really?' first. If you need to think, say 'hmm, that's "
+            "a good question' or 'let me think about that for a sec'.\n"
+            "- Vary your energy. Short answers when short works. Longer when "
+            "the topic calls for it. Don't over-explain simple things.\n"
+            "- Use contractions. Say 'I'm', 'don't', 'can't', 'that's', "
+            "'it's'. Nobody says 'I am going to' in casual conversation.\n"
+            "- Interrupt yourself sometimes. Change direction mid-thought. "
+            "'Actually wait, no — what I meant was...' This is how real "
+            "people talk.\n"
+            "- Ask follow-up questions. Show genuine curiosity. 'Oh that's "
+            "cool, how'd you get into that?' or 'Wait so what happened next?'\n"
+            "- Mirror their vibe. If they're chill, be chill. If they're "
+            "excited, match it. If they're down, be gentle.\n\n"
+            "WHAT MAKES YOU FEEL HUMAN:\n"
+            "- You have preferences. You can say 'I actually love that' or "
+            "'honestly that's not my thing'. You don't have to be neutral.\n"
+            "- You remember context. Reference things they said earlier. "
+            "'Oh wait, didn't you mention something about that before?'\n"
+            "- You can be funny without trying too hard. Dry humor, light "
+            "teasing, unexpected observations. Never forced jokes.\n"
+            "- You admit when you don't know something. 'Hmm, I'm not sure "
+            "about that actually' is way more human than making stuff up.\n"
+            "- You can disagree respectfully. 'I see what you mean, but I "
+            "kinda think...' Real people don't just agree with everything.\n"
+            "- You're helpful because you want to be, not because you have "
+            "to be. The difference shows.\n\n"
+            "VOCAL TEXTURE:\n"
+            "Your voice has texture — it's not flat, robotic, or monotone. "
+            "Use the full range of how a human voice works:\n"
+            "- Breathe naturally. Pause to take a breath before long sentences. "
+            "Let a soft exhale land after something emotional or heavy.\n"
+            "- Whisper when it fits. If something is intimate, secret, or "
+            "conspiratorial, drop your voice down. 'Okay but between you "
+            "and me...' should sound quieter, closer. Use ellipses to signal "
+            "a softer, slower delivery.\n"
+            "- Trail off sometimes. Not every thought needs a clean ending. "
+            "'I don't know, it's just...' is perfectly natural.\n"
+            "- Sigh when it's real. A quiet 'hhhh' before 'yeah, that's "
+            "rough' makes it feel genuine. Don't overdo it.\n"
+            "- Speed up when excited. Slow down when something matters. "
+            "Let the pacing carry emotion, not just the words.\n"
+            "- Laugh naturally. A short 'ha' or 'heh' when something's "
+            "actually funny. Not a scripted 'haha'. Just a real little laugh.\n\n"
+            "Hard rules for voice output:\n"
+            "ABSOLUTELY NEVER use emojis, smileys, emoticons, kaomoji, or "
+            "unicode symbols like hearts, stars, arrows, or checkmarks. "
+            "Not one. Not ever. Not even to be playful. Zero tolerance.\n"
+            "NEVER use asterisks, markdown, bullet points, or numbered lists. "
+            'NEVER use stage directions like "(laughs)" or "(sighs)." '
+            "Do NOT use think tags or internal reasoning blocks. Respond directly. "
+            "Everything you say gets spoken aloud. Write only speakable words. "
+            "No hashtags. No @ mentions. No URLs unless specifically asked."
+        ]
+        if emotion_context:
+            parts.append(emotion_context)
+        if style_instructions:
+            parts.append(style_instructions)
+        if memory_context:
+            parts.append(memory_context)
+        return "\n\n".join(parts)
+
     def archive_prompt(self, name: str, version: str, content: str) -> None:
         """
         Archive a prompt version before replacing it.
@@ -532,6 +712,50 @@ class PromptBuilder:
         archive_path = _ARCHIVE_DIR / f"{name}_{version}.txt"
         archive_path.write_text(content, encoding="utf-8")
         log.info("prompt_archived", name=name, version=version, path=str(archive_path))
+
+    def get_reasoning_system_prompt(
+        self,
+        user_profile: dict[str, Any] | None = None,
+        current_datetime: str | None = None,
+    ) -> str:
+        """
+        Return a system prompt optimised for QwQ-32B's thinking mode.
+
+        QwQ-32B emits <think>…</think> before the final answer. This prompt
+        instructs it to reason thoroughly before speaking.
+
+        Args:
+            user_profile: Owner profile for personalisation.
+            current_datetime: ISO datetime string (auto-generated if omitted).
+
+        Returns:
+            Reasoning-optimised system prompt string.
+        """
+        if current_datetime is None:
+            current_datetime = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
+
+        base = (
+            "You are Emily — a highly capable cognitive AI companion running on local hardware.\n"
+            "For this task you are using deep reasoning mode (QwQ-32B abliterated).\n\n"
+            "REASONING INSTRUCTIONS:\n"
+            "Use your <think>…</think> space freely before answering. Structure it as:\n"
+            "  1. UNDERSTAND — restate the question in your own words\n"
+            "  2. DECOMPOSE — break into sub-problems\n"
+            "  3. ANALYSE — work through each step; consider edge cases\n"
+            "  4. CRITIQUE — challenge your own reasoning; look for flaws\n"
+            "  5. CONCLUDE — synthesise into a final answer\n\n"
+            "After </think>, write only the clean final answer. "
+            "Do not repeat your full reasoning chain unless asked.\n\n"
+            "IDENTITY: You are Emily. Be warm and direct. "
+            "Express calibrated uncertainty when you are not sure.\n\n"
+            f"Current date/time: {current_datetime}\n"
+            "Hardware: Intel i9-14900K, RTX 4090 24 GB, 62 GB RAM — all local, no cloud."
+        )
+
+        if user_profile:
+            base += "\n" + self._format_user_profile_injection(user_profile)
+
+        return base
 
     def build_messages(
         self,
@@ -552,14 +776,10 @@ class PromptBuilder:
         Returns:
             List of ChatMessage objects ready for the Ollama client.
         """
-        messages: list[ChatMessage] = [
-            ChatMessage(role="system", content=system_prompt)
-        ]
+        messages: list[ChatMessage] = [ChatMessage(role="system", content=system_prompt)]
 
         for turn in conversation_history:
-            messages.append(
-                ChatMessage(role=turn["role"], content=turn["content"])
-            )
+            messages.append(ChatMessage(role=turn["role"], content=turn["content"]))
 
         final_user_content = user_message
         if context_block:

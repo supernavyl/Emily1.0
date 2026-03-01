@@ -25,7 +25,7 @@ from observability.logger import get_logger
 
 log = get_logger(__name__)
 
-BREATH_ASSETS_DIR = Path("assets/breaths")
+BREATH_ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets" / "breaths"
 
 
 class BreathType(Enum):
@@ -57,15 +57,13 @@ class BreathInjector:
     Applied with 10ms fade in/out to be imperceptible.
     """
 
-    _DEFAULT_MIN_BREATH_INTERVAL_S = 15.0
-    _DEFAULT_MAX_BREATH_INTERVAL_S = 25.0
-    _JITTER_S = 5.0
-    _SENTENCE_WORD_THRESHOLD = 8
+    _DEFAULT_MIN_BREATH_INTERVAL_S = 10.0
+    _DEFAULT_MAX_BREATH_INTERVAL_S = 20.0
+    _JITTER_S = 4.0
+    _SENTENCE_WORD_THRESHOLD = 6
 
     def __init__(self) -> None:
-        self._library: dict[BreathType, list[np.ndarray]] = {
-            bt: [] for bt in BreathType
-        }
+        self._library: dict[BreathType, list[np.ndarray]] = {bt: [] for bt in BreathType}
         self._last_breath_time: float = 0.0
         self._breath_interval_s: float = (
             self._DEFAULT_MIN_BREATH_INTERVAL_S + self._DEFAULT_MAX_BREATH_INTERVAL_S
@@ -76,7 +74,8 @@ class BreathInjector:
     def _jittered_interval(self) -> float:
         """Return the configured breath interval with +/- jitter."""
         return self._breath_interval_s + random.uniform(
-            -self._JITTER_S, self._JITTER_S,
+            -self._JITTER_S,
+            self._JITTER_S,
         )
 
     def set_breath_interval(self, interval_s: float) -> None:
@@ -95,13 +94,14 @@ class BreathInjector:
         for wav_path in BREATH_ASSETS_DIR.glob("*.wav"):
             try:
                 import wave
+
                 with wave.open(str(wav_path)) as wf:
                     raw = wf.readframes(wf.getnframes())
                     audio = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
                     bt = self._classify_breath_file(wav_path.stem)
                     self._library[bt].append(audio)
-            except Exception:
-                pass
+            except Exception as exc:
+                log.warning("breath_load_error", path=str(wav_path), error=str(exc))
 
         self._generate_synthetic_breaths()
         total = sum(len(v) for v in self._library.values())
@@ -135,6 +135,7 @@ class BreathInjector:
 
         try:
             from scipy.signal import butter, lfilter
+
             if bt in (BreathType.INHALE_DEEP, BreathType.INHALE_SHALLOW, BreathType.INHALE_QUICK):
                 b, a = butter(3, [150, 3000], btype="band", fs=sr)
             else:
@@ -182,6 +183,7 @@ class BreathInjector:
         position: str = "before",
         is_emotional: bool = False,
         sentence_index: int = 0,
+        whisper_mode: bool = False,
     ) -> BreathEvent | None:
         """
         Determine if a breath should be injected.
@@ -191,6 +193,7 @@ class BreathInjector:
             position: "before" or "after" the sentence.
             is_emotional: Whether the sentence has emotional content.
             sentence_index: Index of this sentence in the response.
+            whisper_mode: Whether the voice is in whisper/quiet mode.
 
         Returns:
             BreathEvent if breath should occur, else None.
@@ -198,28 +201,59 @@ class BreathInjector:
         self._sentence_count += 1
         now = time.monotonic()
 
+        # Whisper mode = softer breaths, but more frequent (feels intimate)
+        vol_mult = 0.5 if whisper_mode else 1.0
+
         if position == "before":
             words = len(sentence.split())
+
+            # Ellipsis or trailing off = soft breath before
+            if sentence.strip().endswith("..."):
+                return BreathEvent(
+                    breath_type=BreathType.INHALE_SHALLOW,
+                    position="before",
+                    volume_scale=0.1 * vol_mult,
+                )
+
             if words >= self._SENTENCE_WORD_THRESHOLD:
                 return BreathEvent(
-                    breath_type=BreathType.INHALE_DEEP if words > 15 else BreathType.INHALE_SHALLOW,
+                    breath_type=BreathType.INHALE_DEEP if words > 12 else BreathType.INHALE_SHALLOW,
                     position="before",
-                    volume_scale=0.2,
+                    volume_scale=0.18 * vol_mult,
                 )
 
             if sentence_index == 0:
                 return BreathEvent(
                     breath_type=BreathType.INHALE_QUICK,
                     position="before",
-                    volume_scale=0.15,
+                    volume_scale=0.12 * vol_mult,
+                )
+
+            # Every 2-3 sentences, take a small breath even for short ones
+            if self._sentence_count % 3 == 0 and words > 3:
+                return BreathEvent(
+                    breath_type=BreathType.MICRO_BREATH,
+                    position="before",
+                    volume_scale=0.08 * vol_mult,
                 )
 
         elif position == "after":
             if is_emotional:
+                # Heavier exhale for emotional content — like a real sigh
+                return BreathEvent(
+                    breath_type=BreathType.EXHALE_RELIEF
+                    if whisper_mode
+                    else BreathType.EXHALE_SETTLING,
+                    position="after",
+                    volume_scale=0.14 * vol_mult,
+                )
+
+            # Trailing off sentences get a settling exhale
+            if sentence.strip().endswith("...") or sentence.strip().endswith("—"):
                 return BreathEvent(
                     breath_type=BreathType.EXHALE_SETTLING,
                     position="after",
-                    volume_scale=0.12,
+                    volume_scale=0.08 * vol_mult,
                 )
 
             time_since_breath = now - self._last_breath_time
@@ -229,7 +263,7 @@ class BreathInjector:
                 return BreathEvent(
                     breath_type=BreathType.MICRO_BREATH,
                     position="after",
-                    volume_scale=0.06,
+                    volume_scale=0.06 * vol_mult,
                 )
 
         return None

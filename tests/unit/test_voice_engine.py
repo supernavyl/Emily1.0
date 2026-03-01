@@ -15,20 +15,21 @@ Covers:
 from __future__ import annotations
 
 import asyncio
-import pytest
-import numpy as np
 
-from perception.audio.capture import RingBuffer
-from perception.audio.aec import AcousticEchoCanceller, AECConfig
-from perception.audio.prosody_analyzer import ProsodyAnalyzer, ProsodyFeatures
-from perception.audio.emotion_detector import EmotionDetector, EmotionState, UserEmotion
-from perception.audio.stream import AudioChunk
+import numpy as np
+import pytest
+
 from conversation.backchannel import BackchannelEngine, BackchannelType
-from conversation.rhythm_sync import RhythmSynchronizer, RhythmTargets
-from conversation.emotion_sync import EmotionSynchronizer, ResponseStyleParameters
-from timing.latency_budget import LatencyBudget
+from conversation.emotion_sync import EmotionSynchronizer
+from conversation.rhythm_sync import RhythmSynchronizer
 from llm.speculative import SpeculativeCache
-from voice.prosody_planner import ProsodyPlanner, SentenceProsody
+from perception.audio.aec import AcousticEchoCanceller, AECConfig
+from perception.audio.capture import RingBuffer
+from perception.audio.emotion_detector import EmotionDetector, EmotionState, UserEmotion
+from perception.audio.prosody_analyzer import ProsodyAnalyzer, ProsodyFeatures
+from perception.audio.stream import AudioChunk
+from timing.latency_budget import LatencyBudget
+from voice.prosody_planner import ProsodyPlanner
 
 
 class TestRingBuffer:
@@ -73,14 +74,19 @@ class TestAEC:
 
     def test_pure_echo_reduction(self) -> None:
         """AEC should reduce echo when reference matches mic."""
-        aec = AcousticEchoCanceller(AECConfig(filter_length=100))
+        aec = AcousticEchoCanceller(
+            AECConfig(
+                tail_length_ms=100,
+                sample_rate=1000,  # 100ms tail => 100 taps, matching legacy test intent
+            )
+        )
         sr = 48000
         t = np.linspace(0, 0.1, int(sr * 0.1), dtype=np.float32)
         reference = np.sin(2 * np.pi * 440 * t)
-        mic = reference * 0.5  # echo is attenuated version
+        mic = reference * 0.5
 
         output = aec.process(mic, reference)
-        assert np.mean(output ** 2) < np.mean(mic ** 2)
+        assert np.mean(output**2) < np.mean(mic**2)
 
     def test_no_reference_passthrough(self) -> None:
         """With no reference, mic should pass through unchanged."""
@@ -111,7 +117,7 @@ class TestProsodyAnalyzer:
         speech = np.sin(2 * np.pi * 150 * t) * 0.3
         for i in range(5):
             chunk = AudioChunk(
-                data=speech[i * 1600:(i + 1) * 1600],
+                data=speech[i * 1600 : (i + 1) * 1600],
                 sample_rate=16000,
                 channels=1,
             )
@@ -125,9 +131,12 @@ class TestEmotionDetector:
     def test_neutral_baseline(self) -> None:
         """Baseline prosody should produce neutral emotion."""
         from perception.audio.prosody_analyzer import SpeakerBaseline
+
         detector = EmotionDetector()
         features = ProsodyFeatures(
-            f0_hz=150, intensity_db=65, speaking_rate_syl_s=4.0,
+            f0_hz=150,
+            intensity_db=65,
+            speaking_rate_syl_s=4.0,
         )
         baseline = SpeakerBaseline(f0_mean=150, f0_std=20)
         result = detector.detect(features, baseline)
@@ -137,10 +146,14 @@ class TestEmotionDetector:
     def test_excited_detection(self) -> None:
         """High F0 and energy should produce elevated engagement."""
         from perception.audio.prosody_analyzer import SpeakerBaseline
+
         detector = EmotionDetector()
         features = ProsodyFeatures(
-            f0_hz=220, intensity_db=80, speaking_rate_syl_s=6.0,
-            f0_trajectory="rising", f0_range_semitones=8,
+            f0_hz=220,
+            intensity_db=80,
+            speaking_rate_syl_s=6.0,
+            f0_trajectory="rising",
+            f0_range_semitones=8,
         )
         baseline = SpeakerBaseline(f0_mean=150, f0_std=20, intensity_mean=65)
         for _ in range(20):
@@ -155,18 +168,17 @@ class TestBackchannelEngine:
     async def test_backchannel_cooldown(self) -> None:
         """Backchannels should respect the minimum interval."""
         engine = BackchannelEngine()
-        result1 = await engine.should_backchannel(
+        _result1 = await engine.should_backchannel(
             partial_text="So I was thinking about this really interesting thing"
         )
-        result2 = await engine.should_backchannel(
-            partial_text="and then something else happened"
-        )
+        result2 = await engine.should_backchannel(partial_text="and then something else happened")
         assert result2 is None  # too soon
 
     @pytest.mark.asyncio
     async def test_render_produces_audio(self) -> None:
         """Rendering a backchannel should produce float32 audio."""
         from conversation.backchannel import BackchannelEvent
+
         engine = BackchannelEngine()
         event = BackchannelEvent(
             bc_type=BackchannelType.CONTINUER,
@@ -186,6 +198,7 @@ class TestRhythmSync:
         sync = RhythmSynchronizer(entrainment_degree=0.5)
 
         from perception.audio.prosody_analyzer import ProsodyFeatures
+
         for _ in range(50):
             sync.update_from_prosody(ProsodyFeatures(speaking_rate_syl_s=6.0))
 
@@ -208,7 +221,10 @@ class TestRhythmSync:
         exported = sync.export_profile()
         sync2 = RhythmSynchronizer()
         sync2.import_profile(exported)
-        assert abs(sync2.user_profile.speaking_rate_syl_s - sync.user_profile.speaking_rate_syl_s) < 0.1
+        diff = abs(
+            sync2.user_profile.speaking_rate_syl_s - sync.user_profile.speaking_rate_syl_s,
+        )
+        assert diff < 0.1
 
 
 class TestEmotionSync:

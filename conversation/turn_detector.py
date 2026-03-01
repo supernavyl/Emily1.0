@@ -12,7 +12,6 @@ Zero hard-coded silence timers anywhere — turn detection is signal-fusion only
 
 from __future__ import annotations
 
-import re
 import time
 from dataclasses import dataclass, field
 from enum import Enum, auto
@@ -91,9 +90,17 @@ class TurnDetectionEngine:
     how strongly that signal indicates turn completion.
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        response_threshold: float = RESPONSE_THRESHOLD,
+        backchannel_threshold: float = BACKCHANNEL_THRESHOLD,
+        overlap_start_threshold: float = OVERLAP_START_THRESHOLD,
+    ) -> None:
         self._last_signal: TurnSignal | None = None
         self._consecutive_respond: int = 0
+        self._response_threshold = response_threshold
+        self._backchannel_threshold = backchannel_threshold
+        self._overlap_start_threshold = overlap_start_threshold
 
     def compute(self, state: ConversationState) -> TurnSignal:
         """
@@ -107,7 +114,7 @@ class TurnDetectionEngine:
         """
         breakdown: dict[str, float] = {}
 
-        for signal_name, weight in SIGNAL_WEIGHTS.items():
+        for signal_name, _weight in SIGNAL_WEIGHTS.items():
             scorer = getattr(self, f"_score_{signal_name}", None)
             if scorer is not None:
                 breakdown[signal_name] = float(scorer(state))
@@ -135,11 +142,11 @@ class TurnDetectionEngine:
 
     def _decide_action(self, score: float, state: ConversationState) -> TurnAction:
         """Map score to a concrete action."""
-        if score >= RESPONSE_THRESHOLD:
+        if score >= self._response_threshold:
             return TurnAction.RESPOND
-        elif state.emily_speaking and score >= OVERLAP_START_THRESHOLD:
+        elif state.emily_speaking and score >= self._overlap_start_threshold:
             return TurnAction.YIELD_AND_RESPOND
-        elif score >= BACKCHANNEL_THRESHOLD:
+        elif score >= self._backchannel_threshold:
             return TurnAction.BACKCHANNEL
         else:
             return TurnAction.LISTEN
@@ -274,9 +281,16 @@ class TurnDetectionEngine:
         """
         text = state.partial_text.lower().strip()
         elicitors = [
-            "you know", "right?", "know what i mean", "doesn't it",
-            "don't you think", "isn't it", "what do you think",
-            "you see", "get it", "makes sense",
+            "you know",
+            "right?",
+            "know what i mean",
+            "doesn't it",
+            "don't you think",
+            "isn't it",
+            "what do you think",
+            "you see",
+            "get it",
+            "makes sense",
         ]
         for e in elicitors:
             if text.endswith(e) or text.endswith(e.rstrip("?")):
@@ -293,9 +307,17 @@ class TurnDetectionEngine:
         """
         text = state.partial_text.lower().strip()
         markers = [
-            "anyway", "so yeah", "but yeah", "that's pretty much it",
-            "that's about it", "i dunno", "i don't know", "so...",
-            "yeah so", "that's all", "i guess",
+            "anyway",
+            "so yeah",
+            "but yeah",
+            "that's pretty much it",
+            "that's about it",
+            "i dunno",
+            "i don't know",
+            "so...",
+            "yeah so",
+            "that's all",
+            "i guess",
         ]
         for m in markers:
             if text.endswith(m):
@@ -316,9 +338,25 @@ class TurnDetectionEngine:
         if text.endswith("?"):
             score += 0.5
 
-        question_words = ("who", "what", "when", "where", "why", "how",
-                          "which", "could", "would", "should", "can",
-                          "is", "are", "do", "does", "did", "will")
+        question_words = (
+            "who",
+            "what",
+            "when",
+            "where",
+            "why",
+            "how",
+            "which",
+            "could",
+            "would",
+            "should",
+            "can",
+            "is",
+            "are",
+            "do",
+            "does",
+            "did",
+            "will",
+        )
         first_word = text.split()[0].lower().rstrip(",.?!") if text.split() else ""
         if first_word in question_words:
             score += 0.3
@@ -327,8 +365,13 @@ class TurnDetectionEngine:
             score += 0.2
 
         tag_patterns = (
-            "isn't it", "aren't you", "won't you", "don't you",
-            "can you", "will you", "could you",
+            "isn't it",
+            "aren't you",
+            "won't you",
+            "don't you",
+            "can you",
+            "will you",
+            "could you",
         )
         lower = text.lower()
         for tag in tag_patterns:

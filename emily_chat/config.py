@@ -8,9 +8,12 @@ This is separate from the main Emily config.yaml to avoid conflicts.
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 
 from pydantic import BaseModel
+
+_log = logging.getLogger(__name__)
 
 
 _SETTINGS_DIR = Path.home() / ".emily-chat"
@@ -32,7 +35,7 @@ class AppSettings(BaseModel):
     right_panel_visible: bool = True
     last_conversation_id: str | None = None
     sidebar_collapsed_groups: list[str] = []
-    default_model: str = "auto"
+    default_model: str = "emily-fast"
     active_skill_id: str = "normal"
     active_profile_id: str = "default"
 
@@ -43,8 +46,8 @@ class AppSettings(BaseModel):
             try:
                 raw = json.loads(_SETTINGS_FILE.read_text(encoding="utf-8"))
                 return cls.model_validate(raw)
-            except (json.JSONDecodeError, ValueError):
-                pass
+            except (json.JSONDecodeError, ValueError) as exc:
+                _log.warning("Corrupt settings file %s: %s", _SETTINGS_FILE, exc)
         return cls()
 
     def save(self) -> None:
@@ -54,3 +57,13 @@ class AppSettings(BaseModel):
             self.model_dump_json(indent=2),
             encoding="utf-8",
         )
+
+
+def load_settings() -> AppSettings:
+    """Module-level convenience for :meth:`AppSettings.load`."""
+    return AppSettings.load()
+
+
+def save_settings(settings: AppSettings) -> None:
+    """Module-level convenience for :meth:`AppSettings.save`."""
+    settings.save()

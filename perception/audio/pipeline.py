@@ -1,7 +1,7 @@
 """
 Audio perception pipeline orchestrator.
 
-Connects AudioStream → WakeWordDetector + SileroVAD → FasterWhisperSTT
+Connects AudioStream → [AEC → NoiseSuppression →] WakeWordDetector + SileroVAD → FasterWhisperSTT
 and emits transcription events to the PerceptionBus.
 
 Usage (as a background task):
@@ -14,17 +14,19 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import AsyncIterator
+from typing import TYPE_CHECKING
 
-import numpy as np
-
-from config import EmilySettings
 from core.bus import PerceptionBus, Priority
 from observability.logger import get_logger
-from perception.audio.stt import FasterWhisperSTT, TranscriptResult
-from perception.audio.stream import AudioStream
+from perception.audio.stream import AudioChunk, AudioStream
+from perception.audio.stt import FasterWhisperSTT
 from perception.audio.vad import SileroVAD, SpeechSegment
-from perception.audio.wake_word import WakeWordDetector, WakeWordEvent
+from perception.audio.wake_word import WakeWordDetector
+
+if TYPE_CHECKING:
+    from config import EmilySettings
+    from perception.audio.aec import AcousticEchoCanceller
+    from perception.audio.noise_suppress import NoiseSuppressionEngine
 
 log = get_logger(__name__)
 
@@ -37,17 +39,28 @@ class AudioPipeline:
     1. Wake-word gated: only processes speech after "Hey Emily" detected
     2. Continuous: always-on VAD + STT (when wake word model unavailable)
 
+    Optionally runs AEC and noise suppression between capture and
+    perception when the modules are provided at construction time.
+
     Emits events to PerceptionBus:
     - `audio.wake_word_detected` — when wake word fires
     - `audio.speech_segment` — VAD-gated speech segment
     - `audio.transcript` — STT result
     """
 
-    def __init__(self, settings: EmilySettings, bus: PerceptionBus) -> None:
+    def __init__(
+        self,
+        settings: EmilySettings,
+        bus: PerceptionBus,
+        aec: AcousticEchoCanceller | None = None,
+        noise_suppress: NoiseSuppressionEngine | None = None,
+    ) -> None:
         """
         Args:
             settings: Global Emily settings.
             bus: PerceptionBus to publish events onto.
+            aec: Optional acoustic echo canceller (requires reference signal).
+            noise_suppress: Optional noise suppression engine.
         """
         self.settings = settings
         self.bus = bus
@@ -55,9 +68,11 @@ class AudioPipeline:
         self.vad = SileroVAD(settings.vad)
         self.stt = FasterWhisperSTT(settings.stt)
         self.wake_word = WakeWordDetector(settings.wake_word)
+        self._aec = aec
+        self._noise_suppress = noise_suppress
         self._running = False
         self._wake_word_active = False
-        self._wake_word_cooldown_s = 8.0  # How long to stay active after detection
+        self._wake_word_cooldown_s = 8.0
 
     async def load(self) -> None:
         """Load all ML models (VAD, STT, wake word) concurrently."""
@@ -83,6 +98,21 @@ class AudioPipeline:
         while self._running:
             try:
                 chunk = await self.stream.read()
+
+                # Signal processing: AEC then noise suppression (when available)
+                if self._aec is not None and hasattr(self.stream, "get_output_reference"):
+                    ref = self.stream.get_output_reference()
+                    if ref is not None:
+                        cleaned = self._aec.process(chunk.data, ref)
+                        chunk = AudioChunk(
+                            data=cleaned,
+                            sample_rate=chunk.sample_rate,
+                            channels=chunk.channels,
+                        )
+
+                if self._noise_suppress is not None:
+                    is_speech = self.vad.is_speech if hasattr(self.vad, "is_speech") else False
+                    chunk = self._noise_suppress.process(chunk, is_speech=is_speech)
 
                 # Wake word detection (runs on every chunk)
                 wake_event = await self.wake_word.process_async(chunk)
@@ -116,7 +146,10 @@ class AudioPipeline:
                     # (or if wake word detection is disabled/unavailable)
                     wake_word_armed = time.monotonic() < wake_active_until
                     if wake_word_armed or not self.wake_word._use_oww:
-                        asyncio.create_task(self._transcribe_and_emit(segment))
+                        task = asyncio.create_task(
+                            self._transcribe_and_emit(segment),
+                        )
+                        task.add_done_callback(lambda t: None)
 
             except asyncio.CancelledError:
                 break
@@ -158,8 +191,7 @@ class AudioPipeline:
                 },
                 Priority.REALTIME,
             )
-            # Print live for Phase 2 verification
-            print(f"\n[Emily heard]: {result.text}")
+            log.info("stt_transcript", text=result.text[:200])
 
         except Exception as exc:
             log.error("transcription_failed", error=str(exc))

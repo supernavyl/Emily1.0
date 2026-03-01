@@ -11,8 +11,7 @@ Phase 9 adds OpenRouter (Kimi K2, GLM 4.7, custom) and Ollama (local).
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Literal, Optional
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
@@ -38,9 +37,9 @@ class ModelSpec:
     default: bool = False
     open_weights: bool = False
     license: str = ""
-    best_for: list[str] = field(default_factory=list)
+    best_for: tuple[str, ...] = ()
     notes: str = ""
-    reasoning_effort: list[str] = field(default_factory=list)
+    reasoning_effort: tuple[str, ...] = ()
 
     @property
     def is_reasoning_model(self) -> bool:
@@ -53,10 +52,92 @@ class ModelSpec:
 # ---------------------------------------------------------------------------
 
 EMILY_MODEL_REGISTRY: dict[str, ModelSpec] = {
-    "claude-sonnet-4-5": ModelSpec(
-        display="Emily \u2014 Claude Sonnet 4.5",
+    # -----------------------------------------------------------------------
+    # Emily's local brain — Ollama (active default while TabbyAPI is offline)
+    # -----------------------------------------------------------------------
+    "emily-ollama": ModelSpec(
+        display="Emily \u2014 Local Brain (Ollama)",
+        provider="ollama",
+        model_id="huihui_ai/qwen3-abliterated:8b",
+        context=32_768,
+        thinking=True,
+        input_usd=0.0,
+        output_usd=0.0,
+        speed="fast",
+        tier="very-good",
+        default=True,
+        open_weights=True,
+        license="Apache-2.0",
+        best_for=("conversation", "general tasks", "private", "zero-cost", "abliterated"),
+        notes="Emily's default brain via Ollama. Qwen3-8B abliterated. Switch to emily-fast when TabbyAPI is running.",
+    ),
+    # -----------------------------------------------------------------------
+    # Emily's local brain (TabbyAPI EXL2 fleet — fully abliterated)
+    # -----------------------------------------------------------------------
+    "emily-fast": ModelSpec(
+        display="Emily \u2014 Local Brain",
+        provider="tabbyapi",
+        model_id="Qwen2.5-14B-Instruct-abliterated",
+        context=131_072,
+        thinking=True,
+        input_usd=0.0,
+        output_usd=0.0,
+        speed="ultra-fast",
+        tier="excellent",
+        open_weights=True,
+        license="Apache-2.0",
+        best_for=("conversation", "general tasks", "private", "zero-cost", "abliterated"),
+        notes="Emily's default brain. Qwen2.5-14B abliterated, 4.65bpw EXL2, ~8.5 GB VRAM. TabbyAPI.",
+    ),
+    "emily-think": ModelSpec(
+        display="Emily \u2014 Deep Think",
+        provider="tabbyapi",
+        model_id="QwQ-32B-abliterated",
+        context=131_072,
+        thinking=True,
+        input_usd=0.0,
+        output_usd=0.0,
+        speed="fast",
+        tier="best",
+        open_weights=True,
+        best_for=("complex reasoning", "math", "planning", "chain-of-thought", "abliterated"),
+        notes="Emily's reasoning brain. QwQ-32B abliterated, 4.0bpw EXL2, ~17 GB VRAM. TabbyAPI.",
+    ),
+    "emily-nano": ModelSpec(
+        display="Emily \u2014 Quick",
+        provider="llamacpp",
+        model_id="qwen3-4b-abliterated",
+        context=32_000,
+        thinking=True,
+        input_usd=0.0,
+        output_usd=0.0,
+        speed="blazing",
+        tier="good",
+        open_weights=True,
+        license="Apache-2.0",
+        best_for=("quick answers", "classification", "routing", "<100ms", "abliterated"),
+        notes="Emily's fast brain. Qwen3-4B abliterated Q4_K_M GGUF, ~3 GB VRAM. In-process.",
+    ),
+    "emily-vision": ModelSpec(
+        display="Emily \u2014 Vision",
+        provider="ollama",
+        model_id="minicpm-v:latest",
+        context=8_192,
+        vision=True,
+        input_usd=0.0,
+        output_usd=0.0,
+        speed="medium",
+        tier="very-good",
+        best_for=("screen understanding", "image analysis", "OCR", "scene description"),
+        notes="Emily's eyes. MiniCPM-V 2.6, ~8 GB VRAM. Local vision via Ollama.",
+    ),
+    # -----------------------------------------------------------------------
+    # Anthropic entries
+    # -----------------------------------------------------------------------
+    "claude-sonnet-4-6": ModelSpec(
+        display="Emily \u2014 Claude Sonnet 4.6",
         provider="anthropic",
-        model_id="claude-sonnet-4-5-20260101",
+        model_id="claude-sonnet-4-6",
         context=200_000,
         thinking=True,
         vision=True,
@@ -64,14 +145,13 @@ EMILY_MODEL_REGISTRY: dict[str, ModelSpec] = {
         output_usd=15.00,
         speed="fast",
         tier="excellent",
-        default=True,
-        best_for=["coding", "analysis", "creative writing", "general tasks"],
+        best_for=("coding", "analysis", "creative writing", "general tasks"),
         notes="Best balance of speed, quality, and cost.",
     ),
-    "claude-opus-4": ModelSpec(
-        display="Emily \u2014 Claude Opus 4",
+    "claude-opus-4-6": ModelSpec(
+        display="Emily \u2014 Claude Opus 4.6",
         provider="anthropic",
-        model_id="claude-opus-4-20260101",
+        model_id="claude-opus-4-6",
         context=200_000,
         thinking=True,
         vision=True,
@@ -79,23 +159,36 @@ EMILY_MODEL_REGISTRY: dict[str, ModelSpec] = {
         output_usd=75.00,
         speed="slow",
         tier="best",
-        best_for=["complex reasoning", "research", "long-form analysis"],
-        notes="Most capable Anthropic model.",
+        best_for=(
+            "complex reasoning",
+            "research",
+            "long-form analysis",
+            "reflection",
+            "self-model updates",
+            "planning",
+            "agentic tasks",
+            "deep synthesis",
+            "multi-step strategy",
+        ),
+        notes=(
+            "Emily's cloud brain. Routes here automatically for reflection, "
+            "planning, and complex agent tasks (CLOUD_BEST tier). "
+            "Extended thinking budget: 16 000 tokens. Requires ANTHROPIC_API_KEY."
+        ),
     ),
-    "claude-haiku-4": ModelSpec(
-        display="Emily \u2014 Claude Haiku 4",
+    "claude-haiku-4-5": ModelSpec(
+        display="Emily \u2014 Claude Haiku 4.5",
         provider="anthropic",
-        model_id="claude-haiku-4-20260101",
+        model_id="claude-haiku-4-5-20251001",
         context=200_000,
         vision=True,
         input_usd=0.80,
         output_usd=4.00,
         speed="very-fast",
         tier="good",
-        best_for=["quick tasks", "classification", "extraction"],
+        best_for=("quick tasks", "classification", "extraction"),
         notes="Fastest and most affordable Anthropic model.",
     ),
-
     # -----------------------------------------------------------------------
     # OpenAI entries (Phase 6)
     # -----------------------------------------------------------------------
@@ -110,7 +203,7 @@ EMILY_MODEL_REGISTRY: dict[str, ModelSpec] = {
         output_usd=60.00,
         speed="medium",
         tier="best",
-        best_for=["professional tasks", "knowledge work", "enterprise", "creative"],
+        best_for=("professional tasks", "knowledge work", "enterprise", "creative"),
         notes="First model to exceed human experts on 70.9% of pro tasks.",
     ),
     "gpt-5": ModelSpec(
@@ -123,7 +216,7 @@ EMILY_MODEL_REGISTRY: dict[str, ModelSpec] = {
         output_usd=32.00,
         speed="fast",
         tier="excellent",
-        best_for=["general tasks", "vision", "coding", "writing"],
+        best_for=("general tasks", "vision", "coding", "writing"),
     ),
     "gpt-4o": ModelSpec(
         display="Emily \u2014 GPT-4o",
@@ -135,7 +228,7 @@ EMILY_MODEL_REGISTRY: dict[str, ModelSpec] = {
         output_usd=10.00,
         speed="fast",
         tier="very-good",
-        best_for=["cost-conscious quality", "general tasks"],
+        best_for=("cost-conscious quality", "general tasks"),
         notes="Excellent value even with GPT-5 available.",
     ),
     "o3": ModelSpec(
@@ -148,9 +241,9 @@ EMILY_MODEL_REGISTRY: dict[str, ModelSpec] = {
         output_usd=40.00,
         speed="slow",
         tier="best-reasoning",
-        best_for=["math", "logic", "proofs", "competitive coding", "science"],
+        best_for=("math", "logic", "proofs", "competitive coding", "science"),
         notes="Best pure reasoning. Use for problems that can't be shortcut.",
-        reasoning_effort=["low", "medium", "high"],
+        reasoning_effort=("low", "medium", "high"),
     ),
     "o4-mini": ModelSpec(
         display="Emily \u2014 o4-mini",
@@ -162,9 +255,9 @@ EMILY_MODEL_REGISTRY: dict[str, ModelSpec] = {
         output_usd=4.40,
         speed="medium",
         tier="excellent",
-        best_for=["fast reasoning", "math", "code debugging"],
+        best_for=("fast reasoning", "math", "code debugging"),
         notes="Best reasoning-per-dollar in 2026.",
-        reasoning_effort=["low", "medium", "high"],
+        reasoning_effort=("low", "medium", "high"),
     ),
     # ── Google Gemini 3 / 2.5 series (Phase 7) ─────────────────────────
     "gemini-3-pro": ModelSpec(
@@ -180,7 +273,7 @@ EMILY_MODEL_REGISTRY: dict[str, ModelSpec] = {
         output_usd=15.00,
         speed="medium",
         tier="best-multimodal",
-        best_for=["massive docs", "multimodal", "video", "science", "2M context"],
+        best_for=("massive docs", "multimodal", "video", "science", "2M context"),
         notes="Dethroned GPT-5 on 19/20 benchmarks. #1 HLE score.",
     ),
     "gemini-3-flash": ModelSpec(
@@ -194,7 +287,7 @@ EMILY_MODEL_REGISTRY: dict[str, ModelSpec] = {
         output_usd=0.40,
         speed="ultra-fast",
         tier="excellent",
-        best_for=["fast deep reasoning", "1M ctx cheap", "PhD-level on budget"],
+        best_for=("fast deep reasoning", "1M ctx cheap", "PhD-level on budget"),
         notes="PhD-level reasoning at fraction of Pro cost.",
     ),
     "gemini-2-5-pro": ModelSpec(
@@ -208,7 +301,7 @@ EMILY_MODEL_REGISTRY: dict[str, ModelSpec] = {
         output_usd=10.00,
         speed="medium",
         tier="very-good",
-        best_for=["large context", "cost-conscious deep analysis"],
+        best_for=("large context", "cost-conscious deep analysis"),
     ),
     # ── Groq — ultra-low-latency LPU inference (Phase 8) ─────────────
     "groq-llama-70b": ModelSpec(
@@ -221,7 +314,7 @@ EMILY_MODEL_REGISTRY: dict[str, ModelSpec] = {
         speed="blazing",
         tier="very-good",
         open_weights=True,
-        best_for=["real-time chat", "~80ms first token", "quick answers"],
+        best_for=("real-time chat", "~80ms first token", "quick answers"),
         notes="Fastest first-token. Best for latency-critical scenarios.",
     ),
     "groq-deepseek-r1": ModelSpec(
@@ -235,7 +328,7 @@ EMILY_MODEL_REGISTRY: dict[str, ModelSpec] = {
         speed="blazing",
         tier="excellent",
         open_weights=True,
-        best_for=["fast reasoning", "math", "debugging", "think at Groq speed"],
+        best_for=("fast reasoning", "math", "debugging", "think at Groq speed"),
     ),
     "qwen3-72b": ModelSpec(
         display="Emily \u2014 Qwen3 72B Fast",
@@ -249,7 +342,7 @@ EMILY_MODEL_REGISTRY: dict[str, ModelSpec] = {
         tier="very-good",
         open_weights=True,
         license="Apache-2.0",
-        best_for=["fast multilingual", "budget reasoning on Groq"],
+        best_for=("fast multilingual", "budget reasoning on Groq"),
     ),
     "llama-4-scout": ModelSpec(
         display="Emily \u2014 Llama Scout",
@@ -261,7 +354,7 @@ EMILY_MODEL_REGISTRY: dict[str, ModelSpec] = {
         speed="fast",
         tier="good",
         open_weights=True,
-        best_for=["entire codebase in context", "10M token analysis", "legal review"],
+        best_for=("entire codebase in context", "10M token analysis", "legal review"),
         notes="Industry-leading 10M token window. Feed entire repos.",
     ),
     # ── xAI Grok 4.1 (Phase 8) ──────────────────────────────────────
@@ -275,7 +368,7 @@ EMILY_MODEL_REGISTRY: dict[str, ModelSpec] = {
         output_usd=15.00,
         speed="fast",
         tier="excellent",
-        best_for=["creative writing", "humor", "sarcasm", "cultural nuance", "storytelling"],
+        best_for=("creative writing", "humor", "sarcasm", "cultural nuance", "storytelling"),
         notes="#1 EQ benchmark. Most human-sounding commercial model.",
     ),
     # ── DeepSeek V3.2 + R2 (Phase 8) ────────────────────────────────
@@ -290,7 +383,7 @@ EMILY_MODEL_REGISTRY: dict[str, ModelSpec] = {
         tier="excellent",
         open_weights=True,
         license="MIT",
-        best_for=["coding", "math", "90%-quality at 1/10th cost"],
+        best_for=("coding", "math", "90%-quality at 1/10th cost"),
         notes="Matches frontier on coding/reasoning at ~1/10th cost.",
     ),
     "deepseek-r2": ModelSpec(
@@ -305,7 +398,7 @@ EMILY_MODEL_REGISTRY: dict[str, ModelSpec] = {
         tier="excellent",
         open_weights=True,
         license="MIT",
-        best_for=["reasoning", "math", "science", "budget thinking"],
+        best_for=("reasoning", "math", "science", "budget thinking"),
         notes="Strong thinking at fraction of o3 cost.",
     ),
     # ── Together AI (Phase 8) ────────────────────────────────────────
@@ -321,7 +414,7 @@ EMILY_MODEL_REGISTRY: dict[str, ModelSpec] = {
         tier="excellent",
         open_weights=True,
         license="Apache-2.0",
-        best_for=["multilingual", "coding", "math", "self-hostable"],
+        best_for=("multilingual", "coding", "math", "self-hostable"),
         notes="90%+ frontier quality. 119 languages. Fully permissive.",
     ),
     "llama-4-maverick": ModelSpec(
@@ -335,7 +428,7 @@ EMILY_MODEL_REGISTRY: dict[str, ModelSpec] = {
         speed="fast",
         tier="very-good",
         open_weights=True,
-        best_for=["multimodal open-source", "cost-efficient vision"],
+        best_for=("multimodal open-source", "cost-efficient vision"),
     ),
     # ── Mistral — EU / GDPR (Phase 8) ───────────────────────────────
     "mistral-large-3": ModelSpec(
@@ -348,7 +441,7 @@ EMILY_MODEL_REGISTRY: dict[str, ModelSpec] = {
         output_usd=6.00,
         speed="fast",
         tier="very-good",
-        best_for=["EU compliance", "GDPR-sensitive", "multilingual EU"],
+        best_for=("EU compliance", "GDPR-sensitive", "multilingual EU"),
     ),
     "codestral-2": ModelSpec(
         display="Emily \u2014 Codestral",
@@ -359,7 +452,7 @@ EMILY_MODEL_REGISTRY: dict[str, ModelSpec] = {
         output_usd=0.90,
         speed="fast",
         tier="excellent",
-        best_for=["code FIM", "code completion", "best dedicated code model per cost"],
+        best_for=("code FIM", "code completion", "best dedicated code model per cost"),
     ),
     "mistral-small-3": ModelSpec(
         display="Emily \u2014 Mistral Small",
@@ -372,7 +465,7 @@ EMILY_MODEL_REGISTRY: dict[str, ModelSpec] = {
         tier="good",
         open_weights=True,
         license="Apache-2.0",
-        best_for=["edge deployment", "mobile", "< 500ms latency"],
+        best_for=("edge deployment", "mobile", "< 500ms latency"),
         notes="24B params. Runs on phones. Sub-500ms.",
     ),
     # ── OpenRouter — 300+ model pass-through (Phase 9) ───────────────
@@ -387,7 +480,7 @@ EMILY_MODEL_REGISTRY: dict[str, ModelSpec] = {
         speed="medium",
         tier="excellent",
         open_weights=True,
-        best_for=["math", "algorithms", "agentic tasks", "200+ tool calls"],
+        best_for=("math", "algorithms", "agentic tasks", "200+ tool calls"),
         notes="Near top global leaderboard for math+algorithms.",
     ),
     "glm-4-7-thinking": ModelSpec(
@@ -402,21 +495,87 @@ EMILY_MODEL_REGISTRY: dict[str, ModelSpec] = {
         tier="excellent",
         open_weights=True,
         license="MIT",
-        best_for=["agentic benchmarks", "tool use", "terminal tasks", "self-hosting"],
+        best_for=("agentic benchmarks", "tool use", "terminal tasks", "self-hosting"),
         notes="42.8% HLE with tools. Outperforms many frontier models. MIT.",
     ),
-    # ── Ollama — local inference (Phase 9) ───────────────────────────
-    "ollama-local": ModelSpec(
-        display="Emily \u2014 Local",
-        provider="ollama",
-        model_id="llama3.3:70b",
+    # ── OpenRouter FREE tier — zero-cost cloud models (Phase 10) ──────
+    "or-free-deepseek-r1": ModelSpec(
+        display="Emily \u2014 DeepSeek R1 \u2728free",
+        provider="openrouter",
+        model_id="deepseek/deepseek-r1-0528:free",
+        context=164_000,
+        thinking=True,
         input_usd=0.0,
         output_usd=0.0,
-        speed="hardware-dependent",
-        tier="local",
-        notes="100% local. Emily identity still applied. "
-        "Recommended: qwen3:72b, deepseek-r1:32b, llama3.3:70b",
+        speed="medium",
+        tier="excellent",
+        open_weights=True,
+        license="MIT",
+        best_for=("reasoning", "math", "science", "free thinking"),
+        notes="DeepSeek R1 0528 on OpenRouter free tier. 20 req/min, 200/day.",
     ),
+    "or-free-qwen3-235b": ModelSpec(
+        display="Emily \u2014 Qwen3 235B \u2728free",
+        provider="openrouter",
+        model_id="qwen/qwen3-235b-a22b:free",
+        context=131_000,
+        thinking=True,
+        input_usd=0.0,
+        output_usd=0.0,
+        speed="medium",
+        tier="excellent",
+        open_weights=True,
+        license="Apache-2.0",
+        best_for=("coding", "multilingual", "reasoning", "free powerhouse"),
+        notes="Qwen3 235B MoE (22B active) on OpenRouter free tier.",
+    ),
+    "or-free-llama-70b": ModelSpec(
+        display="Emily \u2014 Llama 70B \u2728free",
+        provider="openrouter",
+        model_id="meta-llama/llama-3.3-70b-instruct:free",
+        context=128_000,
+        input_usd=0.0,
+        output_usd=0.0,
+        speed="fast",
+        tier="very-good",
+        open_weights=True,
+        best_for=("general chat", "multilingual", "free balanced"),
+        notes="Meta Llama 3.3 70B on OpenRouter free tier. GPT-4 class.",
+    ),
+    "or-free-gpt-oss-120b": ModelSpec(
+        display="Emily \u2014 GPT-OSS 120B \u2728free",
+        provider="openrouter",
+        model_id="openai/gpt-oss-120b:free",
+        context=131_000,
+        thinking=True,
+        input_usd=0.0,
+        output_usd=0.0,
+        speed="medium",
+        tier="excellent",
+        open_weights=True,
+        license="Apache-2.0",
+        best_for=("agentic tasks", "tool use", "reasoning", "free frontier"),
+        notes="OpenAI open-weight 120B MoE. Single H100 viable. Free tier.",
+    ),
+    "or-free-qwen3-vl-235b": ModelSpec(
+        display="Emily \u2014 Qwen3 VL 235B \u2728free",
+        provider="openrouter",
+        model_id="qwen/qwen3-vl-235b-a22b:free",
+        context=131_000,
+        thinking=True,
+        vision=True,
+        input_usd=0.0,
+        output_usd=0.0,
+        speed="medium",
+        tier="excellent",
+        open_weights=True,
+        best_for=("vision", "multimodal reasoning", "STEM", "free vision"),
+        notes="Qwen3 VL 235B Thinking on OpenRouter free tier. Vision+reasoning.",
+    ),
+    # ── Ollama — additional local models (Phase 9) ──────────────────
+    # Emily's own fleet (emily-fast, emily-think, emily-nano, emily-vision)
+    # is defined at the top of the registry. Additional Ollama models are
+    # auto-discovered at runtime via OllamaProvider.discover_models().
 }
 
 

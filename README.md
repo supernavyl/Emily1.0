@@ -35,10 +35,12 @@ reasons, and improves herself over time — with zero cloud dependency and zero 
 └──────────────────────────────┬──────────────────────────────────┘
                                │
 ┌──────────────────────────────▼──────────────────────────────────┐
-│                    LLM FLEET (via Ollama)                        │
-│  nano: Qwen3-4B            │ fast: Qwen3-14B Q4_K_M              │
-│  smart/reasoning: QwQ-32B Q4_K_M  │ (alt: Qwen3-32B, inactive) │
-│  vision: MiniCPM-V 2.6    │ embedding: BGE-M3                   │
+│                    LLM FLEET (TabbyAPI + Ollama)                 │
+│  Text Generation (TabbyAPI :5000, ExLlamaV2, abliterated):      │
+│    nano/voice_fast/fast: Qwen2.5-14B-Instruct (4.65bpw EXL2)     │
+│    smart/reasoning: QwQ-32B (4.0bpw EXL2)                       │
+│  Vision+Embedding (Ollama :11434):                              │
+│    vision: MiniCPM-V 2.6  │  embedding: BGE-M3                   │
 └──────────────────────────────┬──────────────────────────────────┘
                                │
 ┌──────────────────────────────▼──────────────────────────────────┐
@@ -47,6 +49,8 @@ reasons, and improves herself over time — with zero cloud dependency and zero 
 │  Semantic (Qdrant + BM25 + NetworkX) │ Procedural (JSON)        │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+**Key change**: All text generation now runs on **TabbyAPI** (ExLlamaV2-based inference server) with fully **abliterated** models for uncensored reasoning. Vision and embedding remain on Ollama.
 
 ---
 
@@ -66,25 +70,67 @@ uv sync --extra gpu-cuda --extra dev --extra desktop
 .venv/bin/python -m spacy download en_core_web_sm
 ```
 
-### 2. Install Ollama and models
+### 2. Install LLM backends
+
+#### TabbyAPI (text generation — abliterated models)
+
+```bash
+# Install TabbyAPI ExLlamaV2 inference server
+cd ~/
+git clone https://github.com/therealownage/TabbyAPI.git
+cd TabbyAPI
+python3.11 -m venv venv
+source venv/bin/activate
+pip install -U pip wheel
+pip install -r requirements.txt
+
+# Configure
+cp config_sample.yml config.yml
+# Edit config.yml → set model_dir, disable auth for local-only use
+
+# Download abliterated EXL2 models
+mkdir -p ~/models/tabby
+cd ~/models/tabby
+
+# Qwen2.5-14B-Instruct-abliterated (4.65bpw EXL2, ~8.5 GB VRAM)
+huggingface-cli download bartowski/Qwen2.5-14B-Instruct-abliterated-exl2 \
+  --revision 4.65bpw \
+  --local-dir Qwen2.5-14B-Instruct-abliterated \
+  --local-dir-use-symlinks False
+
+# QwQ-32B-abliterated (4.0bpw EXL2, ~17 GB VRAM)
+huggingface-cli download huihui-ai/QwQ-32B-abliterated-exl2 \
+  --revision 4.0bpw \
+  --local-dir QwQ-32B-abliterated \
+  --local-dir-use-symlinks False
+
+# Start TabbyAPI (will auto-start via scripts/start-emily.sh)
+cd ~/TabbyAPI
+source venv/bin/activate
+python main.py --model Qwen2.5-14B-Instruct-abliterated
+```
+
+**Full setup guide**: [docs/TABBYAPI_SETUP.md](docs/TABBYAPI_SETUP.md)
+
+#### Ollama (vision + embedding)
 
 ```bash
 # Install Ollama
 curl -fsSL https://ollama.com/install.sh | sh
 
-# Pull required models
-ollama pull qwen3:4b             # nano — routing, classification (~3 GB)
-ollama pull qwen3:14b            # fast — conversation, code (~10 GB)
-ollama pull qwq:latest           # smart/reasoning — complex tasks (~19 GB)
+# Pull vision and embedding models (text models now on TabbyAPI)
 ollama pull minicpm-v:latest     # vision — screenshots, OCR (~5.5 GB)
 ollama pull bge-m3               # embedding — RAG retrieval (~1.2 GB)
-# Optional: ollama pull qwen3:32b  # alt smart — hybrid thinking (~20 GB, inactive by default)
 ```
 
-### 3. Start infrastructure services
+### 3. Start infrastructure + model backends
 
 ```bash
-docker compose up -d
+cd ~/Emily1.0
+source .venv/bin/activate
+
+# Starts Docker infra + TabbyAPI + Ollama checks
+./scripts/start-emily.sh infra
 ```
 
 Services started:
@@ -104,18 +150,52 @@ cp .env.example .env
 ### 5. Run Emily
 
 ```bash
-# Voice mode (primary — full system with all agents)
-.venv/bin/python main.py
+# Full stack (infra + model backends + API + core)
+./scripts/start-emily.sh all
+
+# Voice core only (no GUI)
+./scripts/start-emily.sh core
+
+# Voice core with Brain + Voice dashboards
+C
 
 # Desktop chat app (Qt)
-.venv/bin/python -m emily_chat.main
+./scripts/start-emily.sh chat
 
-# Web dashboard + API only
-.venv/bin/uvicorn api.app:app --host 127.0.0.1 --port 8080
+# API only
+./scripts/start-emily.sh api
 
-# Terminal UI
-.venv/bin/python -m ui.terminal.app
+# React web frontend only
+./scripts/start-emily.sh web
+
+# Status / shutdown
+./scripts/start-emily.sh status
+./scripts/start-emily.sh stop
 ```
+
+### 6. Optional: Enable Vision (Camera + Screen Access)
+
+Emily's vision system provides screen capture and webcam capabilities for visual context awareness.
+
+**Quick setup:**
+
+```bash
+# Run automated setup (checks dependencies, permissions, tests)
+./scripts/setup-vision.sh
+
+# Test vision system
+python scripts/test-vision.py
+
+# Vision is already enabled in config.yaml
+# If you need to disable: set vision.enabled = false
+```
+
+**What vision enables:**
+- 📹 **Webcam**: Presence detection and facial expression analysis
+- 🖥️ **Screen capture**: Screenshot understanding via MiniCPM-V
+- 💬 **Ask Emily**: "What's on my screen?" or "Can you see me?"
+
+**Full guide**: [docs/VISION_SETUP.md](docs/VISION_SETUP.md)
 
 ---
 
@@ -123,21 +203,32 @@ cp .env.example .env
 
 ### Model tiers and backends
 
-| Tier | Ollama/Registry model | Backend | Use case |
-|------|------------------------|---------|----------|
-| nano | qwen3:4b | llamacpp (GGUF) | Routing, classification, <100ms |
-| voice_fast | qwen3:4b | llamacpp (alias of nano) | Voice fast path |
-| fast | qwen3:14b | ollama | Standard conversation, <2s |
-| smart | qwq:latest | ollama | Complex reasoning, planning |
-| reasoning | qwq:latest | ollama | Chain-of-thought, math |
-| vision | minicpm-v:latest | ollama | Screen + webcam |
-| embedding | bge-m3 | ollama | Embeddings |
+| Tier | Model | Backend | VRAM | Use case |
+|------|-------|---------|------|----------|
+| nano | Qwen2.5-14B-Instruct-abliterated | TabbyAPI (EXL2) | ~8.5 GB | Routing, classification, <1s |
+| voice_fast | Qwen2.5-14B-Instruct-abliterated | TabbyAPI (EXL2) | ~8.5 GB | Voice fast path, <500ms |
+| fast | Qwen2.5-14B-Instruct-abliterated | TabbyAPI (EXL2) | ~8.5 GB | Standard conversation, <2s |
+| smart | QwQ-32B-abliterated | TabbyAPI (EXL2) | ~17 GB | Complex reasoning, planning, <15s |
+| reasoning | QwQ-32B-abliterated | TabbyAPI (EXL2) | ~17 GB | Chain-of-thought, math |
+| vision | minicpm-v:latest | Ollama | ~8 GB | Screen + webcam understanding |
+| embedding | bge-m3 | Ollama | ~2 GB | Dense + sparse embeddings |
 
-For nano/voice_fast with llamacpp, place the Qwen3 4B GGUF in `models/` (see `config.yaml` `llm.llamacpp.models.nano.filename`, e.g. `qwen3-4b-instruct-q4_k_m.gguf`).
+**Backend routing** (configured in `config.yaml` → `llm.tier_backend`):
+- Text generation tiers → TabbyAPI (:5000) with abliterated EXL2 models
+- Vision + embedding → Ollama (:11434)
+
+**Why abliterated models?**
+No refusals, no alignment tax, native `<think>...</think>` reasoning blocks for transparent CoT.
+
+**Multilingual support:**
+Emily's Qwen3 text models support **119 languages** natively, and Whisper STT handles **99 languages**. See [MODELS_AND_LANGUAGES.md](MODELS_AND_LANGUAGES.md) for full language details.
 
 ### Checking System Status
 
 ```bash
+# Verify TabbyAPI is running and model is loaded
+curl -s http://localhost:5000/v1/models | jq
+
 # Verify Ollama is running and models are loaded
 ollama list
 
@@ -153,28 +244,41 @@ nvidia-smi
 
 ### VRAM Co-residency
 
-With the RTX 4090 (24 GB), models are loaded on demand:
+With the RTX 4090 (24 GB), TabbyAPI + Ollama split the workload:
 
-| Model | VRAM | Residency |
-|-------|------|-----------|
-| qwen3:4b (nano) | ~3 GB | Always resident |
-| bge-m3 (embedding) | ~1.2 GB | Always resident |
-| Whisper large-v3-turbo (STT) | ~1.5 GB | Always resident |
-| qwen3:14b (fast) | ~10 GB | Loaded for conversations |
-| qwq (smart) | ~19 GB | Loaded for hard tasks, evicts fast |
-| qwen3:32b (alt smart) | ~20 GB | Inactive by default, swap in via config |
-| minicpm-v (vision) | ~5.5 GB | Loaded on demand |
+| Model | Backend | VRAM | Residency |
+|-------|---------|------|-----------|
+| Qwen2.5-14B-Instruct-abliterated | TabbyAPI | ~8.5 GB | Default (fast tier, 80%+ of queries) |
+| QwQ-32B-abliterated | TabbyAPI | ~17 GB | Hot-swap for smart/reasoning tier |
+| MiniCPM-V 2.6 | Ollama | ~8 GB | Loaded on-demand for vision |
+| BGE-M3 | Ollama | ~2 GB | Always resident (embedding) |
+| Whisper large-v3-turbo | Pipeline | ~1.5 GB | Always resident (STT) |
 
-Ollama handles model swapping automatically. With 64 GB RAM, offloading to
-CPU RAM is seamless when VRAM is full.
+**Typical VRAM usage:**
+- Qwen2.5-14B (fast tier) + BGE-M3 + Whisper: **~12 GB** (plenty of headroom)
+- QwQ-32B (smart tier) + BGE-M3 + Whisper: **~20.5 GB** (near max, auto-evicts fast tier)
+
+TabbyAPI supports hot model swapping via `POST /v1/model/load`. Emily's router auto-selects the right tier; you can manually load QwQ-32B before a reasoning session:
+
+```bash
+curl -X POST http://localhost:5000/v1/model/load \
+  -H "Content-Type: application/json" \
+  -d '{"name": "QwQ-32B-abliterated"}'
+```
+
+With 64 GB system RAM, offloading to CPU is seamless when VRAM is full.
 
 ### Updating Models
 
 ```bash
-# Pull newer versions (Ollama checks for updates)
-ollama pull qwen3:4b
-ollama pull qwen3:14b
-ollama pull qwq:latest
+# TabbyAPI models: re-download from HuggingFace if new quantizations are released
+cd ~/models/tabby
+huggingface-cli download bartowski/Qwen2.5-14B-Instruct-abliterated-exl2 \
+  --revision 4.65bpw \
+  --local-dir Qwen2.5-14B-Instruct-abliterated \
+  --local-dir-use-symlinks False
+
+# Ollama models: pull newer versions (auto-checks for updates)
 ollama pull minicpm-v:latest
 ollama pull bge-m3
 
@@ -386,13 +490,15 @@ and silently retries if the score falls below the configured threshold.
 
 ### Memory Architecture
 
-| Layer | Technology | TTL |
-|-------|-----------|-----|
-| Sensory Buffer | In-memory deque | 30s |
-| Working Memory | In-memory (token-budgeted) | Session |
-| Episodic Memory | SQLite | Permanent |
-| Semantic Memory | Qdrant + BM25 + NetworkX | Permanent |
-| Procedural Memory | JSON file | Permanent |
+| Layer | Technology | TTL | Persistence |
+|-------|-----------|-----|-------------|
+| Sensory Buffer | In-memory deque | 30s | None |
+| Working Memory | In-memory (token-budgeted) | Session | **✅ Every turn saved** |
+| Episodic Memory | SQLite | Permanent | Session summaries |
+| Semantic Memory | Qdrant + BM25 + NetworkX | Permanent | Documents + embeddings |
+| Procedural Memory | JSON file | Permanent | Skills + user profile |
+
+**⚡ New: Every single interaction (user input + Emily response) is immediately saved to `data/interactions.db` with crash-safe durability.** See [INTERACTION_PERSISTENCE.md](INTERACTION_PERSISTENCE.md) for details.
 
 ---
 
@@ -414,7 +520,6 @@ See [THREAT_MODEL.md](THREAT_MODEL.md) for a full analysis. Summary:
 ---
 
 ## Self-Improvement
-
 Emily improves herself during idle time:
 
 1. **Performance tracking**: Latency, quality, and retrieval scores are logged

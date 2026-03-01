@@ -18,12 +18,11 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any
 
 import numpy as np
 
-from observability.logger import get_logger
 from conversation.emotion_sync import ResponseStyleParameters
+from observability.logger import get_logger
 
 log = get_logger(__name__)
 
@@ -164,8 +163,15 @@ class ProsodyPlanner:
     def _is_technical(text: str) -> bool:
         """Heuristic for technical content."""
         technical_markers = (
-            "function", "method", "class", "API", "algorithm",
-            "database", "server", "config", "parameter",
+            "function",
+            "method",
+            "class",
+            "API",
+            "algorithm",
+            "database",
+            "server",
+            "config",
+            "parameter",
         )
         lower = text.lower()
         return any(m.lower() in lower for m in technical_markers)
@@ -176,15 +182,22 @@ class ProsodyPlanner:
         emphasis = []
         words = text.split()
         emphasis_markers = {
-            "very", "really", "absolutely", "definitely",
-            "never", "always", "most", "best", "worst",
-            "important", "critical", "essential",
+            "very",
+            "really",
+            "absolutely",
+            "definitely",
+            "never",
+            "always",
+            "most",
+            "best",
+            "worst",
+            "important",
+            "critical",
+            "essential",
         }
         for w in words:
             clean = w.lower().strip(".,!?;:'\"")
-            if clean in emphasis_markers:
-                emphasis.append(w)
-            elif w.isupper() and len(w) > 1:
+            if clean in emphasis_markers or (w.isupper() and len(w) > 1):
                 emphasis.append(w)
         return emphasis
 

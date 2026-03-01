@@ -11,12 +11,11 @@ from __future__ import annotations
 import os
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, cast
 
 import yaml
 from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
 
 # ---------------------------------------------------------------------------
 # Sub-models
@@ -24,13 +23,15 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class LLMModels(BaseModel):
-    nano: str = "qwen3:4b"
-    voice_fast: str = "qwen3:4b"
-    fast: str = "qwen3:14b"
-    smart: str = "qwq:latest"
-    reasoning: str = "qwq:latest"
+    nano: str = "qwen3-4b-abliterated"
+    voice_fast: str = "qwen3-4b-abliterated"
+    fast: str = "Qwen2.5-14B-Instruct-abliterated"
+    smart: str = "qwq-32b-abliterated"
+    reasoning: str = "qwq-32b-abliterated"
     vision: str = "minicpm-v:latest"
     embedding: str = "bge-m3"
+    cloud_best: str = "claude-opus-4-6"
+    cloud_fast: str = "claude-sonnet-4-6"
 
 
 class LLMRouting(BaseModel):
@@ -49,6 +50,61 @@ class LLMInference(BaseModel):
     repeat_penalty: float = 1.1
     max_tokens: int = 4096
     context_window: int = 8192
+
+
+class TierInferenceOverride(BaseModel):
+    """Per-tier inference parameter overrides applied on top of LLMInference defaults."""
+
+    temperature: float | None = None
+    max_tokens: int | None = None
+    enable_thinking: bool = (
+        True  # Controls Qwen3/QwQ <think> blocks and Anthropic extended thinking
+    )
+    thinking_budget: int | None = None  # Token budget for extended thinking (Anthropic only)
+
+
+class TierInferenceConfig(BaseModel):
+    """Per-tier inference overrides for each model tier."""
+
+    nano: TierInferenceOverride = Field(
+        default_factory=lambda: TierInferenceOverride(
+            temperature=0.3, max_tokens=512, enable_thinking=False
+        )
+    )
+    voice_fast: TierInferenceOverride = Field(
+        default_factory=lambda: TierInferenceOverride(
+            temperature=0.7, max_tokens=1024, enable_thinking=False
+        )
+    )
+    fast: TierInferenceOverride = Field(
+        default_factory=lambda: TierInferenceOverride(
+            temperature=0.7, max_tokens=4096, enable_thinking=True
+        )
+    )
+    smart: TierInferenceOverride = Field(
+        default_factory=lambda: TierInferenceOverride(
+            temperature=0.6, max_tokens=8192, enable_thinking=True
+        )
+    )
+    reasoning: TierInferenceOverride = Field(
+        default_factory=lambda: TierInferenceOverride(
+            temperature=0.6, max_tokens=16384, enable_thinking=True
+        )
+    )
+    cloud_best: TierInferenceOverride = Field(
+        default_factory=lambda: TierInferenceOverride(
+            temperature=1.0, max_tokens=16384, enable_thinking=True, thinking_budget=16_000
+        )
+    )
+    cloud_fast: TierInferenceOverride = Field(
+        default_factory=lambda: TierInferenceOverride(
+            temperature=1.0, max_tokens=8192, enable_thinking=True, thinking_budget=8_000
+        )
+    )
+
+    def for_tier(self, tier_name: str) -> TierInferenceOverride:
+        """Get overrides for a given tier name, defaulting to smart settings."""
+        return getattr(self, tier_name, self.smart)
 
 
 class LLMCritic(BaseModel):
@@ -80,28 +136,33 @@ class TierBackend(BaseModel):
 
     nano: str = "llamacpp"
     voice_fast: str = "llamacpp"
-    fast: str = "ollama"
-    smart: str = "ollama"
-    reasoning: str = "ollama"
+    fast: str = "tabbyapi"
+    smart: str = "tabbyapi"
+    reasoning: str = "tabbyapi"
     vision: str = "ollama"
     embedding: str = "ollama"
+    cloud_best: str = "anthropic"
+    cloud_fast: str = "anthropic"
 
     @field_validator("*")
     @classmethod
     def validate_backend(cls, v: str) -> str:
         """Ensure backend value is a recognised option."""
-        allowed = {"ollama", "llamacpp"}
+        allowed = {"ollama", "llamacpp", "tabbyapi", "anthropic"}
         if v not in allowed:
             raise ValueError(f"tier_backend must be one of {allowed}, got {v!r}")
         return v
 
 
 class LLMConfig(BaseModel):
-    backend: str = "ollama"
+    backend: str = "tabbyapi"
     ollama_base_url: str = "http://localhost:11434"
+    tabbyapi_base_url: str = "http://localhost:5000"
+    tabbyapi_api_key: str = ""
     models: LLMModels = Field(default_factory=LLMModels)
     routing: LLMRouting = Field(default_factory=LLMRouting)
     inference: LLMInference = Field(default_factory=LLMInference)
+    tier_inference: TierInferenceConfig = Field(default_factory=TierInferenceConfig)
     critic: LLMCritic = Field(default_factory=LLMCritic)
     llamacpp: LlamaCppConfig = Field(default_factory=LlamaCppConfig)
     tier_backend: TierBackend = Field(default_factory=TierBackend)
@@ -111,49 +172,24 @@ class AudioConfig(BaseModel):
     sample_rate: int = 16000
     channels: int = 1
     chunk_size: int = 1024
-    input_device: str | None = None
-    output_device: str | None = None
+    input_device: str | int | None = None
+    output_device: str | int | None = None
 
 
 class VoiceEngineConfig(BaseModel):
+    """VoiceEngine 1.3 — provider-agnostic voice conversation engine.
+
+    Most settings are read from .env by the engine's own VoiceEngineConfig
+    (pydantic-settings). This wrapper just controls whether Bootstrap starts it.
+    """
+
     enabled: bool = True
-    input_sample_rate: int = 48000
-    output_sample_rate: int = 24000
-    output_channels: int = 2
-    chunk_ms: int = 10
-    aec_enabled: bool = True
-    aec_tail_ms: int = 150
-    noise_suppress_enabled: bool = True
-    noise_threshold_db: float = 15.0
-    speaker_tracking: bool = True
-    max_speakers: int = 2
-    turn_response_threshold: float = 0.85
-    turn_backchannel_threshold: float = 0.45
-    backchannels_enabled: bool = True
-    fillers_enabled: bool = True
-    breathing_enabled: bool = True
-    rhythm_sync_enabled: bool = True
-    entrainment_degree: float = 0.4
-    emotion_adapt_enabled: bool = True
-    whisper_match: bool = True
-    energy_match: bool = True
-    cross_session_rhythm: bool = True
-    latency_target_ms: int = 500
-    speculative_generation: bool = True
-    speculative_start_probability: float = 0.65
-    fast_mode: bool = True
-    fast_mode_skip_speaker_tracking: bool = True
-    fast_mode_skip_emotion: bool = True
-    fast_mode_skip_breathing: bool = True
-    fast_mode_skip_rhythm: bool = True
-    interrupt_energy_threshold: float = 0.03
-    interrupt_cooldown_ms: int = 300
-    interrupt_fade_ms: int = 20
-    interrupt_lookahead_ms: int = 300
-    interrupt_ack_enabled: bool = True
-    interrupt_resume_enabled: bool = True
-    interrupt_resume_expiry_s: float = 30.0
-    interrupt_adaptive_threshold: bool = True
+    stt_provider: str = "faster_whisper"
+    llm_provider: str = "ollama"
+    tts_provider: str = "kokoro"
+    vad_threshold: float = 0.5
+    min_speech_ms: int = 200
+    min_silence_ms: int = 800
 
 
 class WakeWordConfig(BaseModel):
@@ -173,13 +209,31 @@ class VADConfig(BaseModel):
 
 
 class STTConfig(BaseModel):
-    model: str = "large-v3"
+    profile: Literal["fast", "accurate"] = "fast"
+    model: str = "large-v3-turbo"
     device: str = "cuda"
     compute_type: str = "float16"
-    language: str | None = None
+    language: str | None = "en"
     word_timestamps: bool = True
     beam_size: int = 5
     voice_fast_beam_size: int = 1
+    voice_accurate_beam_size: int = 3
+    streaming_window_duration_s: float = 3.0
+    streaming_process_interval_s: float = 0.15
+    streaming_min_buffer_s: float = 0.3
+    streaming_commit_skip_threshold_s: float = 0.2
+    streaming_rms_gate_threshold: float = 0.006
+    streaming_commit_confidence: float = 0.7
+    streaming_reject_low_confidence: float = 0.65
+    streaming_min_final_words: int = 3
+    streaming_min_unique_ratio: float = 0.45
+    streaming_max_repeat_ratio: float = 0.6
+    streaming_short_utterance_confidence: float = 0.8
+    use_whisper_vad: bool = False
+    whisper_vad_threshold: float = 0.1
+    whisper_vad_min_speech_ms: int = 0
+    whisper_vad_min_silence_ms: int = 300
+    no_speech_threshold: float = 0.7
 
 
 class XTTSConfig(BaseModel):
@@ -190,7 +244,7 @@ class XTTSConfig(BaseModel):
 
 
 class KokoroConfig(BaseModel):
-    voice: str = "af_sky"
+    voice: str = "af_heart"
     speed: float = 1.0
 
 
@@ -204,8 +258,8 @@ class CSMConfig(BaseModel):
 
 
 class TTSConfig(BaseModel):
-    primary: str = "xtts_v2"
-    fallback: str = "kokoro"
+    primary: str = "kokoro"
+    fallback: str = "xtts_v2"
     voice_preset: str = "en_US_female_1"
     xtts: XTTSConfig = Field(default_factory=XTTSConfig)
     kokoro: KokoroConfig = Field(default_factory=KokoroConfig)
@@ -222,6 +276,9 @@ class EpisodicMemoryConfig(BaseModel):
     db_path: str = "data/episodes.db"
     auto_summarize: bool = True
     summary_model: str = "fast"
+    save_all_interactions: bool = True  # Save every user/assistant turn immediately
+    interactions_db_path: str = "data/interactions.db"  # Separate DB for all turns
+    auto_backup_interval_minutes: int = 30  # Auto-backup every 30 minutes
 
 
 class SemanticMemoryConfig(BaseModel):
@@ -278,16 +335,16 @@ class HomeAssistantConfig(BaseModel):
 class ToolsConfig(BaseModel):
     sandbox: str = "bubblewrap"
     allowed_paths: list[str] = Field(default_factory=list)
-    web_search_url: str = "http://localhost:8080"
+    web_search_url: str = "http://localhost:8888"
     home_assistant: HomeAssistantConfig = Field(default_factory=HomeAssistantConfig)
 
 
 class VisionConfig(BaseModel):
-    enabled: bool = True
+    enabled: bool = False
     screen_capture_interval_s: float = 5.0
     webcam_capture_interval_s: float = 5.0
     webcam_device: int = 0
-    emotion_detection: bool = True
+    emotion_detection: bool = False
     presence_idle_threshold_s: float = 120.0
 
 
@@ -387,10 +444,25 @@ class SecurityConfig(BaseModel):
     key_file: str = "~/.emily_key"
     pii_scrub: bool = True
     audit_log_path: str = "logs/audit.log"
+    audit_retention_days: int = 90
     dead_man_switch_days: int = 30
+    dead_man_switch_heartbeat_path: str = "data/.emily_last_active"
     require_approval_tools: list[str] = Field(
         default_factory=lambda: ["shell", "process_manager", "file_writer"]
     )
+
+
+class OwnerConfig(BaseModel):
+    """Single owner identity and privacy configuration."""
+
+    enabled: bool = True
+    identity_file: str = "data/owner_identity.json"
+    require_verification: bool = True
+    verification_timeout_minutes: int = 60
+    guest_mode_enabled: bool = True
+    share_personal_with_guests: bool = False  # NEVER share personal info
+    lockout_after_failed_attempts: int = 3
+    lockout_duration_minutes: int = 5
 
 
 class SelfImprovementConfig(BaseModel):
@@ -421,7 +493,7 @@ class APIConfig(BaseModel):
 
 class ObservabilityConfig(BaseModel):
     otlp_endpoint: str = "http://localhost:4317"
-    metrics_port: int = 9090
+    metrics_port: int = 9091
     log_format: str = "json"
     tracing_enabled: bool = True
 
@@ -466,6 +538,7 @@ class EmilySettings(BaseSettings):
     vision: VisionConfig = Field(default_factory=VisionConfig)
     persona: PersonaConfig = Field(default_factory=PersonaConfig)
     security: SecurityConfig = Field(default_factory=SecurityConfig)
+    owner: OwnerConfig = Field(default_factory=OwnerConfig)
     self_improvement: SelfImprovementConfig = Field(default_factory=SelfImprovementConfig)
     api: APIConfig = Field(default_factory=APIConfig)
     observability: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
@@ -481,22 +554,38 @@ class EmilySettings(BaseSettings):
         return upper
 
     @classmethod
-    def from_yaml(cls, path: str | Path = "config.yaml") -> "EmilySettings":
+    def from_yaml(cls, path: str | Path = "config.yaml") -> EmilySettings:
         """Load settings from a YAML file, then apply env var overrides."""
         yaml_path = Path(path)
         init_kwargs: dict[str, Any] = {}
 
         if yaml_path.exists():
             with yaml_path.open("r") as fh:
-                raw = yaml.safe_load(fh) or {}
-            # Top-level key is optional 'emily:' wrapper
+                raw = cast("dict[str, Any]", yaml.safe_load(fh) or {})
             init_kwargs = raw.get("emily", raw) if "emily" in raw else raw
             # Merge all top-level sections
             for key in [
-                "llm", "audio", "wake_word", "vad", "stt", "tts",
-                "singing", "voice_engine", "memory", "knowledge", "vault",
-                "rag", "agents", "tools", "vision", "persona", "security",
-                "self_improvement", "api", "observability",
+                "llm",
+                "audio",
+                "wake_word",
+                "vad",
+                "stt",
+                "tts",
+                "singing",
+                "voice_engine",
+                "memory",
+                "knowledge",
+                "vault",
+                "rag",
+                "agents",
+                "tools",
+                "vision",
+                "persona",
+                "security",
+                "owner",
+                "self_improvement",
+                "api",
+                "observability",
             ]:
                 if key in raw:
                     init_kwargs[key] = raw[key]

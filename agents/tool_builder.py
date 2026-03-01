@@ -15,7 +15,7 @@ All generated tools run in the bubblewrap sandbox regardless.
 from __future__ import annotations
 
 import ast
-import importlib
+import asyncio
 import json
 import time
 import uuid
@@ -32,8 +32,15 @@ from observability.logger import get_logger
 log = get_logger(__name__)
 
 _DANGEROUS_PATTERNS = {
-    "os.system", "subprocess.Popen", "subprocess.call", "__import__",
-    "exec(", "eval(", "socket.", "requests.", "urllib",
+    "os.system",
+    "subprocess.Popen",
+    "subprocess.call",
+    "__import__",
+    "exec(",
+    "eval(",
+    "socket.",
+    "requests.",
+    "urllib",
 }
 
 _TOOL_TEMPLATE = '''"""Generated tool: {name}. Created by ToolBuilderAgent on {date}."""
@@ -102,13 +109,17 @@ class ToolBuilderAgent(BaseAgent):
         if not gap_log.exists():
             return
 
-        gaps: list[dict[str, Any]] = []
-        with gap_log.open() as f:
-            for line in f:
-                try:
-                    gaps.append(json.loads(line.strip()))
-                except json.JSONDecodeError:
-                    continue
+        def _read_gaps() -> list[dict[str, Any]]:
+            items: list[dict[str, Any]] = []
+            with gap_log.open() as f:
+                for line in f:
+                    try:
+                        items.append(json.loads(line.strip()))
+                    except json.JSONDecodeError:
+                        continue
+            return items
+
+        gaps = await asyncio.to_thread(_read_gaps)
 
         # Process the 3 most recent gaps
         recent = sorted(gaps, key=lambda g: g.get("timestamp", 0), reverse=True)[:3]
@@ -125,18 +136,7 @@ class ToolBuilderAgent(BaseAgent):
         """
         self._log.info("building_tool_for_gap", gap=gap[:60])
 
-        generation_prompt = (
-            f"You are Emily's ToolBuilderAgent. Generate a Python BaseTool subclass "
-            f"to fill this capability gap:\n\nGAP: {gap}\n\n"
-            "Requirements:\n"
-            "- Subclass BaseTool from plugins.base\n"
-            "- Implement execute() and dry_run()\n"
-            "- No network access in execute() unless the tool is explicitly a web tool\n"
-            "- Use only stdlib and dependencies already in requirements\n"
-            "- Include full type hints and docstrings\n"
-            "- Return ToolResult.ok() or ToolResult.fail()\n\n"
-            "Respond with ONLY the complete Python class code, no markdown fences."
-        )
+        generation_prompt = self._prompts.build_tool_generation_prompt(gap)
 
         result = await self._fleet.chat(
             user_message=generation_prompt,
@@ -159,7 +159,7 @@ class ToolBuilderAgent(BaseAgent):
         approval_id = str(uuid.uuid4())
         preview_path = Path(f"plugins/generated/pending_{approval_id}.py")
         preview_path.parent.mkdir(parents=True, exist_ok=True)
-        preview_path.write_text(code)
+        await asyncio.to_thread(preview_path.write_text, code)
 
         self._pending_approvals[approval_id] = {
             "code": code,
@@ -184,9 +184,11 @@ class ToolBuilderAgent(BaseAgent):
             {
                 "text": (
                     f"I've drafted a new tool to help with: {gap}\n\n"
-                    f"Code preview: {str(preview_path)}\n"
-                    f"Analysis: {'; '.join(issues) if issues else 'No issues detected.'}\n\n"
-                    f"Reply 'approve {approval_id}' to load this tool, or 'reject {approval_id}' to discard."
+                    f"Code preview: {preview_path!s}\n"
+                    f"Analysis: "
+                    f"{'; '.join(issues) if issues else 'No issues detected.'}"
+                    f"\n\nReply 'approve {approval_id}' to load "
+                    f"this tool, or 'reject {approval_id}' to discard."
                 )
             },
             priority=Priority.ACTIVE,
@@ -213,10 +215,10 @@ class ToolBuilderAgent(BaseAgent):
 
         pending = self._pending_approvals[approval_id]
         final_path = Path(f"plugins/generated/tool_{approval_id[:8]}.py")
-        final_path.write_text(pending["code"])
+        await asyncio.to_thread(final_path.write_text, pending["code"])
 
         # Remove pending file
-        Path(pending["path"]).unlink(missing_ok=True)
+        await asyncio.to_thread(Path(pending["path"]).unlink, True)
         del self._pending_approvals[approval_id]
 
         self._log.info("generated_tool_approved_and_saved", path=str(final_path))
@@ -225,7 +227,12 @@ class ToolBuilderAgent(BaseAgent):
         await self.send(
             "ConversationAgent",
             "text.input",
-            {"text": f"Tool approved and saved to {final_path}. It will be available after the next registry refresh."},
+            {
+                "text": (
+                    f"Tool approved and saved to {final_path}. "
+                    "It will be available after the next registry refresh."
+                ),
+            },
             priority=Priority.ACTIVE,
         )
 

@@ -8,18 +8,19 @@ a unified interface for starting, stopping, and sending messages.
 
 from __future__ import annotations
 
-import asyncio
-from typing import Any
+from typing import TYPE_CHECKING
 
-from agents.base import BaseAgent
 from agents.conversation import ConversationAgent
 from agents.memory_agent import MemoryAgent
 from agents.planner import PlannerAgent
 from agents.reflection import ReflectionAgent
-from core.bus import AgentBus
-from llm.fleet import LLMFleet
-from memory.manager import MemoryManager
 from observability.logger import get_logger
+
+if TYPE_CHECKING:
+    from agents.base import BaseAgent
+    from core.bus import AgentBus
+    from llm.fleet import LLMFleet
+    from memory.manager import MemoryManager
 
 log = get_logger(__name__)
 
@@ -61,16 +62,18 @@ class AgentRegistry:
 
     def _build_specialist_agents(self) -> list[BaseAgent]:
         """Instantiate specialist agents (imported lazily)."""
-        agents = []
+        agents: list[BaseAgent] = []
         optional_imports = [
             ("agents.research", "ResearchAgent"),
             ("agents.code_agent", "CodeAgent"),
             ("agents.monitor", "MonitorAgent"),
             ("agents.tool_builder", "ToolBuilderAgent"),
+            ("agents.onboarding", "OnboardingAgent"),
         ]
         for module_path, class_name in optional_imports:
             try:
                 import importlib
+
                 module = importlib.import_module(module_path)
                 cls = getattr(module, class_name)
                 agents.append(cls(self._bus, self._fleet, self._memory))

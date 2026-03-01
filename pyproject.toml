@@ -19,7 +19,7 @@ dependencies = [
     "python-dotenv>=1.0.1",
     # Async & concurrency
     "anyio>=4.4.0",
-    "asyncio-mqtt>=0.16.2",
+    "aiomqtt>=2.0.0",
     # Message bus
     "pyzmq>=26.0.3",
     # Observability
@@ -29,9 +29,13 @@ dependencies = [
     "opentelemetry-sdk>=1.24.0",
     "opentelemetry-exporter-otlp-proto-grpc>=1.24.0",
     "opentelemetry-instrumentation-fastapi>=0.45b0",
-    # HTTP
+    # HTTP & LLM clients
     "httpx>=0.27.0",
+    "openai>=1.40.0",
+    "ollama>=0.3.0",
     "fastapi>=0.111.0",
+    # Encryption
+    "pyrage>=1.1.0",
     "uvicorn[standard]>=0.30.1",
     "websockets>=12.0",
     # Storage
@@ -41,6 +45,9 @@ dependencies = [
     "rank-bm25>=0.2.2",
     "numpy>=1.26.4",
     "scipy>=1.13.0",
+    # Audio / Voice
+    "faster-whisper>=1.0.3",
+    "sounddevice>=0.5.0",
     # Text processing
     "tiktoken>=0.7.0",
     "langdetect>=1.0.9",
@@ -63,10 +70,16 @@ dependencies = [
     # UI
     "rich>=13.7.1",
     "textual>=0.70.0",
-    "argon2-cffi",
-    "pyotp",
-    "vobject",
-    "icalendar",
+    "argon2-cffi>=23.1.0",
+    "pyotp>=2.9.0",
+    "vobject>=0.9.7",
+    "icalendar>=5.0.0",
+    "noisereduce>=3.0.3",
+    "edge-tts>=7.2.7",
+    "kokoro>=0.9.4",
+    "transformers>=5.2.0",
+    "en-core-web-sm",
+    "sounddevice>=0.5.5",
 ]
 
 [project.optional-dependencies]
@@ -77,11 +90,14 @@ gpu-cuda = [
     "transformers>=4.52.1",
     "kokoro>=0.3.4",
     "silero-vad>=5.1.2",
+    # openwakeword: install manually on Python <=3.11 (needs tflite-runtime, no 3.13 wheels)
     "sentence-transformers>=3.1.0",
     "FlagEmbedding>=1.2.11",
     "mss>=9.0.2",
     "opencv-python>=4.10.0",
     "llama-cpp-python>=0.3.0",
+    "sounddevice>=0.5.0",
+    "spacy>=3.7.0",
 ]
 # Vision/emotion (deepface): install manually if needed — pulls tensorflow, no Py3.14 wheels yet
 # Coqui TTS / XTTS and singing (MusicGen, RVC): install manually if needed — they pull
@@ -90,11 +106,13 @@ cpu-only = [
     "faster-whisper>=1.0.3",
     "kokoro>=0.3.4",
     "silero-vad>=5.1.2",
-    "openwakeword>=0.6.0",
+    # openwakeword: install manually on Python <=3.11 (needs tflite-runtime, no 3.13 wheels)
     "sentence-transformers>=3.1.0",
     "FlagEmbedding>=1.2.11",
     "mss>=9.0.2",
     "opencv-python>=4.10.0",
+    "sounddevice>=0.5.0",
+    "spacy>=3.7.0",
 ]
 dev = [
     "pytest>=8.2.2",
@@ -121,16 +139,45 @@ emily = "emily.main:cli"
 emily-chat = "emily_chat.main:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["."]
+packages = [
+    "agents",
+    "api",
+    "core",
+    "conversation",
+    "emily_chat",
+    "extraction",
+    "ingestion",
+    "llm",
+    "memory",
+    "observability",
+    "perception",
+    "persona",
+    "plugins",
+    "proactive",
+    "rag",
+    "security",
+    "self_improvement",
+    "timing",
+    "voice",
+]
 
 [tool.ruff]
 target-version = "py311"
 line-length = 100
-select = ["E", "W", "F", "I", "B", "C4", "UP", "SIM", "TCH"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "C4", "UP", "SIM", "TC"]
 ignore = ["E501"]
 
-[tool.ruff.isort]
+[tool.ruff.lint.isort]
 known-first-party = ["emily"]
+
+[tool.basedpyright]
+pythonVersion = "3.13"
+pythonPath = ".venv/bin/python"
+venvPath = "."
+venv = ".venv"
+typeCheckingMode = "standard"
 
 [tool.mypy]
 python_version = "3.11"
@@ -141,7 +188,16 @@ plugins = ["pydantic.mypy"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-addopts = "--cov=. --cov-report=term-missing -q"
+addopts = "--cov-report=term-missing -q"
 
 [tool.coverage.run]
+source = [
+    "agents", "api", "core", "conversation", "emily_chat",
+    "extraction", "ingestion", "llm", "memory", "observability",
+    "perception", "persona", "plugins", "proactive", "rag",
+    "security", "self_improvement", "timing", "voice",
+]
 omit = ["tests/*", "scripts/*", "ui/web/*"]
+
+[tool.uv.sources]
+en-core-web-sm = { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl" }

@@ -3,30 +3,26 @@
     "context7": {
       "command": "npx",
       "args": ["-y", "@upstash/context7-mcp@latest"],
-      "description": "Live, version-accurate library docs — add 'use context7' to any prompt"
-    },
-    "playwright": {
-      "command": "npx",
-      "args": ["-y", "@playwright/mcp@latest"],
-      "description": "Browser automation for testing and web interaction"
+      "description": "Live library documentation from 10,000+ packages"
     },
     "filesystem": {
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/home/supernovyl/Emily1.0"],
-      "description": "Read/write files — agent can explore and edit the project"
-    },
-    "postgres": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-postgres", "${DATABASE_URL}"],
-      "description": "Query DB from chat — inspect schemas, debug data (optional; set DATABASE_URL if you use Postgres)"
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "/home/supernovyl/Emily1.0",
+        "/home/supernovyl/Emily1.0/data",
+        "/home/supernovyl/Emily1.0/knowledge"
+      ],
+      "description": "File read/write operations in Emily workspace"
     },
     "github": {
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-github"],
       "env": {
-        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"
+        "GITHUB_TOKEN": "${GITHUB_TOKEN}"
       },
-      "description": "Create PRs, read issues, manage branches from Cursor"
+      "description": "GitHub repository operations"
     },
     "brave-search": {
       "command": "npx",
@@ -34,26 +30,81 @@
       "env": {
         "BRAVE_API_KEY": "${BRAVE_API_KEY}"
       },
-      "description": "Search for latest API docs, changelogs, error solutions in real time"
+      "description": "Web search via Brave"
     },
     "memory": {
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-memory"],
-      "description": "Persistent knowledge graph — architectural decisions, preferences across sessions"
+      "description": "Persistent knowledge graph for cross-session context"
     },
     "sequential-thinking": {
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"],
-      "description": "Step-by-step reasoning for complex agent and LLM pipeline design"
+      "description": "Complex multi-step reasoning and planning"
     },
-    "sentry": {
+    "sqlite": {
       "command": "npx",
-      "args": ["-y", "mcp-sentry"],
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-sqlite",
+        "--db-path",
+        "/home/supernovyl/Emily1.0/data/interactions.db"
+      ],
+      "description": "Query Emily's interaction database"
+    },
+    "sqlite-episodes": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-sqlite",
+        "--db-path",
+        "/home/supernovyl/Emily1.0/data/episodes.db"
+      ],
+      "description": "Query Emily's episodic memory database"
+    },
+    "sqlite-knowledge": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-sqlite",
+        "--db-path",
+        "/home/supernovyl/Emily1.0/data/knowledge.db"
+      ],
+      "description": "Query Emily's knowledge store"
+    },
+    "qdrant": {
+      "command": "npx",
+      "args": ["-y", "@qdrant/mcp-server-qdrant"],
       "env": {
-        "SENTRY_AUTH_TOKEN": "${SENTRY_AUTH_TOKEN}",
-        "SENTRY_ORG": "${SENTRY_ORG}"
+        "QDRANT_URL": "http://localhost:6333",
+        "COLLECTION_NAME": "emily_semantic"
       },
-      "description": "Pull production errors with stack traces — fix without leaving Cursor"
+      "description": "Vector search in Emily's semantic memory (Qdrant)"
+    },
+    "fetch": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-fetch"],
+      "description": "Fetch web pages and convert to markdown"
+    },
+    "git": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-git",
+        "--repository",
+        "/home/supernovyl/Emily1.0"
+      ],
+      "description": "Git operations on Emily repository"
+    },
+    "time": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-time"],
+      "description": "Timezone and temporal operations"
+    },
+    "playwright": {
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest"],
+      "description": "Browser automation and testing"
     }
   }
 }

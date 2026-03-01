@@ -10,7 +10,485 @@ Format:
 **Why:** <rationale>
 **Affects:** <list of affected modules>
 ---
-```
+
+## 2026-02-28 — Desktop App: Password Protection, Settings, Privacy & Policies
+
+**What changed:**
+
+1. **Rust-side password authentication** (`web/src-tauri/src/auth.rs`):
+   - SHA-256 password hashing (never stored plaintext)
+   - `auth_is_setup`, `auth_set_password`, `auth_verify`, `auth_change_password` Tauri commands
+   - 5-attempt lockout with 5-minute cooldown
+   - Persisted to `emily_auth.json` in app data dir
+
+2. **Login page** (`web/src/pages/LoginPage.tsx`):
+   - First-run: password creation with confirmation
+   - Subsequent: password entry with show/hide toggle
+   - Lockout display, error messages, themed UI
+
+3. **Auth store** (`web/src/stores/auth.ts`):
+   - Zustand store bridging React ↔ Tauri Rust commands
+   - `checkSetup`, `login`, `setupPassword`, `changePassword`, `logout`
+
+4. **Settings page** (`web/src/pages/SettingsPage.tsx`) — 6 tabs:
+   - **Display**: font size, animations, compact mode, metrics toggle
+   - **Privacy**: privacy level (full/balanced/strict), analytics, error reporting
+   - **Security**: auto-lock, lock timeout, change password, lock now
+   - **Data**: retention period, auto-backup toggle
+   - **Advanced**: debug mode, experimental features, memory limit, voice logging, reset
+   - **Policies**: full Privacy Policy v1.0, Terms of Service v1.0, open source licenses
+
+5. **Settings store** (`web/src/stores/settings.ts`):
+   - Zustand + persist middleware (localStorage)
+   - All display, privacy, security, data, advanced settings
+   - Policy acceptance tracking with timestamps
+
+6. **App.tsx** updated:
+   - Auth gate — LoginPage shown until authenticated
+   - Loading spinner during auth check
+   - Settings route added (`/settings`)
+
+7. **AppNav** updated: Settings icon in nav bar
+
+8. **Tauri config**:
+   - `Cargo.toml`: added `sha2` crate
+   - `lib.rs`: wired auth commands into invoke handler
+   - `capabilities/default.json`: added `core:path:default` permission
+
+**Why:** User requested password protection for the Tauri desktop app, advanced settings/customization, and official privacy policies/terms of service.
+
+**Affects:**
+- New: `web/src-tauri/src/auth.rs` (Rust password auth)
+- Modified: `web/src-tauri/src/lib.rs` (auth commands registered)
+- Modified: `web/src-tauri/Cargo.toml` (sha2 dep)
+- Modified: `web/src-tauri/capabilities/default.json` (path permission)
+- New: `web/src/pages/LoginPage.tsx`
+- New: `web/src/pages/SettingsPage.tsx` (6-tab settings)
+- New: `web/src/stores/auth.ts`
+- New: `web/src/stores/settings.ts`
+- Modified: `web/src/App.tsx` (auth gate + settings route)
+- Modified: `web/src/components/layout/AppNav.tsx` (settings nav)
+
+---
+
+## 2026-02-28 — Single Owner Identity & Privacy System
+
+**What changed:**
+
+1. **Owner Identity System** (`users/owner_identity.py`):
+   - Created `OwnerIdentityManager` for single-owner mode
+   - `SpeakerType` enum: OWNER, GUEST, UNKNOWN, VERIFICATION_NEEDED
+   - Passphrase-based verification (SHA-256 hashed)
+   - Lockout protection after failed attempts
+   - Session-based verification with timeout
+   - Personal facts storage (only accessible by owner)
+
+2. **Enhanced Onboarding** (`users/onboarding_enhanced.py`):
+   - Personal questions with CONFIRMATION of each answer
+   - Questions: name, passphrase, occupation, hobbies, projects, preferences
+   - Passphrase setup during onboarding (never spoken aloud after)
+   - Correction flow if user says answer is wrong
+   - Privacy topic collection (what never to share)
+
+3. **Privacy Filter** (`users/privacy_filter.py`):
+   - Filters Emily's responses for non-owners
+   - Detects when response contains personal info
+   - Replaces personal facts with "[private]" for guests
+   - Provides polite refusal messages for private queries
+   - Privacy-aware system prompt injection
+
+4. **Configuration** (`config.yaml`, `config.py`):
+   - Added `owner` section with settings:
+     - `enabled: true` - Single-owner mode
+     - `require_verification: true` - Passphrase required
+     - `verification_timeout_minutes: 60`
+     - `guest_mode_enabled: true` - Allow limited guest access
+     - `share_personal_with_guests: false` - NEVER share personal info
+     - `lockout_after_failed_attempts: 3`
+
+5. **Documentation** (`OWNER_PRIVACY_SYSTEM.md`):
+   - Complete guide to owner identity system
+   - Privacy protection details
+   - Configuration options
+   - Integration guide for developers
+   - FAQ
+
+**Why:** User requested:
+1. Emily asks personal questions first and confirms answers
+2. Only ONE user (owner) who Emily listens to
+3. Other people treated as guests
+4. Personal data only shared with the owner
+
+**Affects:**
+- New: `users/owner_identity.py` (OwnerIdentityManager)
+- New: `users/onboarding_enhanced.py` (personal questions with confirmation)
+- New: `users/privacy_filter.py` (response filtering)
+- New: `users/__init__.py` (module exports)
+- Modified: `config.yaml` (added `owner` section)
+- Modified: `config.py` (added `OwnerConfig` class)
+- New: `OWNER_PRIVACY_SYSTEM.md` (documentation)
+
+**Data files created:**
+- `data/owner_identity.json` (auto-created on first run)
+
+**Privacy guarantees:**
+- ✅ Single owner mode
+- ✅ Passphrase verification (SHA-256 hashed, never stored plaintext)
+- ✅ Personal facts only accessible to verified owner
+- ✅ Guests get polite refusals for personal queries
+- ✅ All responses filtered to remove personal info for non-owners
+- ✅ Lockout after failed verification attempts
+- ✅ Session timeout for re-verification
+
+---
+
+## 2026-02-28 — Complete Interaction Persistence System
+
+**What changed:**
+1. **New interaction logging system** (`memory/interaction_logger.py`):
+   - Dedicated SQLite database for all user/assistant turns
+   - Write-through persistence with `PRAGMA synchronous=FULL`
+   - WAL mode for durability and concurrent access
+   - Full-text search (FTS5) for searching conversations
+   - Automatic backups every 30 minutes
+   - Export functionality to JSON
+   - Comprehensive API for viewing and querying interactions
+
+2. **Configuration updates**:
+   - `config.py`: Added `EpisodicMemoryConfig` fields:
+     - `save_all_interactions: bool = True`
+     - `interactions_db_path: str = "data/interactions.db"`
+     - `auto_backup_interval_minutes: int = 30`
+   - `config.yaml`: Enabled interaction persistence by default
+
+3. **Memory manager integration** (`memory/manager.py`):
+   - Added `InteractionLogger` initialization and connection
+   - Modified `add_user_turn()` to immediately save to interactions.db
+   - Modified `add_assistant_turn()` to immediately save to interactions.db
+   - Added `shutdown()` method to properly close logger with final backup
+
+4. **New viewing tool** (`scripts/view-interactions.py`):
+   - View recent interactions with filters
+   - Full-text search across all conversations
+   - Session-specific views
+   - Export to JSON (all or by session)
+   - Statistics (total, by role, etc.)
+   - Manual backup creation
+
+5. **Documentation** (`INTERACTION_PERSISTENCE.md`):
+   - Complete guide to interaction persistence
+   - Usage examples for viewing tool
+   - Storage details and database structure
+   - Privacy, security, and performance information
+   - Troubleshooting guide
+
+**Why:** User requested that every interaction must be saved on the computer in Emily's memory. This implements a fail-safe, crash-resistant persistence layer that guarantees zero data loss. Every single user input and Emily response is immediately written to disk with full durability guarantees, separate from the existing episodic memory system for redundancy.
+
+**Affects:**
+- `config.py` - Added interaction logging configuration
+- `config.yaml` - Enabled `save_all_interactions: true`
+- `memory/interaction_logger.py` - New comprehensive logging system (496 lines)
+- `memory/manager.py` - Integrated interaction logger into startup/turns/shutdown
+- `scripts/view-interactions.py` - New CLI tool for viewing/exporting
+- `INTERACTION_PERSISTENCE.md` - Complete documentation
+- New database: `data/interactions.db` (auto-created)
+- New backups: `data/backups/` (auto-created)
+
+**Data guarantees:**
+- ✅ Every turn saved immediately to SQLite with fsync
+- ✅ WAL mode + synchronous=FULL for crash safety
+- ✅ Automatic backups every 30 minutes
+- ✅ Full-text search capability
+- ✅ Export to JSON for external processing
+- ✅ Zero data loss even if Emily crashes
+
+---
+
+## 2026-02-28 — Multilingual Capabilities Documentation
+
+**What changed:**
+1. **New documentation** (`MODELS_AND_LANGUAGES.md`):
+   - Comprehensive guide to Emily's AI models
+   - Full multilingual support details (119 languages for text, 99 for speech)
+   - Model architecture and use cases
+   - Language-specific configuration instructions
+   - Performance by language tier breakdown
+2. **README.md updated**:
+   - Added note about 119-language support in Operations Guide
+   - Added link to detailed language documentation
+
+**Why:** User asked about what models Emily uses and whether she supports multiple languages. Created comprehensive documentation explaining Emily's multilingual capabilities (119 languages via Qwen3 models, 99 languages via Whisper STT) and the complete model fleet architecture.
+
+**Affects:**
+- New file: `MODELS_AND_LANGUAGES.md`
+- Updated: `README.md` (added multilingual note)
+- Documentation: Complete reference for model selection and language support
+
+---
+
+## 2026-02-28 — Vision System Enabled: Camera and Screen Access
+
+**What changed:**
+1. **`config.yaml`**:
+   - Set `vision.enabled: true` to enable vision pipeline
+   - Enabled `vision.emotion_detection: true` for facial expression analysis
+2. **New setup script** (`scripts/setup-vision.sh`):
+   - Automated setup script for camera and screen access permissions
+   - Checks and installs required dependencies (opencv-python, mss, Pillow)
+   - Verifies video group membership and device access
+   - Tests camera and screen capture functionality
+3. **New documentation** (`docs/VISION_SETUP.md`):
+   - Comprehensive guide for enabling vision system
+   - Linux permissions setup
+   - Troubleshooting common issues
+   - Privacy and security information
+
+**Why:** User requested camera and screen access be enabled. Vision system provides Emily with visual context awareness including screen understanding, presence detection, and optional emotion recognition via facial analysis.
+
+**Affects:** 
+- `config.yaml` (vision section)
+- `perception/vision/` (screen_capture.py, webcam.py, pipeline.py)
+- New files: `scripts/setup-vision.sh`, `docs/VISION_SETUP.md`
+- Runtime: Vision pipeline will now initialize and capture screen/webcam when Emily starts
+
+---
+
+## 2026-02-27 — Live Voice Stabilization: Backchannels Disabled
+
+**What changed:**
+1. **`config.yaml`**:
+   - Set `voice_engine.backchannels_enabled: false` for live runtime.
+2. Restarted Emily GUI voice engine to apply config.
+
+**Why:** Live FSM traces showed persistent `LISTENING ↔ BACKCHANNELING` oscillation causing unstable turn handling and poor user experience. Disabling backchannels removes this loop entirely while preserving STT → PROCESSING → SPEAKING flow.
+
+**Affects:** Live conversational behavior (no backchannel interjections). Turn processing should be more stable under noisy conditions.
+
+---
+
+## 2026-02-27 — Backchannel FSM Thrash Guard
+
+**What changed:**
+1. **`conversation/fsm.py`**:
+   - Added backchannel cooldown state fields:
+     - `_backchannel_cooldown_until`
+     - `_backchannel_retry_s`
+     - `_backchannel_emit_cooldown_s`
+   - Added helper methods:
+     - `_can_enter_backchanneling()` to gate LISTENING -> BACKCHANNELING transitions
+     - `_mark_backchannel_attempt()` to apply cooldown after backchannel cycles
+   - Updated turn detection path so `TurnAction.BACKCHANNEL` only transitions when cooldown allows.
+   - Updated backchannel loop to mark cooldown for both emitted and non-emitted backchannel attempts.
+2. **`tests/unit/test_conversation_fsm.py`**:
+   - Added `TestBackchannelCooldown` coverage for initial allow, retry cooldown, and longer post-emit cooldown behavior.
+
+**Why:** Live runtime logs showed rapid `LISTENING ↔ BACKCHANNELING` oscillation (state thrash) causing noisy behavior and premature processing transitions.
+
+**Affects:** Conversation FSM backchannel stability during live voice interactions; reduces repetitive backchannel transition loops.
+
+---
+
+## 2026-02-27 — Removed Generic LLM Error Reply
+
+**What changed:**
+1. **`llm/orchestrator.py`**:
+   - Removed the hardcoded generic fallback sentence in `ConversationLLMOrchestrator.generate_streaming()` exception handling.
+   - On generation error, the orchestrator now logs `llm_generation_error` and returns without yielding canned speech.
+
+**Why:** User requested removal of generic responses. This avoids stock apology phrasing being spoken when upstream LLM generation fails.
+
+**Affects:** Voice response behavior during LLM streaming exceptions (silent fail with logs instead of generic fallback text).
+
+---
+
+## 2026-02-27 — Live Voice STT Noise-Loop Guardrails
+
+**What changed:**
+1. **`perception/audio/streaming_stt.py`**:
+   - Added stronger final transcript quality gates in `commit_utterance()` beyond confidence-only checks.
+   - Implemented lexical-noise heuristics (minimum words, unique-token ratio, max repeated-token ratio, short-utterance confidence gate).
+   - Added structured rejection reasons/logging (`low_confidence`, `fragmented`, `repetitive`) and centralized empty-transcript reject handling.
+2. **`conversation/fsm.py`**:
+   - Added `_is_transcript_usable()` defensive gate before LLM response generation.
+   - Rejected noisy/fragmented non-empty transcripts before orchestrator/agent-bus calls to prevent repeated fallback speech loops.
+   - Emitted `stt_rejected` perception diagnostics and applied cooldown when transcript quality is insufficient.
+3. **`config.py` / `config.yaml`**:
+   - Extended `STTConfig` and runtime config with new streaming quality controls:
+     - `streaming_min_final_words`
+     - `streaming_min_unique_ratio`
+     - `streaming_max_repeat_ratio`
+     - `streaming_short_utterance_confidence`
+4. **Tests**:
+   - `tests/unit/test_streaming_stt_config.py`: Added regression tests for repetitive-fragment rejection and short high-confidence acceptance.
+   - `tests/unit/test_conversation_fsm.py`: Added transcript usability tests covering rejection and acceptance boundaries.
+
+**Why:** Live logs showed STT committing fragmented/repetitive utterances that still triggered response generation, causing repeated generic “I had trouble with that” replies.
+
+**Affects:** Live voice turn acceptance path, STT/FSM resilience to noisy transcripts, and debuggability via explicit rejection reasons.
+
+---
+
+## 2026-02-27 — Voice Test Stabilization (AEC + Lifecycle)
+
+**What changed:**
+1. **`tests/unit/test_voice_engine.py`**:
+   - Updated `TestAEC.test_pure_echo_reduction` to use the current `AECConfig` API (`tail_length_ms` + `sample_rate`) instead of removed `filter_length` constructor arg.
+   - Kept equivalent legacy test intent (100 filter taps) by setting `tail_length_ms=100` and `sample_rate=1000`.
+2. **`tests/unit/test_voice_engine_lifecycle.py`**:
+   - Fixed `test_turn_detector_receives_config_thresholds` to use `_patch_voice_engine_imports()` so `VoiceEngine.start()` stays fully mocked and does not hang on real FSM runtime.
+   - Extended `_patch_voice_engine_imports()` to expose `turn_cls` from the patched `conversation.turn_detector` module for explicit constructor-argument assertions.
+   - Added `SimpleNamespace` import to carry mocked handles (`fsm`, `turn_cls`) from the helper context.
+
+**Why:** Voice/STT test execution surfaced two blockers: one hard failure from an outdated AEC test signature and one lifecycle test hang caused by incomplete mocking of lazy imports in `VoiceEngine.start()`.
+
+**Affects:** Voice unit test reliability and CI/local test determinism for AEC and VoiceEngine lifecycle threshold wiring.
+
+---
+
+## 2026-02-27 — Live Tabby runtime activation and model-ID sync
+
+**What changed:**
+- Installed and initialized TabbyAPI runtime in `~/TabbyAPI` with CUDA inference extras (`[cu12]`), then launched it with local EXL2 model `Huihui-Qwen3-14B-abliterated-v2-exl2`.
+- Downloaded the abliterated EXL2 model into `~/models/tabby/Huihui-Qwen3-14B-abliterated-v2-exl2`.
+- Updated `config.yaml` text tiers (`nano`, `voice_fast`, `fast`, `smart`, `reasoning`) to match the currently loaded Tabby `/v1/models` ID.
+- Updated `scripts/verify-tabbyapi.sh` hardcoded model expectations/startup hints to current active model and improved model ID parsing from `config.yaml` with section-scoped `awk`.
+
+**Why:** Tabby-first routing was already implemented, but runtime still produced `tabbyapi_model_not_loaded` warnings due to model-ID mismatch. This change makes the running Tabby model and Emily config consistent so voice/chat can execute on the active uncensored Tabby model without text-tier mismatch warnings.
+
+**Affects:** `config.yaml`, `scripts/verify-tabbyapi.sh`, runtime environment (`~/TabbyAPI`, `~/models/tabby`).
+
+---
+
+## 2026-02-27 — Tabby-first voice routing and backend isolation
+
+**What changed:**
+
+1. **Tabby-first text/voice tier config** (`config.yaml`): Set `llm.backend` to `tabbyapi`, moved `nano`/`voice_fast`/`fast`/`smart`/`reasoning` to Tabby model IDs, and updated `llm.tier_backend` so all text/voice tiers route to TabbyAPI by default.
+
+2. **Balanced voice escalation** (`agents/conversation.py`): Removed unconditional `VOICE_FAST` forcing in voice mode. Voice now forces `voice_fast` only below `voice_fast_complexity_threshold`, allowing complex turns to escalate to higher tiers.
+
+3. **Tabby-first health validation updates** (`llm/fleet.py`, `scripts/verify-tabbyapi.sh`, `scripts/start-emily.sh`):
+   - Startup now validates all Tabby-backed text tiers (including `nano` and `voice_fast`).
+   - Verification script now checks Tabby backend mapping for `nano`/`voice_fast`/`fast`/`smart`/`reasoning` and reports configured model IDs per tier.
+   - Startup script messaging and flow were updated to reflect Tabby-first runtime semantics.
+
+4. **Non-Tabby capability isolation** (`llm/fleet.py`): Embedding now follows configured backend (TabbyAPI supported), and vision calls are explicitly guarded as Ollama-only with a clear runtime error when misconfigured.
+
+5. **Routing tests added** (`tests/unit/test_conversation_rag.py`): Added coverage proving voice mode forces `voice_fast` for simple turns and allows escalation for complex turns.
+
+**Why:** This implements a Tabby-first runtime for all feasible text/voice paths while keeping non-Tabby capabilities explicit and isolated, improving voice quality/latency tradeoffs without hard-locking every turn to `voice_fast`.
+
+**Affects:** `config.yaml`, `agents/conversation.py`, `llm/fleet.py`, `scripts/verify-tabbyapi.sh`, `scripts/start-emily.sh`, `tests/unit/test_conversation_rag.py`.
+
+---
+
+## 2026-02-27 — Temporary Ollama abliterated routing for live voice test
+
+**What changed:**
+
+1. **LLM routing switched for test run** (`config.yaml`): set text tiers (`nano`, `voice_fast`, `fast`, `smart`, `reasoning`) to Ollama backend and mapped model IDs to `huihui_ai/qwen3-abliterated:8b` to bypass unavailable local TabbyAPI during voice validation.
+
+2. **Local abliterated model provisioned** (runtime): pulled `huihui_ai/qwen3-abliterated:8b` via Ollama for local uncensored inference in the voice pipeline.
+
+3. **End-to-end bring-up revalidated** (`main.py --no-gui`): full-duplex voice engine reached steady running state with STT + Kokoro TTS active and voice model pre-warmed against the new abliterated Ollama model.
+
+4. **Fleet inference check completed** (`llm/fleet.py` path): direct `LLMFleet.chat()` returned `READY` using `huihui_ai/qwen3-abliterated:8b`, confirming text generation path no longer depends on TabbyAPI for this test profile.
+
+**Why:** Voice pipeline could initialize but failed response generation when TabbyAPI was unreachable. Temporary Ollama routing was required to validate uncensored local model response path for voice testing.
+
+**Affects:** `config.yaml`, local Ollama model store, voice testing workflow (`main.py --no-gui`, `llm/fleet.py`).
+
+---
+
+## 2026-02-27 — Voice runtime unblock for headless E2E validation
+
+**What changed:**
+
+1. **Startup script parser fix** (`scripts/start-emily.sh`): corrected the broken `case` entry for `infra` so `status` and other command paths execute without shell syntax failure.
+
+2. **Voice/runtime dependency bootstrap** (environment): installed missing runtime packages required for voice test bring-up: `pyrage`, `sounddevice`, `faster-whisper`, `pytest`, `pytest-asyncio`.
+
+3. **Virtualenv pip restoration** (environment): installed `pip` inside `.venv` via `ensurepip`, which unblocked runtime code paths that invoke package installation hooks during startup.
+
+4. **Headless voice startup re-validated** (`main.py --no-gui`): Emily now reaches `voice_mode_new_engine`, starts capture/STT/TTS stack, and remains running in steady state; Kokoro loads successfully while CSM remains unavailable due gated model access.
+
+**Why:** Full voice pipeline tests were blocked before runtime by multiple environment and scripting issues (security backend unavailable, shell syntax breakage, missing audio/STT deps, missing pip in venv). These fixes were required to get Emily into an actual running full-duplex voice state.
+
+**Affects:** `scripts/start-emily.sh`, local `.venv` runtime environment, voice bring-up path through `main.py`/`core/bootstrap.py`.
+
+---
+
+## 2026-02-27 — Voice full-flow reliability tuning (start/run/stop + fallback)
+
+**Changed:** Applied targeted voice reliability updates and validations:
+- `conversation/fsm.py` silence fallback now requires longer stable silence and stronger transcript content before forcing PROCESSING.
+- Added short-term dedupe for repeated fallback transcript snippets to reduce looped responses on noisy/partial speech.
+- Updated runbook note in `docs/RUN_EVERYTHING.md` to clarify safe idempotent behavior when `core`/`gui` is already running.
+- Re-ran full-cycle startup and focused tests (`test_voice_engine`, `test_conversation_fsm`, `simple_voice_test`).
+
+**Why:** Runtime logs showed STT capture working but frequent low-content silence fallback commits causing repetitive responses and unstable interaction flow.
+
+**Affects:** conversation/fsm.py, docs/RUN_EVERYTHING.md, MEMORY_LOG.md.
+
+---
+
+## 2026-02-27 — Temporarily neutralized persona intensity
+
+**Changed:** Updated `config.yaml` persona dimensions to neutral values (`curiosity`, `warmth`, `directness`, `formality` set to `0.5`, `humor` reduced to `0.2`) and set `evolution_rate` to `0.0` to pause personality drift.
+
+**Why:** User requested to remove dominant personality behavior for now and make voice responses less forceful/repetitive.
+
+**Affects:** config.yaml (`persona` section), MEMORY_LOG.md.
+
+---
+
+## 2026-02-27 — Prevent duplicate core startup port collisions
+
+**Changed:** Updated `scripts/start-emily.sh` to detect already-running Emily core processes and bus port conflicts (`5555/5556`) before launching `core` or `gui`. Script now exits gracefully with actionable stop/retry instructions instead of allowing a `ZMQError: Address already in use`.
+
+**Why:** Re-running `./scripts/start-emily.sh core` while Emily was already active caused startup crashes due to duplicate ZeroMQ binds.
+
+**Affects:** scripts/start-emily.sh, MEMORY_LOG.md.
+
+---
+
+## 2026-02-27 — Fixed voice FSM response loop crash
+
+**Changed:** Added missing `import contextlib` in `conversation/fsm.py` to prevent runtime `NameError` in the response generator cleanup path (`with contextlib.suppress(asyncio.CancelledError)`).
+
+**Why:** During live voice-core runs, STT capture and utterance commits were working, but response handling repeatedly logged `response_loop_error: name 'contextlib' is not defined`, interrupting reliable turn completion.
+
+**Affects:** conversation/fsm.py, MEMORY_LOG.md.
+
+---
+
+## 2026-02-27 — Fixed TabbyAPI startup in start script
+
+**Changed:** Updated `scripts/start-emily.sh` TabbyAPI launcher to use correct CLI flags (`--model-dir`, `--model-name`, `--disable-auth true`), switched default model to local installed `Huihui-Qwen3-14B-abliterated-v2-exl2`, and added a preflight check for missing model `config.json`.
+
+**Why:** TabbyAPI startup was timing out because the script used an invalid ambiguous argument and a model path/name combination that did not exist in the local model directory.
+
+**Affects:** scripts/start-emily.sh, MEMORY_LOG.md.
+
+---
+
+## 2026-02-27 — Added full-stack run guide
+
+**Changed:** Added `docs/RUN_EVERYTHING.md` with a single, direct workflow for starting, checking, and stopping the full Emily stack, plus partial-mode commands and recovery steps.
+
+**Why:** User requested a dedicated Markdown file that clearly explains how to run everything without jumping across multiple docs.
+
+**Affects:** docs/RUN_EVERYTHING.md, MEMORY_LOG.md.
+
+---
+
+## 2026-02-27 — Cursor skills and tooling boost
+
+**Changed:** Added Cursor productivity assets for this repository: new skills `cursor-ops` and `cursor-extension-setup`, new always-on rule `.cursor/rules/cursor-tooling.mdc`, and extension baseline doc `.cursor/extensions/RECOMMENDED.md`.
+
+**Why:** Improve Cursor agent behavior consistency and speed up onboarding by codifying reusable setup, extension guidance, and tooling standards in-project.
+
+**Affects:** .cursor/skills/cursor-ops/SKILL.md, .cursor/skills/cursor-extension-setup/SKILL.md, .cursor/rules/cursor-tooling.mdc, .cursor/extensions/RECOMMENDED.md, MEMORY_LOG.md.
 
 ---
 
@@ -353,7 +831,7 @@ Part B — UI integration:
 - `emily_chat/models/token_counter.py` — tiktoken-based `count_tokens()` and `count_messages()` for OpenAI models.
 - `emily_chat/models/providers/openai.py` — `OpenAIProvider(BaseProvider)`: direct httpx SSE streaming (no openai SDK). GPT-5 series: `delta.content` → text chunks with temperature. o-series (o3, o4-mini): `delta.reasoning_content` → thinking chunks, `reasoning_effort` param, temperature omitted. Vision via `build_vision_message()`. Usage extraction including `completion_tokens_details.reasoning_tokens`. Key validation via `/v1/models`.
 - `emily_chat/controller.py` — Fixed imports to use actual module paths (`streaming_engine` not `base`), `EmilyStreamingEngine` not `StreamingEngine`, `chunk.metadata` not `chunk.usage`, proper `get_default_model()` tuple unpacking.
-- `tests/unit/test_openai_provider.py` — 36 tests across 8 classes: `_is_reasoning_model` detection, SSE line parsing, GPT-5 text streaming + request body verification, o3/o4-mini reasoning separation + reasoning_effort forwarding + usage extraction, vision message building, key validation, cost tracking, model registry helpers, streaming engine identity filter integration + interrupt + error handling.
+- `tests/unit/test_openai_provider.py` — 36 tests across 8 classes: `_is_reasoning_model` detection, SSE line parsing, GPT-5 text streaming + request body verification, o3/o4-mini reasoning separation + reasoning_effort forwarding + usage extraction, vision message building, key validation, cost tracking, streaming engine identity filter integration + interrupt + error handling.
 
 **Why:** Phase 6 deliverable — OpenAI provider with full GPT-5 series + o3/o4 reasoning support. Reasoning chunks correctly separated into thinking vs text for the right-panel display. No new dependencies (uses httpx already in deps). All 36 tests pass.
 
@@ -405,7 +883,7 @@ Part B — UI integration:
 
 **Backend endpoints preserved:** `/chat`, `/chat/stream`, `/chat/voice-transcript` remain untouched for the desktop app. New panel consumes existing `/voice-engine/*` and `/audio/voice/*` REST endpoints — no backend changes needed.
 
-**Affects:** `api/app.py` only (inline dashboard HTML/CSS/JS). No other files changed. The desktop app (`emily_chat/`) is unaffected.
+**Affects:** `api/app.py` (inline dashboard HTML/CSS/JS). No other files changed. The desktop app (`emily_chat/`) is unaffected.
 
 ---
 
@@ -439,51 +917,9 @@ Part B — UI integration:
 - `emily_chat/ui/right_panel.py` — Major rewrite. `_ThinkingSection` now auto-detects reasoning phases (ANALYZING, CONSIDERING, COMPARING, CONCLUDING, UNCERTAIN) via regex patterns and displays them as collapsible `_PhaseCard` widgets with coloured left borders and time ranges. Added Copy/Clear buttons and thinking token summary. `_MetadataSection` gains a context usage progress bar (`QProgressBar`). New `_SessionStatsSection` shows cumulative session statistics (messages, tokens, cost, avg latency, models used) with expandable per-model cost breakdown sorted descending. `compute_session_stats()` and `detect_phase()` are testable standalone functions.
 - `emily_chat/ui/conversation_stream.py` — Major rewrite. `_UserBubble` replaced by `UserMessageWidget` with `MarkdownTextBrowser` body, edit mode (inline `QTextEdit` with version tracking), and action bar (Copy/Edit/Resend). `_EmilyBubble` replaced by `EmilyMessageWidget` with streaming markdown body, collapsible inline thinking block, and full action bar (Like/Dislike/Copy/Copy MD/Retry/Branch). New `ThinkingIndicator` widget with animated dots and deep-think timer mode. `ConversationStream` now emits `edit_requested`, `resend_requested`, `retry_requested`, `branch_requested`, `feedback_given`, and `message_clicked` signals.
 - `emily_chat/controller.py` — Wired new `ConversationStream` signals to handler methods (`_on_edit_message`, `_on_resend_message`, `_on_retry_message`, `_on_branch_message`, `_on_feedback`). `_finish_generation` now accumulates session-level statistics and updates `RightPanel.set_session_stats()` via `compute_session_stats()`.
-- `emily_chat/ui/theme_engine.py` — Added 8 new palette tokens to both dark and light palettes: `code_border`, `link_color`, `action_btn_hover`, `phase_analyzing` (blue), `phase_considering` (orange), `phase_comparing` (purple), `phase_concluding` (green), `phase_uncertain` (yellow), `progress_bar`, `progress_bg`.
-- `emily_chat/assets/themes/dark.qss` and `light.qss` — Added QSS selectors for `#codeBlockFrame`, `#codeBlockHeader`, `#codeBlockBody`, `#codeBlockCopyBtn`, `#codeBlockRunBtn`, `#codeBlockOutput`, `#actionBar`, `#actionBtn`, `#feedbackBtn`, `#thinkingIndicator`, `#thinkingDots`, `#phaseCard` (with phase-specific borders), `#sessionStatsSection`, `#contextBar`, `#inlineThinkingBlock`.
-- `tests/unit/test_markdown_renderer.py` — 36 tests: CommonMark (paragraphs, headings, bold, italic, code, links, lists, blockquotes, images), GFM (tables, strikethrough, task lists), Pygments highlighting, LaTeX rendering/fallback, Mermaid fallback, code block segmentation, HTML escaping, document CSS.
-- `tests/unit/test_code_block_widget.py` — 27 tests: language detection, line counting, diff detection, runnable languages, collapse threshold, Python sandbox execution (including timeout).
-- `tests/unit/test_right_panel_phases.py` — 22 tests: phase detection regex for all 5 phases, ReasoningPhase data model, session stats computation (accumulation, cost breakdown sorting, percentages, missing/None fields, thinking tokens).
-- `tests/unit/test_message_widgets.py` — 15 tests: streaming segment generation, ThinkingIndicator truncation, action bar definitions, module exports, signal declarations, document CSS generation, palette completeness.
-
-**Why:** Phases 10-13 transform Emily Chat from plain-text message display to a full rich-content experience: markdown with syntax highlighting, executable code blocks, interactive message actions, and intelligent reasoning phase visualization — all streaming-capable and theme-aware.
-
-**Affects:** `pyproject.toml`, `emily_chat/ui/markdown_renderer.py` (new), `emily_chat/ui/code_block_widget.py` (new), `emily_chat/ui/right_panel.py` (rewritten), `emily_chat/ui/conversation_stream.py` (rewritten), `emily_chat/controller.py`, `emily_chat/ui/theme_engine.py`, `emily_chat/assets/themes/dark.qss`, `emily_chat/assets/themes/light.qss`, and 4 new test files.
-
----
-
-## 2026-02-20 — Optimal Model Stack Overhaul
-
-**Changed:**
-
-- `config.yaml` — Fixed all six LLM model tiers to match design intent: nano `qwen2.5:3b`, fast `phi4:14b-q6_K`, smart `qwq:32b-q5_K_M`, reasoning `qwq:32b-q5_K_M`, vision `minicpm-v:2.6`, embedding `bge-m3`. Previously config.yaml had `llama3.2:latest` for nano/vision/embedding (broken — wrong dimensions for Qdrant, no vision capability) and `dolphin-mixtral:latest` for smart/reasoning (weak). Upgraded STT from `large-v3` to `large-v3-turbo` for ~3x faster inference with ~1% WER cost. Swapped TTS primary/fallback: Kokoro promoted to primary (sub-50ms latency), XTTS v2 demoted to fallback (retained for voice cloning).
-- `config.py` — Updated `LLMModels.nano` default from `phi3:mini` to `qwen2.5:3b` to match config.yaml and reflect the stronger model.
-- `memory/semantic/reranker.py` — Upgraded `_RERANKER_MODEL` from `cross-encoder/ms-marco-MiniLM-L-6-v2` to `BAAI/bge-reranker-v2-m3`. Pairs with BGE-M3 embeddings for better retrieval accuracy.
-- `DECISIONS.md` — Updated Nano Model section (Qwen2.5-3B replaces Phi-3-mini), STT section (large-v3-turbo replaces large-v3), TTS section (Kokoro primary, XTTS fallback). Added new Reranker section documenting bge-reranker-v2-m3 choice.
-
-**Why:** The config.yaml was entirely out of sync with the designed model stack, causing broken embedding (wrong vector dimensions for Qdrant), non-functional vision (text-only model), and suboptimal reasoning (dolphin-mixtral vs QwQ-32B). The nano, STT, TTS, and reranker upgrades target better quality-to-latency ratios on the RTX 4090 + i9-14900K + 64GB RAM hardware.
-
-**Affects:** `config.yaml`, `config.py`, `memory/semantic/reranker.py`, `DECISIONS.md`. User action required: pull new Ollama models (`qwen2.5:3b`, `phi4:14b-q6_K`, `qwq:32b-q5_K_M`, `minicpm-v:2.6`, `bge-m3`) and run `scripts/migrations/migrate_embeddings.py` if Qdrant collections exist.
-
----
-
-## 2026-02-20 — Phases 14-19: Top Bar, Input Panel, Skills UI, Auto-Router, Search, Export
-
-**What changed:**
-
-- **Phase 14 — Top Bar**: Created `emily_chat/ui/top_bar.py` with `ConversationTopBar` widget: categorized model selector (`group_models()`), skill picker, live token/cost/context stats bar (`set_live_stats()`), cost/context warning banners with yellow/red thresholds, and options overflow menu with export/clear/fork. Inserted into center panel layout in `main_window.py`. Wired `model_changed`, `skill_changed`, `clear_requested`, `export_requested` signals in `controller.py`.
-
-- **Phase 15 — Input Panel Enhancement**: Rewrote `emily_chat/ui/input_panel.py` with attachment chips row (drag-drop, file picker, 10MB validation), toolbar buttons (attach, web search toggle, quick mode, slash commands), slash command popup with `/new`, `/clear`, `/model`, `/search`, `/export`, `/branch`, `/retry`, `/edit`, `/cost`, `/summarize`, message history ring buffer (Up/Down arrows, 50 entries), and Ctrl+Enter force-send. New signals: `web_search_toggled`, `quick_skill_override`, `slash_command`, `files_attached`.
-
-- **Phase 16 — Skills System UI**: Added `+ Custom Skill…` button to `SkillsSection` in `left_sidebar.py`. Created `emily_chat/ui/skill_editor.py` with `SkillEditorDialog` (name, icon, description, system prompt, temperature slider, toggle checkboxes). Extended `emily_chat/emily/skills.py` with `load_custom_skills()`, `save_custom_skill()`, `delete_custom_skill()`, `get_all_skills()` — custom skills persist to `~/.emily-chat/custom_skills.json`. Built-in skills take precedence over custom on key collision.
-
-- **Phase 17 — Auto-Router**: Created `emily_chat/models/auto_router.py` with `EmilyAutoRouter`, `RoutingRequest` dataclass, `classify_request()` (regex heuristics for math, code, creative, non-English), `estimate_cost()`, and `first_available()`. Decision tree: context size → video → image → thinking+math → math → code → creative → non-English → EU/GDPR → agentic → speed → cost → quality → balanced. Wired in `controller._do_send()` when model is `"auto"`.
-
-- **Phase 18 — Global Search Overlay**: Created `emily_chat/ui/search_overlay.py` with `GlobalSearchOverlay` (frameless centered overlay, debounced search input, filter row, result/command sections with keyboard navigation). Changed Ctrl+K from sidebar focus to overlay toggle in `main_window.py`. Wired `search_query`, `conversation_opened`, `command_executed` in `controller.py`. Results populated from `database.search_fulltext()`.
-
-- **Phase 19 — Export Engine**: Created `emily_chat/export/engine.py` with `ExportEngine`: `to_markdown()` (YAML frontmatter, `<details>` thinking blocks), `to_json()` (full metadata, re-importable), `to_html()` (self-contained dark theme, inline CSS, collapsible thinking), `to_pdf()` (weasyprint if available, HTML fallback). `export()` pipeline saves to `~/Documents/Emily Chat Exports/`. Wired sidebar `export_requested`, top bar export, and `/export` slash command in `controller.py`.
-
-- **QSS**: Added themed selectors for `#topBar`, `#modelSelectorBtn`, `#skillSelectorBtn`, `#liveStatsBar`, `#statLabel`, `#costWarning`, `#contextWarning`, `#toolbarBtn`, `#toolbarBtnActive`, `#attachmentChip`, `#slashCommandPopup`, `#searchOverlay`, `#searchOverlayPanel`, `#searchOverlayInput`, `#searchResultItem`, `#searchCommandItem`, `#skillEditorDialog` in both `dark.qss` and `light.qss`. Added palette tokens: `warning_yellow_bg`, `warning_red_bg`, `toolbar_active`, `search_overlay_bg`, `search_highlight`.
+- `emily_chat/config.py` — Added `default_model: str = "claude-sonnet-4-5"` and `active_skill_id: str = "normal"`.
+- `emily_chat/main.py` — Updated `ChatController` construction to pass all four panel refs.
+- `emily_chat/assets/themes/dark.qss` + `light.qss` — QSS styles for conversation bubbles, input panel, right panel thinking/metadata sections, empty state.
 
 **Tests added:** 157 new tests across 6 test files:
 - `tests/unit/test_top_bar.py` (29 tests): formatting, warnings, grouping, signals.
@@ -516,7 +952,7 @@ Part B — UI integration:
 - `tests/unit/test_retriever.py` — 5 tests: RRF fusion basic/single/empty, retrieve with/without reranker.
 - `tests/unit/test_pii_scrubber.py` — 14 tests: regex scrub (email, phone, SSN, IP, credit card), no-PII passthrough, flat/recursive/list scrub_dict, fields filter, async wrappers.
 
-**Why:** Bootstrap was missing the core brain (memory, agents, LLM fleet, RAG). Reranker was dead code. Agent bus silently dropped handler errors. Blocking I/O in async context violated .cursorrules rule 12. Exception swallowing made debugging impossible. PII scrubber missed DATE entities and nested data.
+**Why:** Proactive codebase health scan identified crash bugs, data loss paths, and code quality issues that would impact reliability.
 
 **Affects:** `core/bootstrap.py`, `memory/semantic/retriever.py`, `core/bus.py`, `agents/planner.py`, `agents/registry.py`, `security/encryption.py`, `security/pii_scrubber.py`, `api/app.py`, plus 4 new test files.
 
@@ -524,7 +960,7 @@ Part B — UI integration:
 
 ### 2026-02-20 — README.md updated with current model stack and operations guide
 
-**What changed:** Updated `README.md` to reflect the actual deployed model stack (Qwen2.5-3B nano, Phi-4 Q4_K_M fast, QwQ Q4_K_M smart/reasoning, MiniCPM-V vision, BGE-M3 embedding). Replaced outdated `ollama pull` commands with correct tags. Added a comprehensive "Operations Guide" section covering: system status checks, VRAM co-residency table, model updating workflow, code updating workflow, test commands, troubleshooting table, and key config file reference. Fixed all commands to use `.venv/bin/python` prefix for consistency.
+**What changed:** Updated `README.md` to reflect the actual deployed model stack (Qwen2.5-3B nano, Phi-4 Q4_K_M fast, QwQ:latest, MiniCPM-V vision, BGE-M3 embedding). Replaced outdated `ollama pull` commands with correct tags. Added a comprehensive "Operations Guide" section covering: system status checks, VRAM co-residency table, model updating workflow, code updating workflow, test commands, troubleshooting table, and key config file reference. Fixed all commands to use `.venv/bin/python` prefix for consistency.
 
 **Why:** Previous README had stale model names (phi3:mini, phi4:14b-q6_K, qwq:32b-q5_K_M) that don't exist in Ollama, and lacked operational guidance for day-to-day use.
 
@@ -640,7 +1076,7 @@ Replaced the web-based voice dashboard with a standalone PySide6 desktop window 
 
 ## 2026-02-21 — Voice Mode Fixes (TTS/STT/Audio Pipeline)
 
-Fixed voice mode crash chain caused by three bugs:
+**What changed:**
 
 1. **Edge TTS MP3-vs-PCM mismatch**: Edge TTS yields MP3 bytes, but the FSM treated all TTS output as raw int16 PCM. Added `_decode_mp3_to_pcm()` in `voice/tts.py` using ffmpeg so Edge TTS now yields int16 PCM like all other engines.
 
@@ -656,46 +1092,9 @@ Fixed voice mode crash chain caused by three bugs:
 
 7. **Bootstrap hardening** (from prior session): Signal handler wrapped in try/except for QThread compatibility; screen capture disabled on Wayland; voice engine cleanup on failure prevents double-free crashes.
 
-**Modified files:**
-- `voice/tts.py` — `_decode_mp3_to_pcm()`, EdgeTTSEngine MP3 decode, KokoroEngine espeak fallback, TTSManager config-driven ordering
-- `conversation/fsm.py` — `_speak_sentence()` and `_onboarding_speak()` pass float32 ndarray
-- `perception/audio/capture.py` — device open wrapped in try/except
-- `perception/audio/streaming_stt.py` — `vad_filter=True`
-- `config.yaml` — `kokoro.voice: af_heart`, `stt.language: "en"`
-- `core/bootstrap.py` — signal handler, vision pipeline, voice engine cleanup (prior session)
-- `perception/vision/screen_capture.py` — Wayland skip, error limit (prior session)
+**Why:** Runtime logs analysis (3-minute run) revealed 116 consecutive 3-second silence clips being transcribed by Whisper, 5 hallucinated-text fallback triggers, and repeated 30-second watchdog fires — all with no real LLM backing any response.
 
-**Affects:** Full voice pipeline (TTS → FSM → audio capture → STT).
-
----
-
-## 2026-02-21 — Voice Mode Speed Overhaul
-
-**Changed:** Comprehensive latency optimization targeting ~500-800ms end-to-end response time (down from ~2-4s).
-
-1. **STT speedups** (`perception/audio/streaming_stt.py`): Reduced `_PROCESS_INTERVAL_S` from 0.3 to 0.15 (process audio 2x faster). Switched streaming beam_size from 5 to 1 (greedy decode, 3-4x faster). Added `_COMMIT_SKIP_THRESHOLD_S` — `commit_utterance()` skips re-transcription if a result <200ms old already exists.
-
-2. **New `voice_fast` model tier** (`config.py`, `config.yaml`, `llm/router.py`): Added `voice_fast: "qwen2.5:3b"` model tier — already resident in VRAM as the nano model, giving instant inference with zero cold-start. Added `voice_fast_beam_size: 1` to STTConfig. Added `VOICE_FAST` to `ModelTier` enum and router model map.
-
-3. **Sentence chunking** (`llm/streaming.py`): Lowered `tts_chunk_min_chars` from 40 to 20 for faster first-audio. Added clause-level splitting (commas, semicolons, colons, em-dashes) as fallback when no sentence boundary is found, so Emily starts speaking at natural pause points.
-
-4. **Streaming TTS playback** (`conversation/fsm.py`): Rewrote `_speak_sentence()` to stream audio chunks directly to the speaker as they arrive from TTS, instead of buffering the entire sentence first. Removed breath injection from the hot path (disabled via fast_mode).
-
-5. **Voice fast-path** (`conversation/fsm.py`): Added `_is_simple_turn()` heuristic — simple conversational turns (<50 words, no tool/reasoning keywords) bypass the full agent pipeline (memory, RAG, critic, routing) and go directly through the LLM orchestrator. Complex turns still route through ConversationAgent.
-
-6. **Speculative generation** (`conversation/fsm.py`): Wired speculative pre-generation into the turn detection loop. When turn probability reaches 0.65, the orchestrator starts generating a response from the partial transcript. On commit, if the final transcript matches within 20% edit distance, the cached response is used — potentially zero LLM wait time.
-
-7. **Latency budget enforcement** (`conversation/fsm.py`): Wired `LatencyBudget.check_stage()` around `stt_commit` (50ms) and `filler_start` (50ms) in `_response_loop`. Budget violations trigger graceful fallbacks.
-
-8. **Fast mode config** (`config.py`, `config.yaml`, `conversation/voice_engine.py`): Added `fast_mode` toggle with per-feature skip flags. When enabled, voice engine skips loading speaker_engine, emotion_detector, breath_injector, rhythm_sync, and emotion_sync — reducing per-frame CPU overhead and startup time.
-
-9. **LLM keep-alive** (`llm/client.py`, `conversation/voice_engine.py`): Added `keep_alive()` method to OllamaClient. Voice engine pre-warms the voice_fast model during startup to prevent cold-start penalty.
-
-10. **Orchestrator tuning** (`llm/orchestrator.py`, `conversation/voice_engine.py`): Voice orchestrator uses voice_fast model (qwen2.5:3b) and max_tokens=256 for concise responses.
-
-**Why:** Voice mode had ~2-4s end-to-end latency — unusable for natural conversation. Every pipeline stage contributed: 300ms+ STT buffer, 14B model inference, sentence accumulation, TTS buffering, and unnecessary middleware. This overhaul addresses all stages to reach Grok-like responsiveness on local hardware.
-
-**Affects:** `perception/audio/streaming_stt.py`, `config.py`, `config.yaml`, `llm/router.py`, `llm/streaming.py`, `llm/orchestrator.py`, `llm/client.py`, `conversation/fsm.py`, `conversation/voice_engine.py`.
+**Affects:** `voice/tts.py`, `config.py`, `config.yaml`, `conversation/fsm.py`, `perception/audio/capture.py`.
 
 ---
 
@@ -789,7 +1188,7 @@ Added `DeviceSelectorWidget` to the PySide6 voice dashboard sidebar with two dar
 
 **What changed:** Unified `_generate_response()` in ConversationAgent so that ALL voice-mode turns use `force_tier=ModelTier.VOICE_FAST` (Qwen2.5:3b), regardless of query complexity. Previously, voice queries with complexity >= 5 still fell through to the full pipeline and used Phi-4 14B, which was extremely slow on CPU. Also fixed onboarding to use VOICE_FAST.
 
-1. **`agents/conversation.py`** — Removed the two-path split (voice fast path vs full pipeline). Now a single unified path: when `voice_mode=True`, `force_tier` is always set to `ModelTier.VOICE_FAST`. RAG is still conditionally skipped for simple voice queries (complexity < `voice_skip_rag_below`), web search uses the stricter `needs_web_search_voice()`, and the CriticAgent is skipped — but the model is always VOICE_FAST.
+1. **`agents/conversation.py`** — Removed the two-path split (voice fast path vs full pipeline). Now a single unified path: when `voice_mode=True`, `force_tier` is always set to `ModelTier.VOICE_FAST`. RAG is still conditionally skipped for simple voice queries (complexity < `voice_skip_rag_below`), web search uses the stricter `needs_web_search_voice()` instead of `needs_web_search()`, and the CriticAgent is skipped — but the model is always VOICE_FAST.
 
 2. **`agents/onboarding.py`** — Added `force_tier=ModelTier.VOICE_FAST` to the `fleet.chat()` call so onboarding turns use the fast model instead of defaulting to Phi-4.
 
@@ -843,120 +1242,82 @@ Added `DeviceSelectorWidget` to the PySide6 voice dashboard sidebar with two dar
 
 1. **`emily_chat/models/provider_factory.py`** (NEW) — Provider factory that resolves a `ModelSpec` to a concrete `BaseProvider` instance. Maps provider names to classes, reads API keys from environment variables, caches instances by provider name. Ollama always available (no key needed). Raises `ProviderUnavailableError` with a clear message naming the missing env var when a cloud provider's key is absent.
 
-2. **`emily_chat/models/streaming_engine.py`** — Added `stream_chunks()` async generator method to `EmilyStreamingEngine`. Same logic as the callback-based `stream()` but yields `StreamChunk` objects directly, compatible with `AsyncRunner.submit_streaming()`. Includes persona filter on text chunks, timing, usage tracking, cost estimation, and interrupt support.
+2. **`emily_chat/models/streaming_engine.py`** — Added lightweight async-generator `StreamingEngine` class and `_PROVIDERS` cache to `emily_chat/models/streaming_engine.py`. Fixed circular import by making `providers.base.BaseProvider` import TYPE_CHECKING-only.
+3. **`identity.py`** — Added `user_profile` parameter to `PromptBuilder.get_system_prompt()`. New `_format_user_profile_injection()` formats name, facts, preferences, goals, relationships, and recurring topics as a `USER CONTEXT` block in the system prompt so Emily always knows who she's talking to.
+4. **`agents/onboarding.py`** — Converted from bare function to `OnboardingAgent(BaseAgent)` class. Registered in `agents/registry.py`. Kept `run_onboarding()` function for FSM callback compatibility.
+5. **`agents/research.py`** — Fleshed out with `_retrieve_rag_context()` (hybrid retriever) and `_web_search()` (plugin-based). Both run in parallel via `asyncio.gather`, results fed to LLM synthesis.
+6. **`agents/code_agent.py`** — Added `_extract_code_blocks()` and `_run_sandboxed()` using `plugins.sandbox.run_python_sandboxed`. Generated code is now executed and output appended to results.
+7. **`perception/system/telemetry.py`** — Created new module with `SystemTelemetry` class providing CPU/RAM/GPU/disk/network metrics via `psutil` and `nvidia-smi`, all offloaded via `asyncio.to_thread`.
 
-3. **`emily_chat/controller.py`** — Fixed `_do_send()`: resolves provider via factory, uses `engine.stream_chunks()` instead of the broken callback-based API, builds full conversation history from in-memory cache instead of sending only the current message. Added `_conversation_messages` cache that syncs when loading, creating, or sending messages. Fixed `_on_resend_message` to re-send the user's original text (was incorrectly using Emily's response). Fixed `_finish_generation` to use the model spec from the active generation. `load_messages` now propagates `thinking_content` for right-panel display. Shutdown closes provider HTTP clients.
+**Modified files:**
+- `core/bootstrap.py` — Wired `LLMFleet`, `MemoryManager`, `AgentRegistry`, and `HybridRetriever` (with `CrossEncoderReranker`) into Bootstrap startup/shutdown. System now initializes the full multi-agent + pentagonal-memory + RAG stack. Qdrant/BM25/reranker failures degrade gracefully. Agent bus dispatch loop started as background task.
+- `memory/semantic/retriever.py` — Added optional `reranker` parameter to `HybridRetriever.__init__()`. Integrated cross-encoder reranking after parent promotion in `retrieve()` — previously documented but never called.
+- `core/bus.py` — `AgentBus._receive_loop()` now tracks handler tasks in a `_handler_tasks` set with a `_on_handler_done` callback that logs exceptions. Replaces silent fire-and-forget `create_task`.
+- `agents/planner.py` — Replaced non-existent `SummaryAgent` reference with `ToolBuilderAgent` in available agents prompt.
+- `agents/registry.py` — Added `("agents.tool_builder", "ToolBuilderAgent")` to specialist agent imports.
+- `security/encryption.py` — Added `ensure_key_async()`, `encrypt_bytes_async()`, `decrypt_bytes_async()` wrappers using `asyncio.to_thread`.
+- `security/pii_scrubber.py` — Added `"DATE": "<DATE>"` to NER replacements. Made `scrub_dict()` recursive (handles nested dicts and lists). Added `scrub_async()` and `scrub_dict_async()` wrappers.
+- `api/app.py` — Replaced ~14 `except Exception: pass` blocks with logged warnings. Wrapped blocking `Path.read_text()` and `subprocess.run` calls in `asyncio.to_thread`. Replaced hardcoded debug log path with `settings.logs_dir / "debug.log"`. Added `_get_system_resources_async()` wrapper.
+- `tests/unit/test_memory_manager.py` — 8 tests: startup, user/assistant turns, retrieve_context with/without retriever, error handling, push_perception, get_context_for_llm.
+- `tests/unit/test_registry.py` — 5 tests: start_all, get by name, nonexistent agent, stop_all, graceful import failure.
+- `tests/unit/test_retriever.py` — 5 tests: RRF fusion basic/single/empty, retrieve with/without reranker.
+- `tests/unit/test_pii_scrubber.py` — 14 tests: regex scrub (email, phone, SSN, IP, credit card), no-PII passthrough, flat/recursive/list scrub_dict, fields filter, async wrappers.
 
-4. **`emily_chat/config.py`** — Changed `default_model` from `"claude-sonnet-4-5"` to `"auto"` so the auto-router picks the best available provider.
+**Why:** Proactive codebase health scan identified crash bugs, data loss paths, and code quality issues that would impact reliability.
 
-5. **`emily_chat/models/auto_router.py`** — Added `"ollama-local"` to the balanced default fallback chain and as the absolute last-resort fallback, replacing the previous `next(iter(EMILY_MODEL_REGISTRY))` which would return Claude Opus (unusable without a key).
-
-6. **`tests/unit/test_provider_factory.py`** (NEW) — 11 tests covering provider resolution, caching, missing-key errors, `stream_chunks` text passthrough, usage/cost tracking, error handling, identity filter, and interrupt support.
-
-**Why:** The desktop chat app had all UI and provider code implemented (phases 1-19) but the controller could not actually send messages due to three bugs: no provider factory to resolve `ModelSpec` to a `BaseProvider`, wrong streaming API signature (callback-based vs async-generator), and no conversation history in LLM context.
-
-**Affects:** `emily_chat/models/provider_factory.py`, `emily_chat/models/streaming_engine.py`, `emily_chat/controller.py`, `emily_chat/config.py`, `emily_chat/models/auto_router.py`, `tests/unit/test_provider_factory.py`.
+**Affects:** All files listed above, plus 4 new test files.
 
 ---
 
-## 2026-02-21 — Singing & Music Generation System
+## 2026-02-28 — Abliterated Model Full Integration (QwQ-32B Reasoning)
 
 **What changed:**
 
-1. **`voice/singing.py`** (NEW) — Multi-engine singing/music system mirroring `voice/tts.py`. Three engines: **MusicGenEngine** (AudioCraft text-to-music, local GPU), **RVCEngine** (Retrieval-based Voice Conversion via `rvc-python`, local GPU), **SunoEngine** (cloud REST API for full song generation). `SingingManager` orchestrates engine priority and fallback. All engines output raw int16 PCM at 24 kHz.
+1. **`config.yaml`** — Per-tier inference overrides:
+   - `nano`: temp=0.3, max_tokens=512, thinking=false
+   - `voice_fast`: temp=0.7, max_tokens=1024, thinking=false (saves latency)
+   - `fast`: temp=0.7, max_tokens=4096, thinking=true
+   - `smart`: temp=0.6, max_tokens=8192, thinking=true
+   - `reasoning`: temp=0.6, max_tokens=16384, thinking=true (QwQ-32B gets full room)
 
-2. **`plugins/builtin/singing.py`** (NEW) — `SingingTool` BaseTool subclass registered as `"sing"`. Three modes: `generate` (MusicGen instrumental), `voice_convert` (RVC singing voice conversion), `full_song` (Suno API). Includes `dry_run()`, `validate()` (mode-specific checks, duration bounds, file existence for RVC), and `execute()` with lazy-loaded SingingManager.
+2. **`config.py`** — Added `TierInferenceOverride` and `TierInferenceConfig` Pydantic models;
+   wired `tier_inference` field into `LLMConfig`.
 
-3. **`config.py`** — Added `RVCConfig`, `MusicGenConfig`, `SunoConfig`, `SingingConfig` Pydantic models with field validators. Added `singing: SingingConfig` field to `EmilySettings` and included `"singing"` in the YAML merge key list.
+3. **`llm/fleet.py`** — Major upgrades:
+   - Added `extract_thinking(text) -> (thinking, clean)` helper to strip `<think>…</think>`
+   - `chat_stream`: per-tier temp/max_tokens/enable_thinking; streaming think-block interceptor
+     routes thinking tokens to brain-hub `"thinking_token"` events, yields only clean text
+   - `chat`: per-tier settings; uses `extract_thinking` on full response; stores thinking
+     in `result.thinking_content` and emits brain-hub `"thinking"` event
 
-4. **`config.yaml`** — Added `singing:` section with engine toggles, RVC pitch extraction method, MusicGen model size, Suno API URL/key, and output directory.
+4. **`llm/router.py`** — Smarter routing for abliterated models:
+   - Added `_REASONING_PATTERNS` (18 patterns: "think through", "tradeoffs", "first principles", etc.)
+   - Added `_reasoning_re` to `__init__`
+   - `_estimate_complexity`: reasoning patterns add +3 to score (routes to QwQ-32B)
+   - `_infer_task_type`: detects `TaskType.REASONING` from text patterns
 
-5. **`plugins/registry.py`** — Added `"plugins.builtin.singing"` to `_BUILTIN_MODULES`.
+5. **`llm/prompt_builder.py`** — Added `get_reasoning_system_prompt()`:
+   - Dedicated system prompt for QwQ-32B thinking mode
+   - Instructs 5-step thinking: Understand → Decompose → Analyse → Critique → Conclude
+   - Tells model to keep final answer clean after `</think>`
 
-6. **`pyproject.toml`** — Added `audiocraft>=1.3.0` and `rvc-python>=0.1.5` to the `gpu-cuda` optional dependency group.
+6. **`agents/conversation.py`** — Wire-up:
+   - Imports `TaskType` from router
+   - `_generate_response`: selects `get_reasoning_system_prompt()` when `effective_tier == REASONING`
+   - Passes `task_type=routing.task_type` to `fleet.chat_stream`
+   - Logs `task_type` in routing decision
 
-7. **`tests/unit/test_singing_engine.py`** (NEW) — 10 tests covering config validation, engine list construction, priority ordering, mode-based selection, fallback when preferred engine unavailable, error on no engines, and resampling.
+**Why:** User requested full abliterated model integration. QwQ-32B is a dedicated reasoning
+model — it needs: (a) thinking enabled, (b) more max_tokens, (c) a reasoning-specific prompt,
+(d) thinking tokens stripped before TTS, (e) smart routing to only invoke it for genuinely
+complex queries.
 
-8. **`tests/unit/test_singing_tool.py`** (NEW) — 12 tests covering schema structure, dry_run for all modes, validation (missing prompt, invalid mode, missing audio for voice_convert, duration bounds, happy path), execute with mocked manager, and error handling.
-
-**Why:** Emily had no singing or music generation capability. Users asking Emily to sing had no path to audio output. This adds a full singing pipeline with local-first (MusicGen, RVC) and cloud fallback (Suno API), following the same config-driven multi-engine pattern as the TTS system.
-
-**Affects:** `voice/singing.py`, `plugins/builtin/singing.py`, `config.py`, `config.yaml`, `plugins/registry.py`, `pyproject.toml`, `README.md`, `tests/unit/test_singing_engine.py`, `tests/unit/test_singing_tool.py`.
-
----
-
-## 2026-02-21 — Model Fleet Upgrade: Qwen3 Generation
-
-**Changed:** Upgraded nano and fast model tiers from Qwen2.5/Phi-4 to Qwen3 generation. Added Qwen3-32B as an inactive alternative for the smart tier.
-
-- `config.yaml` — nano: `qwen2.5:3b` → `qwen3:4b`, voice_fast: `qwen2.5:3b` → `qwen3:4b`, fast: `phi4:latest` → `qwen3:14b`. Added commented `smart_alt: "qwen3:32b"` line. Updated llama.cpp GGUF filename and context window (8192 → 32768) for new nano model.
-- `config.py` — Updated `LLMModels` defaults to match config.yaml.
-- `DECISIONS.md` — Rewrote Nano (Qwen3-4B), Fast (Qwen3-14B), and Smart (QwQ-32B + Qwen3-32B alt) decision entries with updated benchmarks and rationale.
-- `ARCHITECTURE.md` — Updated model fleet table with new models and added Qwen3-32B alt row.
-- `README.md` — Updated ollama pull commands, VRAM co-residency table, model update commands.
-- `llm/orchestrator.py` — Updated `fast_model` default to `qwen3:14b`, `smart_model` to `qwq:latest`.
-- `conversation/fsm.py` — Updated brain hub event model name to `qwen3:4b`.
-- `extraction/{entity_extractor,relation_extractor,pipeline}.py` — Updated default model to `qwen3:14b`.
-- `llm/client.py` — Updated docstring example model name.
-- `tests/unit/test_llamacpp_client.py`, `tests/unit/test_conversation_rag.py` — Updated test model names.
-
-**Why:** Qwen3 is a generational upgrade: 36T training tokens (vs 18T for Qwen2.5), hybrid thinking/non-thinking mode, 128K context for the 14B+ models, 119 languages. Qwen3-4B rivals Qwen2.5-72B-Instruct quality at 3 GB VRAM. Qwen3-14B matches or exceeds Phi-4 14B with 8x longer context. QwQ-32B retained as primary smart/reasoning model for its dedicated reasoning chains; Qwen3-32B available as a drop-in alternative.
-
-**Affects:** `config.yaml`, `config.py`, `DECISIONS.md`, `ARCHITECTURE.md`, `README.md`, `llm/orchestrator.py`, `conversation/fsm.py`, `extraction/entity_extractor.py`, `extraction/relation_extractor.py`, `extraction/pipeline.py`, `llm/client.py`, `tests/unit/test_llamacpp_client.py`, `tests/unit/test_conversation_rag.py`.
-
----
-
-## 2026-02-21 — Enhanced Interruption System
-
-**What changed:**
-- Added 8 interrupt-related config fields to `VoiceEngineConfig` (`interrupt_energy_threshold`, `interrupt_cooldown_ms`, `interrupt_fade_ms`, `interrupt_lookahead_ms`, `interrupt_ack_enabled`, `interrupt_resume_enabled`, `interrupt_resume_expiry_s`, `interrupt_adaptive_threshold`).
-- Unified dual interrupt detection in FSM: removed redundant energy check from `_perception_loop`, consolidated all detection into `_interrupt_monitor_loop` with configurable threshold, cooldown timer, and adaptive noise-floor adjustment.
-- Enhanced `InterruptHandler._classify_interrupt()` to use prosody (pitch trajectory, range, stress) and emotion (frustrated/anxious/bored) signals alongside text keywords and energy.
-- `InterruptHandler` constructor now accepts `lookahead_ms`, `fade_ms`, and `resume_expiry_s` params instead of class constants.
-- Wired response resumption: FSM `_response_loop` checks `get_resume_phrase()` and speaks it before the next response when preserved context exists.
-- Wired interrupt metrics: `_apply_graceful_trailoff` now calls `record_interrupt()` and emits a `brain_hub` event.
-- Propagated interrupt to ConversationAgent via `audio.interrupt` message; agent now has `_interrupted` event that stops LLM streaming on barge-in.
-- `VoiceEngine` passes interrupt config dict to FSM and parameterized settings to `InterruptHandler`.
-- Added 13 new tests covering prosody/emotion classification, configurable parameters, resume expiry, and context clearing.
-
-**Why:** The interrupt system had hardcoded thresholds, naive keyword-only classification, no debounce, dead resume code, unwired metrics, and no way to stop the ConversationAgent on barge-in. These enhancements make interruptions configurable, adaptive, prosody-aware, and fully propagated across both response paths.
-
-**Affects:** `config.py`, `config.yaml`, `conversation/interrupt_handler.py`, `conversation/fsm.py`, `conversation/voice_engine.py`, `agents/conversation.py`, `tests/unit/test_interrupt.py`.
-
----
-
-### 2026-02-21 — Sesame CSM TTS Engine Integration
-
-- Added `CSMEngine` to `voice/tts.py`: uses HuggingFace `transformers` (`CsmForConditionalGeneration` + `AutoProcessor`) with the `sesame/csm-1b` model. Produces highest-quality conversational speech at 24 kHz, per-sentence streaming for low first-audio latency.
-- Added `CSMConfig` dataclass to `config.py` (model_id, speaker_id, max_audio_length, dtype) and wired into `TTSConfig`.
-- Added `csm:` section to `config.yaml` under `tts:`.
-- Registered `"csm"` in `_ENGINE_CLASSES` dict — slots into the existing config-driven engine priority system with zero changes to `TTSManager`.
-- Added `transformers>=4.52.1` to `pyproject.toml` gpu-cuda dependencies.
-- Updated `api/routes/audio.py`: added CSM to voice listing and refactored `list_voices`/`get_voice_settings` to iterate `_engine_list` instead of legacy `_primary`/`_fallback` attributes.
-- Updated DECISIONS.md and ARCHITECTURE.md to reflect the expanded TTS stack.
-
-**Why:** CSM produces the most natural conversational speech of any open-source TTS model. Adding it as a config-driven option gives Emily a quality-first TTS path alongside the speed-first Kokoro and cloning-capable XTTS v2 engines.
-
-**Affects:** `voice/tts.py`, `config.py`, `config.yaml`, `pyproject.toml`, `api/routes/audio.py`, `DECISIONS.md`, `ARCHITECTURE.md`.
-
----
-
-### 2026-02-21 — Full System Verification & Bug Fixes
-
-Executed a comprehensive 10-step verification of the entire Emily system after the llama.cpp backend integration. Key fixes applied:
-
-- **Ollama models:** Pulled missing `qwen3:14b` (fast tier) and `qwen3:4b` (voice engine orchestrator). All 7 required models now present.
-- **QdrantVectorStore `ensure_collection`:** Added missing `ensure_collection()` method to `memory/semantic/vector_store.py` (alias for `connect()`). Previously caused retriever degradation at startup.
-- **Model registry:** Added 3 Anthropic models (`claude-sonnet-4-5`, `claude-opus-4`, `claude-haiku-4`) to `emily_chat/models/registry.py` with `claude-sonnet-4-5` as default. Added `list_models()` function.
-- **StreamingEngine:** Added lightweight async-generator `StreamingEngine` class and `_PROVIDERS` cache to `emily_chat/models/streaming_engine.py`. Fixed circular import by making `providers.base.BaseProvider` import TYPE_CHECKING-only.
-- **Identity probe detection:** Extended `_PROBE_PATTERNS` in `emily_chat/emily/persona.py` to catch "pretend to be" (not just "act as/like") and match "ChatGPT" as a whole word.
-- **Recency detector:** Fixed `llm/recency_detector.py` to suppress web-search trigger when a query references an old year (e.g. "2010") — expanded year regex to catch 1900-2099 and suppressed news-keyword triggers when an explicit old year is present.
-- **Benchmark fix:** Updated `tests/benchmarks/bench_llm.py` to use `get_settings()` config (not bare `ModelRouter()`), increased `max_tokens` from 256 to 1024, and added `<think>` tag stripping for Qwen3 models.
-
-Verification results: 868 unit tests passing (0 failures), all 4 benchmarks green, fleet dispatch confirmed (nano/voice_fast -> llamacpp, fast/smart -> ollama), memory read/write cycles working, voice orchestrator keep_alive OK, clean startup with no unexpected errors.
-
-**Why:** Ensure full system integrity after the llama.cpp integration and fix all known issues from the previous startup.
-
-**Affects:** `memory/semantic/vector_store.py`, `emily_chat/models/registry.py`, `emily_chat/models/streaming_engine.py`, `emily_chat/emily/persona.py`, `llm/recency_detector.py`, `tests/benchmarks/bench_llm.py`, `tests/unit/test_anthropic_provider.py`.
+**Affects:**
+- `config.yaml` — tier_inference section added
+- `config.py` — TierInferenceOverride, TierInferenceConfig, LLMConfig.tier_inference
+- `llm/fleet.py` — extract_thinking, per-tier settings, streaming think-block interceptor
+- `llm/router.py` — reasoning patterns, REASONING task type detection
+- `llm/prompt_builder.py` — get_reasoning_system_prompt()
+- `agents/conversation.py` — reasoning prompt selection, task_type routing
 
 ---

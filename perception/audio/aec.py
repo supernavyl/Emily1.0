@@ -16,13 +16,12 @@ Design constraints:
 
 from __future__ import annotations
 
-import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import numpy as np
+import numpy.typing as npt
 
 from observability.logger import get_logger
-from perception.audio.stream import AudioChunk
 
 log = get_logger(__name__)
 
@@ -31,13 +30,16 @@ log = get_logger(__name__)
 class AECConfig:
     """AEC configuration parameters."""
 
-    filter_length: int = 4800
+    tail_length_ms: int = 100
     adaptation_rate: float = 0.02
-    tail_length_ms: int = 150
     sample_rate: int = 48000
     double_talk_threshold: float = 0.6
     min_convergence_frames: int = 100
     spectral_floor_db: float = -40.0
+
+    def __post_init__(self) -> None:
+        """Compute derived parameters."""
+        self.filter_length: int = int(self.sample_rate * self.tail_length_ms / 1000)
 
 
 class DoubleTalkDetector:
@@ -60,9 +62,9 @@ class DoubleTalkDetector:
 
     def update(
         self,
-        mic_signal: np.ndarray,
-        reference: np.ndarray,
-        error: np.ndarray,
+        mic_signal: npt.NDArray[np.float32],
+        reference: npt.NDArray[np.float32],
+        error: npt.NDArray[np.float32],
     ) -> bool:
         """
         Determine if double-talk is occurring.
@@ -75,8 +77,8 @@ class DoubleTalkDetector:
         Returns:
             True if double-talk detected (user speaking during Emily's output).
         """
-        mic_energy = float(np.mean(mic_signal ** 2))
-        ref_energy = float(np.mean(reference ** 2))
+        mic_energy = float(np.mean(mic_signal**2))
+        ref_energy = float(np.mean(reference**2))
 
         self._mic_energy_ema = (1 - self._alpha) * self._mic_energy_ema + self._alpha * mic_energy
         self._ref_energy_ema = (1 - self._alpha) * self._ref_energy_ema + self._alpha * ref_energy
@@ -84,15 +86,15 @@ class DoubleTalkDetector:
         if self._ref_energy_ema < 1e-8:
             return mic_energy > 1e-6
 
-        err_energy = float(np.mean(error ** 2))
+        err_energy = float(np.mean(error**2))
         if mic_energy < 1e-8:
             return False
 
         suppression_ratio = 1.0 - (err_energy / max(mic_energy, 1e-10))
-        if suppression_ratio < self._threshold and self._mic_energy_ema > self._ref_energy_ema * 0.3:
-            return True
-
-        return False
+        return (
+            suppression_ratio < self._threshold
+            and self._mic_energy_ema > self._ref_energy_ema * 0.3
+        )
 
 
 class AcousticEchoCanceller:
@@ -121,8 +123,8 @@ class AcousticEchoCanceller:
 
     async def calibrate(
         self,
-        mic_chunk: np.ndarray,
-        ref_chunk: np.ndarray,
+        mic_chunk: npt.NDArray[np.float32],
+        ref_chunk: npt.NDArray[np.float32],
     ) -> int:
         """
         Estimate loudspeaker-to-microphone delay via cross-correlation.
@@ -150,11 +152,15 @@ class AcousticEchoCanceller:
 
     def process(
         self,
-        mic_chunk: np.ndarray,
-        reference_chunk: np.ndarray,
-    ) -> np.ndarray:
+        mic_chunk: npt.NDArray[np.float32],
+        reference_chunk: npt.NDArray[np.float32],
+    ) -> npt.NDArray[np.float32]:
         """
         Remove echo from microphone signal using the reference (speaker output).
+
+        Uses Block NLMS: a Toeplitz-like tap matrix built via stride tricks
+        enables vectorized echo estimation (single matmul) and a single
+        filter update per chunk instead of per sample.
 
         Args:
             mic_chunk: Raw microphone audio (float32).
@@ -166,33 +172,44 @@ class AcousticEchoCanceller:
         if reference_chunk is None or len(reference_chunk) == 0:
             return mic_chunk
 
-        ref_energy = float(np.mean(reference_chunk ** 2))
+        ref_energy = float(np.mean(reference_chunk**2))
         if ref_energy < 1e-10:
             return mic_chunk
 
         n = len(mic_chunk)
-        output = np.empty(n, dtype=np.float32)
+        flen = self.config.filter_length
 
-        for i in range(n):
-            ref_sample = reference_chunk[i] if i < len(reference_chunk) else 0.0
-            self._ref_buffer = np.roll(self._ref_buffer, 1)
-            self._ref_buffer[0] = ref_sample
+        history = np.concatenate([self._ref_buffer, reference_chunk[:n]])
 
-            echo_estimate = float(np.dot(self._filter, self._ref_buffer))
-            error = mic_chunk[i] - echo_estimate
-            output[i] = error
+        # Build (n, flen) tap matrix — each row is the reversed reference
+        # window for that sample position.  Stride tricks give a zero-copy
+        # windowed view; the contiguous copy ensures BLAS-friendly layout.
+        taps_fwd = np.lib.stride_tricks.as_strided(
+            history,
+            shape=(n, flen),
+            strides=(history.strides[0], history.strides[0]),
+        )
+        taps = np.ascontiguousarray(taps_fwd[:, ::-1])
 
-            is_double_talk = False
-            if i == n - 1:
-                is_double_talk = self._double_talk.update(
-                    mic_chunk, reference_chunk, output
-                )
+        # Vectorized echo estimation — single matmul replaces n dot products
+        echo_estimates = taps @ self._filter
+        output = (mic_chunk[:n] - echo_estimates).astype(np.float32)
 
-            if not is_double_talk:
-                ref_power = float(np.dot(self._ref_buffer, self._ref_buffer)) + 1e-8
-                step = self.config.adaptation_rate / ref_power
-                self._filter += step * error * self._ref_buffer
-                self._convergence_count += 1
+        is_double_talk = self._double_talk.update(
+            mic_chunk,
+            reference_chunk,
+            output,
+        )
+
+        if not is_double_talk:
+            # Block NLMS: gradient averaged over the chunk
+            gradient = taps.T @ output / n
+            avg_power = float(np.einsum("ij,ij->", taps, taps) / n) + 1e-8
+            step = self.config.adaptation_rate / avg_power
+            self._filter = (self._filter + step * gradient).astype(np.float32)
+            self._convergence_count += 1
+
+        self._ref_buffer = history[-flen:]
 
         if self._convergence_count > self.config.min_convergence_frames:
             self._is_converged = True
@@ -204,9 +221,9 @@ class AcousticEchoCanceller:
 
     def _spectral_subtraction(
         self,
-        mic: np.ndarray,
-        ref: np.ndarray,
-    ) -> np.ndarray:
+        mic: npt.NDArray[np.float32],
+        ref: npt.NDArray[np.float32],
+    ) -> npt.NDArray[np.float32]:
         """
         Fallback echo reduction using spectral subtraction.
 
@@ -235,7 +252,7 @@ class AcousticEchoCanceller:
 
         phase = np.angle(mic_fft)
         result_fft = suppressed_mag * np.exp(1j * phase)
-        result = np.fft.irfft(result_fft, n=nfft)[:len(mic)]
+        result = np.fft.irfft(result_fft, n=nfft)[: len(mic)]
 
         return result.astype(np.float32)
 
@@ -256,3 +273,12 @@ class AcousticEchoCanceller:
     def is_calibrated(self) -> bool:
         """True if the delay calibration has been performed."""
         return self._calibrated
+
+    @property
+    def convergence_time_s(self) -> float:
+        """Estimated seconds for the adaptive filter to converge from cold start.
+
+        Based on the configured min_convergence_frames at 10ms per chunk.
+        Used by the FSM to set the post-speech STT hold-off duration.
+        """
+        return self.config.min_convergence_frames * 0.01

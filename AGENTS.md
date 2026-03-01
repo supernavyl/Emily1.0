@@ -2,6 +2,7 @@
 
 > This file provides background context for AI agents, background models, and coding assistants
 > working in this repository. Keep it up to date as the architecture evolves.
+> **Last updated: 2026-02-28**
 
 ---
 
@@ -9,7 +10,17 @@
 
 **Emily** is a self-evolving, multi-agent local AI voice operating system. She is not an assistant — she is a persistent cognitive entity that learns, plans, reasons, and improves herself over time, running entirely on local hardware (Intel i9-14900K, 64 GB DDR5, NVIDIA RTX 4090, Arch Linux).
 
-Emily is **Python-only** — no React, no Node frontend. She uses PySide6 for a desktop chat app, Textual for terminal dashboards, and FastAPI for a web API.
+Emily has a **Tauri + React + Tailwind desktop app** (web/), a **PySide6 chat app** (emily_chat/), a **Textual terminal UI** (ui/terminal/), and a **FastAPI web API** (api/).
+
+### Owner/Privacy System
+Emily has **ONE owner**. Personal data is NEVER shared with non-owners (guests).
+- Owner onboarding: personal questions with confirmation (`users/onboarding_enhanced.py`)
+- Passphrase verification: SHA-256 hashed (`users/owner_identity.py`)
+- Privacy filtering: response filtering for guests (`users/privacy_filter.py`)
+
+### Interaction Persistence
+Every conversation turn is immediately saved to `data/interactions.db` via `memory/interaction_logger.py`.
+Automatic backups every 30 minutes to `data/backups/`.
 
 ---
 
@@ -106,7 +117,7 @@ Emily1.0/
 │   └── generated/         #   Runtime-generated tools (require explicit user approval to load)
 │
 ├── voice/                 # Voice persona & output engine
-│   ├── tts.py             #   TTS engine manager (CSM → Kokoro → XTTS v2 → Edge TTS)
+│   ├── tts.py             #   TTS engine manager (CSM → Kokoro → XTTS v2)
 │   ├── prosody.py         #   Prosody parameter computation
 │   ├── prosody_planner.py #   Prosody planning from emotional state
 │   ├── voice_clone.py     #   XTTS v2 voice cloning
@@ -268,7 +279,7 @@ Emily1.0/
 
 ### Voice Pipeline
 - STT: Faster-Whisper large-v3-turbo (CUDA, float16) — <300ms budget
-- TTS: CSM (quality) → Kokoro (speed) → XTTS v2 (cloning) → Edge TTS (fallback)
+- TTS: CSM (quality) → Kokoro (speed) → XTTS v2 (cloning)
 - Wake word: openWakeWord with custom ONNX model
 - VAD: Silero VAD v5 with adaptive noise floor
 - Real-time conversation engine with turn-taking, interruption, backchannel

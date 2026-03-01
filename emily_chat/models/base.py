@@ -8,7 +8,10 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, AsyncIterator, Literal
+from typing import TYPE_CHECKING, Any, Literal
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,7 +37,7 @@ class ModelSpec:
     """Describes a single model variant available in the registry.
 
     Attributes:
-        id: Internal registry key (e.g. ``"claude-sonnet-4-5"``).
+        id: Internal registry key (e.g. ``"claude-sonnet-4-6"``).
         display: Human-readable name shown in the UI (e.g. ``"Emily — Sonnet"``).
         provider: Provider identifier (e.g. ``"anthropic"``).
         model_id: Provider-side model string sent in API calls.

@@ -17,9 +17,12 @@ import asyncio
 import json
 import time
 from dataclasses import dataclass, field
-from typing import Any, AsyncIterator
+from typing import TYPE_CHECKING
 
 import httpx
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
 
 from observability.logger import get_logger
 from observability.metrics import LLM_FIRST_TOKEN_LATENCY, LLM_REQUESTS_TOTAL
@@ -136,6 +139,7 @@ class OllamaClient:
         max_tokens: int = 4096,
         repeat_penalty: float = 1.1,
         model_tier: str = "fast",
+        enable_thinking: bool = True,
     ) -> AsyncIterator[CompletionChunk]:
         """
         Stream a chat completion from Ollama.
@@ -171,6 +175,9 @@ class OllamaClient:
                 "repeat_penalty": repeat_penalty,
             },
         }
+        if not enable_thinking:
+            payload["options"]["num_ctx"] = payload["options"].get("num_ctx", 8192)
+            payload["think"] = False
 
         t0 = time.monotonic()
         first_token = True
@@ -319,11 +326,14 @@ class OllamaClient:
         """
         try:
             client = await self._get_client()
-            await client.post("/api/chat", json={
-                "model": model,
-                "messages": [],
-                "keep_alive": duration,
-            })
+            await client.post(
+                "/api/chat",
+                json={
+                    "model": model,
+                    "messages": [],
+                    "keep_alive": duration,
+                },
+            )
             log.info("model_keep_alive", model=model, duration=duration)
         except Exception as exc:
             log.debug("keep_alive_failed", model=model, error=str(exc))

@@ -17,15 +17,15 @@ from __future__ import annotations
 import asyncio
 import os
 import time
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import TYPE_CHECKING, Any, AsyncIterator, Callable, Optional
-
-from emily_chat.emily.persona import EmilyPersonaEngine
-from emily_chat.models.registry import ModelSpec
+from enum import StrEnum
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from emily_chat.emily.persona import EmilyPersonaEngine
     from emily_chat.models.providers.base import BaseProvider
+    from emily_chat.models.registry import ModelSpec
 
 _PROVIDERS: dict[str, Any] = {}
 
@@ -35,7 +35,7 @@ _PROVIDERS: dict[str, Any] = {}
 # ---------------------------------------------------------------------------
 
 
-class ChunkType(str, Enum):
+class ChunkType(StrEnum):
     """Discriminator for :class:`StreamChunk`."""
 
     THINKING = "thinking"
@@ -120,7 +120,7 @@ class EmilyStreamingEngine:
         self,
         provider: BaseProvider,
         model_spec: ModelSpec,
-        messages: list[dict],
+        messages: list[dict[str, str]],
         system_prompt: str,
         settings: GenerationSettings,
         *,
@@ -151,17 +151,13 @@ class EmilyStreamingEngine:
         first_token_seen = False
 
         try:
-            async for chunk in provider.stream(
-                messages, system_prompt, settings, model_spec
-            ):
+            async for chunk in provider.stream(messages, system_prompt, settings, model_spec):
                 if self._interrupt.is_set():
                     break
 
                 if chunk.type == ChunkType.THINKING:
                     if not first_token_seen:
-                        usage.first_token_ms = int(
-                            (time.monotonic() - t0) * 1000
-                        )
+                        usage.first_token_ms = int((time.monotonic() - t0) * 1000)
                         first_token_seen = True
                     usage.tokens_thinking += chunk.tokens
                     if on_thinking:
@@ -169,9 +165,7 @@ class EmilyStreamingEngine:
 
                 elif chunk.type == ChunkType.TEXT:
                     if not first_token_seen:
-                        usage.first_token_ms = int(
-                            (time.monotonic() - t0) * 1000
-                        )
+                        usage.first_token_ms = int((time.monotonic() - t0) * 1000)
                         first_token_seen = True
                     safe = self._persona.filter_response_chunk(chunk.content)
                     usage.tokens_out += chunk.tokens
@@ -179,12 +173,8 @@ class EmilyStreamingEngine:
                         on_text(safe)
 
                 elif chunk.type == ChunkType.USAGE:
-                    usage.tokens_in = chunk.metadata.get(
-                        "prompt_tokens", usage.tokens_in
-                    )
-                    usage.tokens_out = chunk.metadata.get(
-                        "completion_tokens", usage.tokens_out
-                    )
+                    usage.tokens_in = chunk.metadata.get("prompt_tokens", usage.tokens_in)
+                    usage.tokens_out = chunk.metadata.get("completion_tokens", usage.tokens_out)
                     usage.tokens_thinking = chunk.metadata.get(
                         "reasoning_tokens", usage.tokens_thinking
                     )
@@ -223,7 +213,7 @@ class EmilyStreamingEngine:
         self,
         provider: BaseProvider,
         model_spec: ModelSpec,
-        messages: list[dict],
+        messages: list[dict[str, str]],
         system_prompt: str,
         settings: GenerationSettings,
     ) -> AsyncIterator[StreamChunk]:
@@ -251,40 +241,28 @@ class EmilyStreamingEngine:
         first_token_seen = False
 
         try:
-            async for chunk in provider.stream(
-                messages, system_prompt, settings, model_spec
-            ):
+            async for chunk in provider.stream(messages, system_prompt, settings, model_spec):
                 if self._interrupt.is_set():
                     break
 
                 if chunk.type == ChunkType.THINKING:
                     if not first_token_seen:
-                        usage.first_token_ms = int(
-                            (time.monotonic() - t0) * 1000
-                        )
+                        usage.first_token_ms = int((time.monotonic() - t0) * 1000)
                         first_token_seen = True
                     usage.tokens_thinking += chunk.tokens
                     yield chunk
 
                 elif chunk.type == ChunkType.TEXT:
                     if not first_token_seen:
-                        usage.first_token_ms = int(
-                            (time.monotonic() - t0) * 1000
-                        )
+                        usage.first_token_ms = int((time.monotonic() - t0) * 1000)
                         first_token_seen = True
                     safe = self._persona.filter_response_chunk(chunk.content)
                     usage.tokens_out += chunk.tokens
-                    yield StreamChunk(
-                        type=ChunkType.TEXT, content=safe, tokens=chunk.tokens
-                    )
+                    yield StreamChunk(type=ChunkType.TEXT, content=safe, tokens=chunk.tokens)
 
                 elif chunk.type == ChunkType.USAGE:
-                    usage.tokens_in = chunk.metadata.get(
-                        "prompt_tokens", usage.tokens_in
-                    )
-                    usage.tokens_out = chunk.metadata.get(
-                        "completion_tokens", usage.tokens_out
-                    )
+                    usage.tokens_in = chunk.metadata.get("prompt_tokens", usage.tokens_in)
+                    usage.tokens_out = chunk.metadata.get("completion_tokens", usage.tokens_out)
                     usage.tokens_thinking = chunk.metadata.get(
                         "reasoning_tokens", usage.tokens_thinking
                     )
@@ -340,6 +318,7 @@ _PROVIDER_CLASSES: dict[str, str] = {
     "mistral": "emily_chat.models.providers.mistral.MistralProvider",
     "openrouter": "emily_chat.models.providers.openrouter.OpenRouterProvider",
     "ollama": "emily_chat.models.providers.ollama.OllamaProvider",
+    "tabbyapi": "emily_chat.models.providers.tabbyapi.TabbyAPIProvider",
 }
 
 _ENV_KEY_MAP: dict[str, str] = {
@@ -366,6 +345,7 @@ def _get_provider(provider_name: str) -> Any:
 
     module_path, cls_name = dotted.rsplit(".", 1)
     import importlib
+
     mod = importlib.import_module(module_path)
     cls = getattr(mod, cls_name)
 
@@ -394,13 +374,13 @@ class StreamingEngine:
     async def stream(
         self,
         model_spec: ModelSpec,
-        messages: list[dict],
+        messages: list[dict[str, str]],
         system_prompt: str,
-        settings: Any,
+        settings: GenerationSettings,
         *,
         persona_filter: Callable[[str], str] | None = None,
         interrupt: asyncio.Event | None = None,
-    ) -> AsyncIterator[Any]:
+    ) -> AsyncIterator[StreamChunk]:
         """Stream a completion, yielding :class:`~emily_chat.models.base.StreamChunk`.
 
         Args:
@@ -422,9 +402,7 @@ class StreamingEngine:
         first_token_ms: float | None = None
 
         try:
-            async for chunk in provider.stream(
-                model_spec.model_id, messages, system_prompt, settings
-            ):
+            async for chunk in provider.stream(messages, system_prompt, settings, model_spec):
                 if (interrupt and interrupt.is_set()) or self._interrupt.is_set():
                     yield BaseChunk(type="stop")
                     return
@@ -443,14 +421,16 @@ class StreamingEngine:
                 elif chunk.type == "usage":
                     latency_ms = (time.monotonic() - t0) * 1000
                     from emily_chat.models.cost_tracker import estimate_cost
+
+                    usage_data = getattr(chunk, "usage", None) or getattr(chunk, "metadata", {})
                     cost = estimate_cost(
                         model_spec,
-                        chunk.usage.get("input_tokens", 0),
-                        chunk.usage.get("output_tokens", 0),
+                        usage_data.get("input_tokens", usage_data.get("prompt_tokens", 0)),
+                        usage_data.get("output_tokens", usage_data.get("completion_tokens", 0)),
                         0,
                     )
                     enriched = {
-                        **chunk.usage,
+                        **usage_data,
                         "latency_ms": round(latency_ms),
                         "first_token_ms": round(first_token_ms or 0),
                         "cost_usd": cost,

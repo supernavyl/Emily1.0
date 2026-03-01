@@ -1,935 +1,1936 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Emily — Voice Mode</title>
-<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.3/dist/cdn.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
-<style>
-:root {
-  --bg-primary: #0a0a0f;
-  --bg-secondary: #10101a;
-  --bg-card: #151520;
-  --bg-card-hover: #1a1a28;
-  --bg-input: #12121c;
-  --border: #1e1e30;
-  --border-light: #2a2a40;
-  --text-primary: #e4e4ed;
-  --text-secondary: #8888a0;
-  --text-muted: #555570;
-  --accent: #7c5cfc;
-  --accent-glow: #7c5cfc44;
-  --accent-light: #a78bfa;
-  --green: #34d399;
-  --red: #f87171;
-  --yellow: #fbbf24;
-  --blue: #60a5fa;
-  --cyan: #22d3ee;
-  --radius: 10px;
-  --radius-sm: 6px;
-}
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background: var(--bg-primary); color: var(--text-primary); min-height: 100vh; }
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 3px; }
-a { color: var(--accent-light); text-decoration: none; }
-a:hover { text-decoration: underline; }
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+    <title>Emily — Voice Mode</title>
+    <script
+      defer
+      src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.3/dist/cdn.min.js"
+    ></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    <style>
+      :root {
+        --bg-primary: #0a0a0f;
+        --bg-secondary: #10101a;
+        --bg-card: #151520;
+        --bg-card-hover: #1a1a28;
+        --bg-input: #12121c;
+        --border: #1e1e30;
+        --border-light: #2a2a40;
+        --text-primary: #e4e4ed;
+        --text-secondary: #8888a0;
+        --text-muted: #555570;
+        --accent: #7c5cfc;
+        --accent-glow: #7c5cfc44;
+        --accent-light: #a78bfa;
+        --green: #34d399;
+        --red: #f87171;
+        --yellow: #fbbf24;
+        --blue: #60a5fa;
+        --cyan: #22d3ee;
+        --radius: 10px;
+        --radius-sm: 6px;
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family:
+          "Inter",
+          system-ui,
+          -apple-system,
+          sans-serif;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        min-height: 100vh;
+      }
+      ::-webkit-scrollbar {
+        width: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: var(--border-light);
+        border-radius: 3px;
+      }
+      a {
+        color: var(--accent-light);
+        text-decoration: none;
+      }
+      a:hover {
+        text-decoration: underline;
+      }
 
-/* HEADER */
-.header { display: flex; align-items: center; justify-content: space-between; padding: 0 28px; height: 56px; background: var(--bg-secondary); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 20; }
-.header-left { display: flex; align-items: center; gap: 14px; }
-.header-left h1 { font-size: 1.2rem; font-weight: 700; background: linear-gradient(135deg, var(--accent), var(--cyan)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: -0.02em; }
-.header-left .sep { color: var(--text-muted); font-size: 1rem; }
-.header-left .page-title { font-size: 1rem; font-weight: 600; color: var(--text-secondary); }
-.back-link { font-size: 0.78rem; color: var(--text-muted); display: flex; align-items: center; gap: 4px; transition: color 0.15s; }
-.back-link:hover { color: var(--text-primary); text-decoration: none; }
-.header-right { display: flex; align-items: center; gap: 16px; }
-.status-badge { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; font-weight: 600; padding: 4px 12px; border-radius: 20px; border: 1px solid var(--border); }
-.status-dot { width: 8px; height: 8px; border-radius: 50%; animation: pulse 2s infinite; }
-@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
-.uptime { font-size: 0.75rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+      /* HEADER */
+      .header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 28px;
+        height: 56px;
+        background: var(--bg-secondary);
+        border-bottom: 1px solid var(--border);
+        position: sticky;
+        top: 0;
+        z-index: 20;
+      }
+      .header-left {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
+      .header-left h1 {
+        font-size: 1.2rem;
+        font-weight: 700;
+        background: linear-gradient(135deg, var(--accent), var(--cyan));
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        letter-spacing: -0.02em;
+      }
+      .header-left .sep {
+        color: var(--text-muted);
+        font-size: 1rem;
+      }
+      .header-left .page-title {
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--text-secondary);
+      }
+      .back-link {
+        font-size: 0.78rem;
+        color: var(--text-muted);
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        transition: color 0.15s;
+      }
+      .back-link:hover {
+        color: var(--text-primary);
+        text-decoration: none;
+      }
+      .header-right {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+      .status-badge {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        padding: 4px 12px;
+        border-radius: 20px;
+        border: 1px solid var(--border);
+      }
+      .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        animation: pulse 2s infinite;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.4;
+        }
+      }
+      .uptime {
+        font-size: 0.75rem;
+        color: var(--text-muted);
+        font-variant-numeric: tabular-nums;
+      }
 
-/* LAYOUT */
-.page-body { display: grid; grid-template-columns: 1fr 300px; gap: 16px; padding: 20px 28px; min-height: calc(100vh - 56px); }
-.main-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
-.side-col { display: flex; flex-direction: column; gap: 16px; }
+      /* LAYOUT */
+      .page-body {
+        display: grid;
+        grid-template-columns: 1fr 300px;
+        gap: 16px;
+        padding: 20px 28px;
+        min-height: calc(100vh - 56px);
+      }
+      .main-col {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        min-width: 0;
+      }
+      .side-col {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
 
-/* CARDS */
-.card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; transition: border-color 0.2s; }
-.card:hover { border-color: var(--border-light); }
-.card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-.card-title { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); font-weight: 600; }
-.card-value { font-size: 1.6rem; font-weight: 700; font-variant-numeric: tabular-nums; }
-.card-sub { font-size: 0.72rem; color: var(--text-secondary); margin-top: 4px; }
+      /* CARDS */
+      .card {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 16px;
+        transition: border-color 0.2s;
+      }
+      .card:hover {
+        border-color: var(--border-light);
+      }
+      .card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+      }
+      .card-title {
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--text-muted);
+        font-weight: 600;
+      }
+      .card-value {
+        font-size: 1.6rem;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+      }
+      .card-sub {
+        font-size: 0.72rem;
+        color: var(--text-secondary);
+        margin-top: 4px;
+      }
 
-/* GRID HELPERS */
-.grid { display: grid; gap: 16px; }
-.grid-4 { grid-template-columns: repeat(4, 1fr); }
-.grid-3 { grid-template-columns: repeat(3, 1fr); }
-.grid-2 { grid-template-columns: repeat(2, 1fr); }
+      /* GRID HELPERS */
+      .grid {
+        display: grid;
+        gap: 16px;
+      }
+      .grid-4 {
+        grid-template-columns: repeat(4, 1fr);
+      }
+      .grid-3 {
+        grid-template-columns: repeat(3, 1fr);
+      }
+      .grid-2 {
+        grid-template-columns: repeat(2, 1fr);
+      }
 
-/* HERO */
-.hero-card { display: flex; align-items: center; gap: 24px; padding: 20px 24px; }
-.voice-status-orb { width: 72px; height: 72px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.6rem; flex-shrink: 0; transition: box-shadow 0.4s, background 0.4s; }
-.voice-status-orb.listening { background: radial-gradient(circle, #60a5fa 0%, #1e3a5f 100%); box-shadow: 0 0 24px 8px #60a5fa44; animation: orb-pulse 1.5s ease-in-out infinite; }
-.voice-status-orb.responding { background: radial-gradient(circle, #a78bfa 0%, #3b2d6e 100%); box-shadow: 0 0 24px 8px #7c5cfc44; animation: orb-pulse 1.0s ease-in-out infinite; }
-.voice-status-orb.processing { background: radial-gradient(circle, #fbbf24 0%, #5c4a10 100%); box-shadow: 0 0 24px 8px #fbbf2444; animation: orb-pulse 0.7s ease-in-out infinite; }
-.voice-status-orb.idle { background: radial-gradient(circle, #34d399 0%, #0f3d2a 100%); box-shadow: 0 0 12px 4px #34d39922; }
-.voice-status-orb.error { background: radial-gradient(circle, #f87171 0%, #5c1a1a 100%); box-shadow: 0 0 16px 6px #f8717133; }
-@keyframes orb-pulse { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.08); opacity: 0.85; } }
-.hero-info { flex: 1; }
-.hero-state { font-size: 2rem; font-weight: 800; letter-spacing: -0.03em; }
-.hero-sub { font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.hero-sub .dot { width: 4px; height: 4px; border-radius: 50%; background: var(--text-muted); flex-shrink: 0; }
-.hero-actions { display: flex; gap: 10px; flex-shrink: 0; }
+      /* HERO */
+      .hero-card {
+        display: flex;
+        align-items: center;
+        gap: 24px;
+        padding: 20px 24px;
+      }
+      .voice-status-orb {
+        width: 72px;
+        height: 72px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.6rem;
+        flex-shrink: 0;
+        transition:
+          box-shadow 0.4s,
+          background 0.4s;
+      }
+      .voice-status-orb.listening {
+        background: radial-gradient(circle, #60a5fa 0%, #1e3a5f 100%);
+        box-shadow: 0 0 24px 8px #60a5fa44;
+        animation: orb-pulse 1.5s ease-in-out infinite;
+      }
+      .voice-status-orb.responding {
+        background: radial-gradient(circle, #a78bfa 0%, #3b2d6e 100%);
+        box-shadow: 0 0 24px 8px #7c5cfc44;
+        animation: orb-pulse 1s ease-in-out infinite;
+      }
+      .voice-status-orb.processing {
+        background: radial-gradient(circle, #fbbf24 0%, #5c4a10 100%);
+        box-shadow: 0 0 24px 8px #fbbf2444;
+        animation: orb-pulse 0.7s ease-in-out infinite;
+      }
+      .voice-status-orb.idle {
+        background: radial-gradient(circle, #34d399 0%, #0f3d2a 100%);
+        box-shadow: 0 0 12px 4px #34d39922;
+      }
+      .voice-status-orb.error {
+        background: radial-gradient(circle, #f87171 0%, #5c1a1a 100%);
+        box-shadow: 0 0 16px 6px #f8717133;
+      }
+      @keyframes orb-pulse {
+        0%,
+        100% {
+          transform: scale(1);
+          opacity: 1;
+        }
+        50% {
+          transform: scale(1.08);
+          opacity: 0.85;
+        }
+      }
+      .hero-info {
+        flex: 1;
+      }
+      .hero-state {
+        font-size: 2rem;
+        font-weight: 800;
+        letter-spacing: -0.03em;
+      }
+      .hero-sub {
+        font-size: 0.8rem;
+        color: var(--text-secondary);
+        margin-top: 4px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .hero-sub .dot {
+        width: 4px;
+        height: 4px;
+        border-radius: 50%;
+        background: var(--text-muted);
+        flex-shrink: 0;
+      }
+      .hero-actions {
+        display: flex;
+        gap: 10px;
+        flex-shrink: 0;
+      }
 
-/* BUTTONS */
-.btn { border: none; padding: 8px 18px; border-radius: var(--radius-sm); font-size: 0.8rem; font-weight: 600; cursor: pointer; transition: all 0.15s; display: inline-flex; align-items: center; gap: 6px; }
-.btn-accent { background: var(--accent); color: #fff; }
-.btn-accent:hover { background: #6d4ae0; transform: translateY(-1px); }
-.btn-secondary { background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border); }
-.btn-secondary:hover { background: var(--bg-card-hover); border-color: var(--border-light); }
-.btn-danger { background: var(--red); color: #fff; }
-.btn-sm { padding: 4px 12px; font-size: 0.72rem; }
+      /* BUTTONS */
+      .btn {
+        border: none;
+        padding: 8px 18px;
+        border-radius: var(--radius-sm);
+        font-size: 0.8rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.15s;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .btn-accent {
+        background: var(--accent);
+        color: #fff;
+      }
+      .btn-accent:hover {
+        background: #6d4ae0;
+        transform: translateY(-1px);
+      }
+      .btn-secondary {
+        background: var(--bg-card);
+        color: var(--text-primary);
+        border: 1px solid var(--border);
+      }
+      .btn-secondary:hover {
+        background: var(--bg-card-hover);
+        border-color: var(--border-light);
+      }
+      .btn-danger {
+        background: var(--red);
+        color: #fff;
+      }
+      .btn-sm {
+        padding: 4px 12px;
+        font-size: 0.72rem;
+      }
 
-/* WAVEFORM */
-.waveform-container { position: relative; height: 80px; background: var(--bg-primary); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
-.waveform-container canvas { width: 100%; height: 100%; display: block; }
-.waveform-labels { position: absolute; top: 6px; left: 10px; display: flex; gap: 16px; z-index: 2; }
-.waveform-label { font-size: 0.65rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; display: flex; align-items: center; gap: 4px; }
-.waveform-label .swatch { width: 10px; height: 3px; border-radius: 2px; }
-.snr-badge { position: absolute; top: 6px; right: 10px; font-size: 0.68rem; font-weight: 600; padding: 2px 8px; border-radius: 4px; background: #34d39920; color: var(--green); z-index: 2; }
+      /* WAVEFORM */
+      .waveform-container {
+        position: relative;
+        height: 80px;
+        background: var(--bg-primary);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        overflow: hidden;
+      }
+      .waveform-container canvas {
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+      .waveform-labels {
+        position: absolute;
+        top: 6px;
+        left: 10px;
+        display: flex;
+        gap: 16px;
+        z-index: 2;
+      }
+      .waveform-label {
+        font-size: 0.65rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .waveform-label .swatch {
+        width: 10px;
+        height: 3px;
+        border-radius: 2px;
+      }
+      .snr-badge {
+        position: absolute;
+        top: 6px;
+        right: 10px;
+        font-size: 0.68rem;
+        font-weight: 600;
+        padding: 2px 8px;
+        border-radius: 4px;
+        background: #34d39920;
+        color: var(--green);
+        z-index: 2;
+      }
 
-/* TRANSCRIPT */
-.transcript-box { display: flex; flex-direction: column; height: 360px; overflow-y: auto; padding: 12px; gap: 6px; background: var(--bg-primary); border: 1px solid var(--border); border-radius: var(--radius); }
-.transcript-entry { display: flex; gap: 10px; padding: 8px 12px; border-radius: 8px; font-size: 0.82rem; line-height: 1.5; animation: t-in 0.25s ease-out; }
-@keyframes t-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
-.transcript-entry.user { background: #1e3a5f20; border-left: 3px solid var(--blue); }
-.transcript-entry.emily { background: #7c5cfc10; border-left: 3px solid var(--accent); }
-.transcript-ts { font-size: 0.65rem; color: var(--text-muted); min-width: 56px; padding-top: 3px; font-variant-numeric: tabular-nums; }
-.transcript-role { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; min-width: 48px; padding-top: 2px; }
-.transcript-role.user { color: var(--blue); }
-.transcript-role.emily { color: var(--accent-light); }
-.transcript-text { flex: 1; color: var(--text-primary); }
-.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-muted); gap: 8px; }
-.empty-state .icon { font-size: 2.5rem; opacity: 0.3; }
-.empty-state .label { font-size: 0.82rem; }
+      /* TRANSCRIPT */
+      .transcript-box {
+        display: flex;
+        flex-direction: column;
+        height: 360px;
+        overflow-y: auto;
+        padding: 12px;
+        gap: 6px;
+        background: var(--bg-primary);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+      }
+      .transcript-entry {
+        display: flex;
+        gap: 10px;
+        padding: 8px 12px;
+        border-radius: 8px;
+        font-size: 0.82rem;
+        line-height: 1.5;
+        animation: t-in 0.25s ease-out;
+      }
+      @keyframes t-in {
+        from {
+          opacity: 0;
+          transform: translateY(6px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      .transcript-entry.user {
+        background: #1e3a5f20;
+        border-left: 3px solid var(--blue);
+      }
+      .transcript-entry.emily {
+        background: #7c5cfc10;
+        border-left: 3px solid var(--accent);
+      }
+      .transcript-ts {
+        font-size: 0.65rem;
+        color: var(--text-muted);
+        min-width: 56px;
+        padding-top: 3px;
+        font-variant-numeric: tabular-nums;
+      }
+      .transcript-role {
+        font-size: 0.68rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        min-width: 48px;
+        padding-top: 2px;
+      }
+      .transcript-role.user {
+        color: var(--blue);
+      }
+      .transcript-role.emily {
+        color: var(--accent-light);
+      }
+      .transcript-text {
+        flex: 1;
+        color: var(--text-primary);
+      }
+      .empty-state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        color: var(--text-muted);
+        gap: 8px;
+      }
+      .empty-state .icon {
+        font-size: 2.5rem;
+        opacity: 0.3;
+      }
+      .empty-state .label {
+        font-size: 0.82rem;
+      }
 
-/* PIPELINE MODULES */
-.module-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
-.module-chip { background: var(--bg-primary); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; }
-.module-chip-name { font-size: 0.72rem; font-weight: 700; color: var(--text-primary); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.04em; }
-.module-chip-detail { font-size: 0.68rem; color: var(--text-secondary); line-height: 1.4; }
-.module-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
-.module-dot.on { background: var(--green); box-shadow: 0 0 4px var(--green); }
-.module-dot.off { background: var(--text-muted); }
+      /* PIPELINE MODULES */
+      .module-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+      }
+      .module-chip {
+        background: var(--bg-primary);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        padding: 10px 12px;
+      }
+      .module-chip-name {
+        font-size: 0.72rem;
+        font-weight: 700;
+        color: var(--text-primary);
+        margin-bottom: 4px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .module-chip-detail {
+        font-size: 0.68rem;
+        color: var(--text-secondary);
+        line-height: 1.4;
+      }
+      .module-dot {
+        display: inline-block;
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        margin-right: 4px;
+        vertical-align: middle;
+      }
+      .module-dot.on {
+        background: var(--green);
+        box-shadow: 0 0 4px var(--green);
+      }
+      .module-dot.off {
+        background: var(--text-muted);
+      }
 
-/* TELEMETRY */
-.tele-label { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); font-weight: 600; margin-bottom: 4px; }
-.tele-value { font-size: 1.1rem; font-weight: 700; font-variant-numeric: tabular-nums; }
-.tele-bar { height: 6px; background: var(--bg-primary); border-radius: 3px; overflow: hidden; margin-top: 6px; }
-.tele-fill { height: 100%; border-radius: 3px; transition: width 0.5s ease; }
+      /* TELEMETRY */
+      .tele-label {
+        font-size: 0.68rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--text-muted);
+        font-weight: 600;
+        margin-bottom: 4px;
+      }
+      .tele-value {
+        font-size: 1.1rem;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+      }
+      .tele-bar {
+        height: 6px;
+        background: var(--bg-primary);
+        border-radius: 3px;
+        overflow: hidden;
+        margin-top: 6px;
+      }
+      .tele-fill {
+        height: 100%;
+        border-radius: 3px;
+        transition: width 0.5s ease;
+      }
 
-/* BREAKDOWN ROWS */
-.breakdown-row { display: flex; justify-content: space-between; padding: 3px 0; font-size: 0.75rem; }
-.breakdown-key { color: var(--text-secondary); }
-.breakdown-val { color: var(--text-primary); font-weight: 600; font-variant-numeric: tabular-nums; }
+      /* BREAKDOWN ROWS */
+      .breakdown-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 3px 0;
+        font-size: 0.75rem;
+      }
+      .breakdown-key {
+        color: var(--text-secondary);
+      }
+      .breakdown-val {
+        color: var(--text-primary);
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+      }
 
-/* GAUGE RING */
-.gauge-ring { position: relative; width: 80px; height: 80px; margin: 0 auto 8px; }
-.gauge-ring svg { transform: rotate(-90deg); }
-.gauge-ring-label { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 0.9rem; font-weight: 700; }
+      /* GAUGE RING */
+      .gauge-ring {
+        position: relative;
+        width: 80px;
+        height: 80px;
+        margin: 0 auto 8px;
+      }
+      .gauge-ring svg {
+        transform: rotate(-90deg);
+      }
+      .gauge-ring-label {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        font-size: 0.9rem;
+        font-weight: 700;
+      }
 
-/* BADGES */
-.badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.68rem; font-weight: 600; }
-.badge-green { background: #34d39920; color: var(--green); }
-.badge-blue { background: #60a5fa20; color: var(--blue); }
-.badge-yellow { background: #fbbf2420; color: var(--yellow); }
-.badge-red { background: #f8717120; color: var(--red); }
-.badge-purple { background: #7c5cfc20; color: var(--accent-light); }
+      /* BADGES */
+      .badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 0.68rem;
+        font-weight: 600;
+      }
+      .badge-green {
+        background: #34d39920;
+        color: var(--green);
+      }
+      .badge-blue {
+        background: #60a5fa20;
+        color: var(--blue);
+      }
+      .badge-yellow {
+        background: #fbbf2420;
+        color: var(--yellow);
+      }
+      .badge-red {
+        background: #f8717120;
+        color: var(--red);
+      }
+      .badge-purple {
+        background: #7c5cfc20;
+        color: var(--accent-light);
+      }
 
-/* TABLES */
-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
-th { text-align: left; padding: 8px 10px; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); font-weight: 600; border-bottom: 1px solid var(--border); }
-td { padding: 8px 10px; border-bottom: 1px solid var(--border); color: var(--text-secondary); }
-tr:hover td { background: var(--bg-card-hover); }
+      /* TABLES */
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.8rem;
+      }
+      th {
+        text-align: left;
+        padding: 8px 10px;
+        font-size: 0.68rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--text-muted);
+        font-weight: 600;
+        border-bottom: 1px solid var(--border);
+      }
+      td {
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--border);
+        color: var(--text-secondary);
+      }
+      tr:hover td {
+        background: var(--bg-card-hover);
+      }
 
-/* CONTROLS BAR */
-.controls-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-.controls-bar select { background: var(--bg-input); border: 1px solid var(--border); color: var(--text-primary); padding: 8px 12px; border-radius: var(--radius-sm); font-size: 0.8rem; outline: none; cursor: pointer; min-width: 180px; }
+      /* CONTROLS BAR */
+      .controls-bar {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .controls-bar select {
+        background: var(--bg-input);
+        border: 1px solid var(--border);
+        color: var(--text-primary);
+        padding: 8px 12px;
+        border-radius: var(--radius-sm);
+        font-size: 0.8rem;
+        outline: none;
+        cursor: pointer;
+        min-width: 180px;
+        transition: all 0.15s;
+      }
+      .controls-bar select:hover {
+        border-color: var(--border-light);
+      }
+      .controls-bar select:focus {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 2px var(--accent-glow);
+      }
+      .controls-bar select option {
+        background: var(--bg-card);
+        color: var(--text-primary);
+        padding: 4px 8px;
+      }
+      .controls-bar select option:checked {
+        background: linear-gradient(var(--accent), var(--accent));
+      }
+      .controls-bar select option:disabled {
+        color: var(--text-muted);
+        background: var(--bg-card);
+      }
 
-/* CHART */
-.chart-box { position: relative; height: 180px; }
+      /* UNIVERSAL SELECT STYLING */
+      select {
+        background: var(--bg-input);
+        border: 1px solid var(--border);
+        color: var(--text-primary);
+        padding: 8px 12px;
+        border-radius: var(--radius-sm);
+        font-size: 0.8rem;
+        outline: none;
+        cursor: pointer;
+        transition: all 0.15s;
+      }
+      select:hover {
+        border-color: var(--border-light);
+      }
+      select:focus {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 2px var(--accent-glow);
+      }
+      select option {
+        background: var(--bg-card);
+        color: var(--text-primary);
+        padding: 4px 8px;
+      }
+      select option:checked {
+        background: linear-gradient(var(--accent), var(--accent));
+      }
+      select option:disabled {
+        color: var(--text-muted);
+        background: var(--bg-card);
+      }
 
-/* STAT PILL in sidebar */
-.stat-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); }
-.stat-row:last-child { border-bottom: none; }
-.stat-label { font-size: 0.75rem; color: var(--text-secondary); }
-.stat-val { font-size: 0.85rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+      /* CHART */
+      .chart-box {
+        position: relative;
+        height: 180px;
+      }
 
-/* RESPONSIVE */
-@media (max-width: 1200px) {
-  .page-body { grid-template-columns: 1fr; }
-  .side-col { display: grid; grid-template-columns: repeat(2, 1fr); }
-  .grid-4 { grid-template-columns: repeat(2, 1fr); }
-}
-@media (max-width: 768px) {
-  .grid-4, .grid-3, .grid-2 { grid-template-columns: 1fr; }
-  .module-grid { grid-template-columns: 1fr; }
-  .side-col { grid-template-columns: 1fr; }
-  .page-body { padding: 12px; }
-}
-</style>
-</head>
-<body>
+      /* STAT PILL in sidebar */
+      .stat-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 0;
+        border-bottom: 1px solid var(--border);
+      }
+      .stat-row:last-child {
+        border-bottom: none;
+      }
+      .stat-label {
+        font-size: 0.75rem;
+        color: var(--text-secondary);
+      }
+      .stat-val {
+        font-size: 0.85rem;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+      }
 
-<div x-data="voiceDashboard()" x-init="init()">
-
-  <!-- HEADER -->
-  <div class="header">
-    <div class="header-left">
-      <a href="/" class="back-link">&#8592; Dashboard</a>
-      <span class="sep">|</span>
-      <h1>EMILY</h1>
-      <span class="page-title">Voice Mode</span>
-    </div>
-    <div class="header-right">
-      <div class="status-badge">
-        <div class="status-dot" :style="'background:' + fsmColor()"></div>
-        <span x-text="engine.fsm_state || 'OFFLINE'"></span>
-      </div>
-      <span class="uptime" x-text="'Session: ' + formatDuration(sessionSeconds)"></span>
-    </div>
-  </div>
-
-  <!-- PAGE BODY -->
-  <div class="page-body">
-
-    <!-- ======== MAIN COLUMN ======== -->
-    <div class="main-col">
-
-      <!-- 1. HERO -->
-      <div class="card hero-card">
-        <div class="voice-status-orb"
-             :class="(engine.fsm_state||'idle').toLowerCase()">
-          &#127908;
+      /* RESPONSIVE */
+      @media (max-width: 1200px) {
+        .page-body {
+          grid-template-columns: 1fr;
+        }
+        .side-col {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+        }
+        .grid-4 {
+          grid-template-columns: repeat(2, 1fr);
+        }
+      }
+      @media (max-width: 768px) {
+        .grid-4,
+        .grid-3,
+        .grid-2 {
+          grid-template-columns: 1fr;
+        }
+        .module-grid {
+          grid-template-columns: 1fr;
+        }
+        .side-col {
+          grid-template-columns: 1fr;
+        }
+        .page-body {
+          padding: 12px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div x-data="voiceDashboard()" x-init="init()">
+      <!-- HEADER -->
+      <div class="header">
+        <div class="header-left">
+          <a href="/" class="back-link">&#8592; Dashboard</a>
+          <span class="sep">|</span>
+          <h1>EMILY</h1>
+          <span class="page-title">Voice Mode</span>
         </div>
-        <div class="hero-info">
-          <div class="hero-state" :style="'color:' + fsmColor()"
-               x-text="engine.fsm_state || 'IDLE'"></div>
-          <div class="hero-sub">
-            <span x-text="voiceStatus.voice_mode === 'full_duplex' ? 'Full-Duplex Engine' : 'Legacy Pipeline'"></span>
-            <span class="dot"></span>
-            <span :style="'color:' + (engine.running ? 'var(--green)' : 'var(--red)')"
-                  x-text="engine.running ? 'Active' : 'Stopped'"></span>
-            <template x-if="engine.state_duration_s > 0">
-              <span>
+        <div class="header-right">
+          <div class="status-badge">
+            <div class="status-dot" :style="'background:' + fsmColor()"></div>
+            <span x-text="engine.fsm_state || 'OFFLINE'"></span>
+          </div>
+          <span
+            class="uptime"
+            x-text="'Session: ' + formatDuration(sessionSeconds)"
+          ></span>
+        </div>
+      </div>
+
+      <!-- PAGE BODY -->
+      <div class="page-body">
+        <!-- ======== MAIN COLUMN ======== -->
+        <div class="main-col">
+          <!-- 1. HERO -->
+          <div class="card hero-card">
+            <div
+              class="voice-status-orb"
+              :class="(engine.fsm_state||'idle').toLowerCase()"
+            >
+              &#127908;
+            </div>
+            <div class="hero-info">
+              <div
+                class="hero-state"
+                :style="'color:' + fsmColor()"
+                x-text="engine.fsm_state || 'IDLE'"
+              ></div>
+              <div class="hero-sub">
+                <span
+                  x-text="voiceStatus.voice_mode === 'full_duplex' ? 'Full-Duplex Engine' : 'Legacy Pipeline'"
+                ></span>
                 <span class="dot"></span>
-                <span x-text="engine.state_duration_s + 's in state'"></span>
-              </span>
-            </template>
-          </div>
-        </div>
-        <div class="hero-actions">
-          <button class="btn btn-accent" @click="testTTS()">
-            &#128266; Test TTS
-          </button>
-          <button class="btn btn-secondary" @click="previewVoice()">
-            &#127925; Preview
-          </button>
-          <span style="font-size:0.72rem;color:var(--text-muted);min-width:60px;"
-                x-text="ttsTestStatus"></span>
-        </div>
-      </div>
-
-      <!-- 2. STATUS CARDS ROW -->
-      <div class="grid grid-4">
-        <div class="card">
-          <div class="card-title">TTS Engine</div>
-          <div class="card-value" :style="'color:' + (voiceStatus.tts_available ? 'var(--green)' : 'var(--yellow)')"
-               x-text="voiceStatus.tts_available ? 'READY' : 'N/A'"></div>
-          <div class="card-sub" x-text="'Provider: ' + ttsProvider"></div>
-        </div>
-        <div class="card">
-          <div class="card-title">STT Engine</div>
-          <div class="card-value" :style="'color:' + (voiceStatus.stt_available ? 'var(--green)' : 'var(--yellow)')"
-               x-text="voiceStatus.stt_available ? 'READY' : 'N/A'"></div>
-          <div class="card-sub" x-text="pipelineModules.streaming_stt?.model || 'Faster-Whisper'"></div>
-        </div>
-        <div class="card">
-          <div class="card-title">Wake Word</div>
-          <div class="card-value" :style="'color:' + (voiceStatus.wake_word_available ? 'var(--green)' : 'var(--text-muted)')"
-               x-text="voiceStatus.wake_word_available ? 'ACTIVE' : 'OFF'"></div>
-          <div class="card-sub">openWakeWord</div>
-        </div>
-        <div class="card">
-          <div class="card-title">Speakers</div>
-          <div class="card-value" style="color:var(--cyan)"
-               x-text="speakerData.total_tracked || 0"></div>
-          <div class="card-sub">Tracked</div>
-        </div>
-      </div>
-
-      <!-- 3. WAVEFORM -->
-      <div class="card" style="padding:12px">
-        <div class="card-header" style="margin-bottom:8px">
-          <span class="card-title">Audio Levels</span>
-          <span class="badge badge-green"
-                x-text="'SNR: ' + (pipelineModules.noise_suppress?.current_snr_db || '--') + ' dB'"></span>
-        </div>
-        <div class="waveform-container">
-          <div class="waveform-labels">
-            <div class="waveform-label"><div class="swatch" style="background:var(--blue)"></div> Input</div>
-            <div class="waveform-label"><div class="swatch" style="background:var(--accent)"></div> Output</div>
-          </div>
-          <canvas id="waveformCanvas"></canvas>
-        </div>
-      </div>
-
-      <!-- 4. TRANSCRIPT + PIPELINE side-by-side -->
-      <div class="grid grid-2">
-        <!-- Transcript -->
-        <div class="card">
-          <div class="card-header">
-            <span class="card-title">Live Transcript</span>
-            <div style="display:flex;gap:8px;align-items:center;">
-              <span style="font-size:0.7rem;color:var(--text-muted);"
-                    x-text="transcript.length + ' entries'"></span>
-              <button class="btn btn-secondary btn-sm" @click="transcript=[];transcriptId=0">Clear</button>
+                <span
+                  :style="'color:' + (engine.running ? 'var(--green)' : 'var(--red)')"
+                  x-text="engine.running ? 'Active' : 'Stopped'"
+                ></span>
+                <template x-if="engine.state_duration_s > 0">
+                  <span>
+                    <span class="dot"></span>
+                    <span
+                      x-text="engine.state_duration_s + 's in state'"
+                    ></span>
+                  </span>
+                </template>
+              </div>
+            </div>
+            <div class="hero-actions">
+              <button class="btn btn-accent" @click="testTTS()">
+                &#128266; Test TTS
+              </button>
+              <button class="btn btn-secondary" @click="previewVoice()">
+                &#127925; Preview
+              </button>
+              <span
+                style="
+                  font-size: 0.72rem;
+                  color: var(--text-muted);
+                  min-width: 60px;
+                "
+                x-text="ttsTestStatus"
+              ></span>
             </div>
           </div>
-          <div class="transcript-box" id="transcriptBox">
-            <template x-if="transcript.length === 0">
-              <div class="empty-state">
-                <div class="icon">&#127908;</div>
-                <div class="label">Waiting for voice activity...</div>
-                <div style="font-size:0.72rem;">Transcript appears when Emily's voice pipeline is active</div>
-              </div>
-            </template>
-            <template x-for="t in transcript" :key="t.id">
-              <div class="transcript-entry" :class="t.role">
-                <span class="transcript-ts" x-text="t.time"></span>
-                <span class="transcript-role" :class="t.role" x-text="t.role === 'emily' ? 'Emily' : 'User'"></span>
-                <span class="transcript-text" x-text="t.text"></span>
-              </div>
-            </template>
-          </div>
-        </div>
 
-        <!-- Pipeline Modules -->
-        <div class="card">
-          <div class="card-header">
-            <span class="card-title">Pipeline Modules</span>
-            <span class="badge" :class="Object.keys(pipelineModules).length > 0 ? 'badge-green' : 'badge-yellow'"
-                  x-text="Object.keys(pipelineModules).length + ' loaded'"></span>
-          </div>
-          <div class="module-grid">
-            <template x-for="(info, name) in pipelineModules" :key="name">
-              <div class="module-chip">
-                <div class="module-chip-name">
-                  <span class="module-dot" :class="info.loaded ? 'on' : 'off'"></span>
-                  <span x-text="name.replace(/_/g, ' ')"></span>
-                </div>
-                <div class="module-chip-detail">
-                  <template x-if="name === 'audio_capture'">
-                    <span x-text="(info.input_sample_rate||'?') + ' Hz in / ' + (info.output_sample_rate||'?') + ' Hz out'"></span>
-                  </template>
-                  <template x-if="name === 'aec'">
-                    <span x-text="'Tail: ' + (info.tail_length_ms||'?') + 'ms @ ' + (info.sample_rate||'?') + ' Hz'"></span>
-                  </template>
-                  <template x-if="name === 'noise_suppress'">
-                    <span x-text="'SNR: ' + (info.current_snr_db || '--') + ' dB / Mode: ' + (info.mode || '?')"></span>
-                  </template>
-                  <template x-if="name === 'streaming_stt'">
-                    <span x-text="'Model: ' + (info.model || 'default')"></span>
-                  </template>
-                  <template x-if="name === 'speaker_engine'">
-                    <span x-text="'Active: ' + (info.active_count||0) + ' / Max: ' + (info.max_speakers||'?')"></span>
-                  </template>
-                  <template x-if="!['audio_capture','aec','noise_suppress','streaming_stt','speaker_engine'].includes(name)">
-                    <span style="color:var(--green)">Loaded</span>
-                  </template>
-                </div>
-              </div>
-            </template>
-            <template x-if="Object.keys(pipelineModules).length === 0">
-              <div class="module-chip" style="grid-column:1/-1;text-align:center;">
-                <div class="module-chip-detail" style="color:var(--text-muted);">Voice engine not active</div>
-              </div>
-            </template>
-          </div>
-        </div>
-      </div>
-
-      <!-- 5. EMOTION + TURN + LATENCY -->
-      <div class="grid grid-3">
-        <!-- Emotion -->
-        <div class="card">
-          <div class="card-title" style="margin-bottom:10px">User Emotion</div>
-          <template x-if="emotion">
-            <div>
-              <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:10px;">
-                <span class="tele-value" style="color:var(--accent-light);text-transform:capitalize;"
-                      x-text="emotion.primary || 'neutral'"></span>
-                <span style="font-size:0.72rem;color:var(--text-muted);"
-                      x-text="((emotion.confidence||0)*100).toFixed(0) + '%'"></span>
-              </div>
-              <div class="tele-label">Valence</div>
-              <div class="tele-bar"><div class="tele-fill" :style="'width:' + ((emotion.valence||0)*100) + '%;background:var(--green)'"></div></div>
-              <div class="tele-label" style="margin-top:6px">Arousal</div>
-              <div class="tele-bar"><div class="tele-fill" :style="'width:' + ((emotion.arousal||0)*100) + '%;background:var(--yellow)'"></div></div>
-              <div class="tele-label" style="margin-top:6px">Engagement</div>
-              <div class="tele-bar"><div class="tele-fill" :style="'width:' + ((emotion.engagement||0)*100) + '%;background:var(--blue)'"></div></div>
-              <div class="tele-label" style="margin-top:6px">Cognitive Load</div>
-              <div class="tele-bar"><div class="tele-fill" :style="'width:' + ((emotion.cognitive_load||0)*100) + '%;background:var(--cyan)'"></div></div>
+          <!-- 2. STATUS CARDS ROW -->
+          <div class="grid grid-4">
+            <div class="card">
+              <div class="card-title">TTS Engine</div>
+              <div
+                class="card-value"
+                :style="'color:' + (voiceStatus.tts_available ? 'var(--green)' : 'var(--yellow)')"
+                x-text="voiceStatus.tts_available ? 'READY' : 'N/A'"
+              ></div>
+              <div class="card-sub" x-text="'Provider: ' + ttsProvider"></div>
             </div>
-          </template>
-          <div x-show="!emotion" style="color:var(--text-muted);font-size:0.78rem;">No emotion data</div>
-        </div>
+            <div class="card">
+              <div class="card-title">STT Engine</div>
+              <div
+                class="card-value"
+                :style="'color:' + (voiceStatus.stt_available ? 'var(--green)' : 'var(--yellow)')"
+                x-text="voiceStatus.stt_available ? 'READY' : 'N/A'"
+              ></div>
+              <div
+                class="card-sub"
+                x-text="pipelineModules.streaming_stt?.model || 'Faster-Whisper'"
+              ></div>
+            </div>
+            <div class="card">
+              <div class="card-title">Wake Word</div>
+              <div
+                class="card-value"
+                :style="'color:' + (voiceStatus.wake_word_available ? 'var(--green)' : 'var(--text-muted)')"
+                x-text="voiceStatus.wake_word_available ? 'ACTIVE' : 'OFF'"
+              ></div>
+              <div class="card-sub">openWakeWord</div>
+            </div>
+            <div class="card">
+              <div class="card-title">Speakers</div>
+              <div
+                class="card-value"
+                style="color: var(--cyan)"
+                x-text="speakerData.total_tracked || 0"
+              ></div>
+              <div class="card-sub">Tracked</div>
+            </div>
+          </div>
 
-        <!-- Turn Detection -->
-        <div class="card">
-          <div class="card-title" style="margin-bottom:10px">Turn Detection</div>
-          <template x-if="turnSignal">
-            <div>
-              <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:8px;">
-                <span class="tele-value"
-                      :style="'color:' + (turnSignal.action === 'TAKE_TURN' ? 'var(--green)' : turnSignal.action === 'WAIT' ? 'var(--yellow)' : 'var(--text-secondary)')"
-                      x-text="turnSignal.action"></span>
-                <span style="font-size:0.75rem;color:var(--text-muted);"
-                      x-text="'Score: ' + turnSignal.score"></span>
+          <!-- 3. WAVEFORM -->
+          <div class="card" style="padding: 12px">
+            <div class="card-header" style="margin-bottom: 8px">
+              <span class="card-title">Audio Levels</span>
+              <span
+                class="badge badge-green"
+                x-text="'SNR: ' + (pipelineModules.noise_suppress?.current_snr_db || '--') + ' dB'"
+              ></span>
+            </div>
+            <div class="waveform-container">
+              <div class="waveform-labels">
+                <div class="waveform-label">
+                  <div class="swatch" style="background: var(--blue)"></div>
+                  Input
+                </div>
+                <div class="waveform-label">
+                  <div class="swatch" style="background: var(--accent)"></div>
+                  Output
+                </div>
               </div>
-              <div class="card-title" style="margin-bottom:6px;margin-top:10px">Confidence Breakdown</div>
-              <template x-for="(val, key) in (turnSignal.breakdown || {})" :key="key">
-                <div class="breakdown-row">
-                  <span class="breakdown-key" x-text="key"></span>
-                  <span class="breakdown-val" x-text="val"></span>
+              <canvas id="waveformCanvas"></canvas>
+            </div>
+          </div>
+
+          <!-- 4. TRANSCRIPT + PIPELINE side-by-side -->
+          <div class="grid grid-2">
+            <!-- Transcript -->
+            <div class="card">
+              <div class="card-header">
+                <span class="card-title">Live Transcript</span>
+                <div style="display: flex; gap: 8px; align-items: center">
+                  <span
+                    style="font-size: 0.7rem; color: var(--text-muted)"
+                    x-text="transcript.length + ' entries'"
+                  ></span>
+                  <button
+                    class="btn btn-secondary btn-sm"
+                    @click="transcript=[];transcriptId=0"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+              <div class="transcript-box" id="transcriptBox">
+                <template x-if="transcript.length === 0">
+                  <div class="empty-state">
+                    <div class="icon">&#127908;</div>
+                    <div class="label">Waiting for voice activity...</div>
+                    <div style="font-size: 0.72rem">
+                      Transcript appears when Emily's voice pipeline is active
+                    </div>
+                  </div>
+                </template>
+                <template x-for="t in transcript" :key="t.id">
+                  <div class="transcript-entry" :class="t.role">
+                    <span class="transcript-ts" x-text="t.time"></span>
+                    <span
+                      class="transcript-role"
+                      :class="t.role"
+                      x-text="t.role === 'emily' ? 'Emily' : 'User'"
+                    ></span>
+                    <span class="transcript-text" x-text="t.text"></span>
+                  </div>
+                </template>
+              </div>
+            </div>
+
+            <!-- Pipeline Modules -->
+            <div class="card">
+              <div class="card-header">
+                <span class="card-title">Pipeline Modules</span>
+                <span
+                  class="badge"
+                  :class="Object.keys(pipelineModules).length > 0 ? 'badge-green' : 'badge-yellow'"
+                  x-text="Object.keys(pipelineModules).length + ' loaded'"
+                ></span>
+              </div>
+              <div class="module-grid">
+                <template x-for="(info, name) in pipelineModules" :key="name">
+                  <div class="module-chip">
+                    <div class="module-chip-name">
+                      <span
+                        class="module-dot"
+                        :class="info.loaded ? 'on' : 'off'"
+                      ></span>
+                      <span x-text="name.replace(/_/g, ' ')"></span>
+                    </div>
+                    <div class="module-chip-detail">
+                      <template x-if="name === 'audio_capture'">
+                        <span
+                          x-text="(info.input_sample_rate||'?') + ' Hz in / ' + (info.output_sample_rate||'?') + ' Hz out'"
+                        ></span>
+                      </template>
+                      <template x-if="name === 'aec'">
+                        <span
+                          x-text="'Tail: ' + (info.tail_length_ms||'?') + 'ms @ ' + (info.sample_rate||'?') + ' Hz'"
+                        ></span>
+                      </template>
+                      <template x-if="name === 'noise_suppress'">
+                        <span
+                          x-text="'SNR: ' + (info.current_snr_db || '--') + ' dB / Mode: ' + (info.mode || '?')"
+                        ></span>
+                      </template>
+                      <template x-if="name === 'streaming_stt'">
+                        <span
+                          x-text="'Model: ' + (info.model || 'default')"
+                        ></span>
+                      </template>
+                      <template x-if="name === 'speaker_engine'">
+                        <span
+                          x-text="'Active: ' + (info.active_count||0) + ' / Max: ' + (info.max_speakers||'?')"
+                        ></span>
+                      </template>
+                      <template
+                        x-if="!['audio_capture','aec','noise_suppress','streaming_stt','speaker_engine'].includes(name)"
+                      >
+                        <span style="color: var(--green)">Loaded</span>
+                      </template>
+                    </div>
+                  </div>
+                </template>
+                <template x-if="Object.keys(pipelineModules).length === 0">
+                  <div
+                    class="module-chip"
+                    style="grid-column: 1/-1; text-align: center"
+                  >
+                    <div
+                      class="module-chip-detail"
+                      style="color: var(--text-muted)"
+                    >
+                      Voice engine not active
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </div>
+
+          <!-- 5. EMOTION + TURN + LATENCY -->
+          <div class="grid grid-3">
+            <!-- Emotion -->
+            <div class="card">
+              <div class="card-title" style="margin-bottom: 10px">
+                User Emotion
+              </div>
+              <template x-if="emotion">
+                <div>
+                  <div
+                    style="
+                      display: flex;
+                      align-items: baseline;
+                      gap: 10px;
+                      margin-bottom: 10px;
+                    "
+                  >
+                    <span
+                      class="tele-value"
+                      style="
+                        color: var(--accent-light);
+                        text-transform: capitalize;
+                      "
+                      x-text="emotion.primary || 'neutral'"
+                    ></span>
+                    <span
+                      style="font-size: 0.72rem; color: var(--text-muted)"
+                      x-text="((emotion.confidence||0)*100).toFixed(0) + '%'"
+                    ></span>
+                  </div>
+                  <div class="tele-label">Valence</div>
+                  <div class="tele-bar">
+                    <div
+                      class="tele-fill"
+                      :style="'width:' + ((emotion.valence||0)*100) + '%;background:var(--green)'"
+                    ></div>
+                  </div>
+                  <div class="tele-label" style="margin-top: 6px">Arousal</div>
+                  <div class="tele-bar">
+                    <div
+                      class="tele-fill"
+                      :style="'width:' + ((emotion.arousal||0)*100) + '%;background:var(--yellow)'"
+                    ></div>
+                  </div>
+                  <div class="tele-label" style="margin-top: 6px">
+                    Engagement
+                  </div>
+                  <div class="tele-bar">
+                    <div
+                      class="tele-fill"
+                      :style="'width:' + ((emotion.engagement||0)*100) + '%;background:var(--blue)'"
+                    ></div>
+                  </div>
+                  <div class="tele-label" style="margin-top: 6px">
+                    Cognitive Load
+                  </div>
+                  <div class="tele-bar">
+                    <div
+                      class="tele-fill"
+                      :style="'width:' + ((emotion.cognitive_load||0)*100) + '%;background:var(--cyan)'"
+                    ></div>
+                  </div>
                 </div>
               </template>
+              <div
+                x-show="!emotion"
+                style="color: var(--text-muted); font-size: 0.78rem"
+              >
+                No emotion data
+              </div>
             </div>
-          </template>
-          <div x-show="!turnSignal" style="color:var(--text-muted);font-size:0.78rem;">No turn signal</div>
-        </div>
 
-        <!-- Latency Budget -->
-        <div class="card">
-          <div class="card-title" style="margin-bottom:10px">Latency Budget</div>
-          <template x-if="Object.keys(latencyStages).length > 0">
-            <div style="overflow-x:auto;">
-              <table>
-                <thead><tr><th>Stage</th><th>P50</th><th>P95</th><th>P99</th></tr></thead>
-                <tbody>
-                  <template x-for="(data, stage) in latencyStages" :key="stage">
-                    <tr>
-                      <td style="color:var(--text-primary);font-weight:500" x-text="stage"></td>
-                      <td x-text="(data.p50||0) + 'ms'"></td>
-                      <td :style="'color:' + ((data.p95||0) > 300 ? 'var(--red)' : 'var(--text-secondary)')"
-                          x-text="(data.p95||0) + 'ms'"></td>
-                      <td x-text="(data.p99||0) + 'ms'"></td>
-                    </tr>
+            <!-- Turn Detection -->
+            <div class="card">
+              <div class="card-title" style="margin-bottom: 10px">
+                Turn Detection
+              </div>
+              <template x-if="turnSignal">
+                <div>
+                  <div
+                    style="
+                      display: flex;
+                      align-items: baseline;
+                      gap: 10px;
+                      margin-bottom: 8px;
+                    "
+                  >
+                    <span
+                      class="tele-value"
+                      :style="'color:' + (turnSignal.action === 'TAKE_TURN' ? 'var(--green)' : turnSignal.action === 'WAIT' ? 'var(--yellow)' : 'var(--text-secondary)')"
+                      x-text="turnSignal.action"
+                    ></span>
+                    <span
+                      style="font-size: 0.75rem; color: var(--text-muted)"
+                      x-text="'Score: ' + turnSignal.score"
+                    ></span>
+                  </div>
+                  <div
+                    class="card-title"
+                    style="margin-bottom: 6px; margin-top: 10px"
+                  >
+                    Confidence Breakdown
+                  </div>
+                  <template
+                    x-for="(val, key) in (turnSignal.breakdown || {})"
+                    :key="key"
+                  >
+                    <div class="breakdown-row">
+                      <span class="breakdown-key" x-text="key"></span>
+                      <span class="breakdown-val" x-text="val"></span>
+                    </div>
                   </template>
-                </tbody>
-              </table>
+                </div>
+              </template>
+              <div
+                x-show="!turnSignal"
+                style="color: var(--text-muted); font-size: 0.78rem"
+              >
+                No turn signal
+              </div>
             </div>
-          </template>
-          <div x-show="Object.keys(latencyStages).length === 0"
-               style="color:var(--text-muted);font-size:0.78rem;">No latency data</div>
-        </div>
-      </div>
 
-      <!-- 6. RHYTHM + CONTROLS -->
-      <div class="grid grid-2">
-        <!-- Rhythm Synchronization -->
-        <div class="card">
-          <div class="card-title" style="margin-bottom:10px">Rhythm Synchronization</div>
-          <template x-if="rhythm">
-            <div>
-              <div class="grid grid-2" style="gap:8px;margin-bottom:10px;">
-                <div>
-                  <div class="tele-label">User Rate</div>
-                  <div class="tele-value" style="font-size:1rem;" x-text="(rhythm.user?.speaking_rate_syl_s||0) + ' syl/s'"></div>
+            <!-- Latency Budget -->
+            <div class="card">
+              <div class="card-title" style="margin-bottom: 10px">
+                Latency Budget
+              </div>
+              <template x-if="Object.keys(latencyStages).length > 0">
+                <div style="overflow-x: auto">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Stage</th>
+                        <th>P50</th>
+                        <th>P95</th>
+                        <th>P99</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <template
+                        x-for="(data, stage) in latencyStages"
+                        :key="stage"
+                      >
+                        <tr>
+                          <td
+                            style="color: var(--text-primary); font-weight: 500"
+                            x-text="stage"
+                          ></td>
+                          <td x-text="(data.p50||0) + 'ms'"></td>
+                          <td
+                            :style="'color:' + ((data.p95||0) > 300 ? 'var(--red)' : 'var(--text-secondary)')"
+                            x-text="(data.p95||0) + 'ms'"
+                          ></td>
+                          <td x-text="(data.p99||0) + 'ms'"></td>
+                        </tr>
+                      </template>
+                    </tbody>
+                  </table>
                 </div>
-                <div>
-                  <div class="tele-label">Emily Rate</div>
-                  <div class="tele-value" style="font-size:1rem;" x-text="(rhythm.emily?.speaking_rate_syl_s||0) + ' syl/s'"></div>
-                </div>
-              </div>
-              <div class="breakdown-row">
-                <span class="breakdown-key">User pause</span>
-                <span class="breakdown-val" x-text="(rhythm.user?.pause_duration_ms||0) + 'ms'"></span>
-              </div>
-              <div class="breakdown-row">
-                <span class="breakdown-key">Emily phrase len</span>
-                <span class="breakdown-val" x-text="(rhythm.emily?.phrase_length_words||0) + ' words'"></span>
-              </div>
-              <div class="breakdown-row">
-                <span class="breakdown-key">Response latency</span>
-                <span class="breakdown-val" x-text="(rhythm.user?.response_latency_ms||0) + 'ms'"></span>
-              </div>
-              <div style="margin-top:10px;text-align:center;">
-                <div class="tele-label">Entrainment</div>
-                <div class="gauge-ring">
-                  <svg viewBox="0 0 80 80" width="80" height="80">
-                    <circle cx="40" cy="40" r="34" fill="none" stroke="var(--border)" stroke-width="6"/>
-                    <circle cx="40" cy="40" r="34" fill="none" stroke="var(--accent)" stroke-width="6"
-                            :stroke-dasharray="(rhythm.entrainment||0) * 213.6 + ' 213.6'"
-                            stroke-linecap="round"/>
-                  </svg>
-                  <div class="gauge-ring-label" style="color:var(--accent-light)" x-text="((rhythm.entrainment||0)*100).toFixed(0) + '%'"></div>
-                </div>
+              </template>
+              <div
+                x-show="Object.keys(latencyStages).length === 0"
+                style="color: var(--text-muted); font-size: 0.78rem"
+              >
+                No latency data
               </div>
             </div>
-          </template>
-          <div x-show="!rhythm" style="color:var(--text-muted);font-size:0.78rem;">No rhythm data</div>
-        </div>
+          </div>
 
-        <!-- Quick Controls -->
-        <div class="card">
-          <div class="card-title" style="margin-bottom:10px">Audio Controls</div>
-          <div class="controls-bar" style="flex-direction:column;align-items:stretch;">
-            <div style="display:flex;gap:8px;">
-              <select x-model="selectedInput" @change="setInputDevice()" style="flex:1;">
-                <option value="">Mic: System Default</option>
-                <template x-for="d in audioDevices.input_devices" :key="d.index">
-                  <option :value="d.index" x-text="'Mic: ' + d.name + (d.is_default_input ? ' (default)' : '')"></option>
-                </template>
-              </select>
+          <!-- 6. RHYTHM + CONTROLS -->
+          <div class="grid grid-2">
+            <!-- Rhythm Synchronization -->
+            <div class="card">
+              <div class="card-title" style="margin-bottom: 10px">
+                Rhythm Synchronization
+              </div>
+              <template x-if="rhythm">
+                <div>
+                  <div
+                    class="grid grid-2"
+                    style="gap: 8px; margin-bottom: 10px"
+                  >
+                    <div>
+                      <div class="tele-label">User Rate</div>
+                      <div
+                        class="tele-value"
+                        style="font-size: 1rem"
+                        x-text="(rhythm.user?.speaking_rate_syl_s||0) + ' syl/s'"
+                      ></div>
+                    </div>
+                    <div>
+                      <div class="tele-label">Emily Rate</div>
+                      <div
+                        class="tele-value"
+                        style="font-size: 1rem"
+                        x-text="(rhythm.emily?.speaking_rate_syl_s||0) + ' syl/s'"
+                      ></div>
+                    </div>
+                  </div>
+                  <div class="breakdown-row">
+                    <span class="breakdown-key">User pause</span>
+                    <span
+                      class="breakdown-val"
+                      x-text="(rhythm.user?.pause_duration_ms||0) + 'ms'"
+                    ></span>
+                  </div>
+                  <div class="breakdown-row">
+                    <span class="breakdown-key">Emily phrase len</span>
+                    <span
+                      class="breakdown-val"
+                      x-text="(rhythm.emily?.phrase_length_words||0) + ' words'"
+                    ></span>
+                  </div>
+                  <div class="breakdown-row">
+                    <span class="breakdown-key">Response latency</span>
+                    <span
+                      class="breakdown-val"
+                      x-text="(rhythm.user?.response_latency_ms||0) + 'ms'"
+                    ></span>
+                  </div>
+                  <div style="margin-top: 10px; text-align: center">
+                    <div class="tele-label">Entrainment</div>
+                    <div class="gauge-ring">
+                      <svg viewBox="0 0 80 80" width="80" height="80">
+                        <circle
+                          cx="40"
+                          cy="40"
+                          r="34"
+                          fill="none"
+                          stroke="var(--border)"
+                          stroke-width="6"
+                        />
+                        <circle
+                          cx="40"
+                          cy="40"
+                          r="34"
+                          fill="none"
+                          stroke="var(--accent)"
+                          stroke-width="6"
+                          :stroke-dasharray="(rhythm.entrainment||0) * 213.6 + ' 213.6'"
+                          stroke-linecap="round"
+                        />
+                      </svg>
+                      <div
+                        class="gauge-ring-label"
+                        style="color: var(--accent-light)"
+                        x-text="((rhythm.entrainment||0)*100).toFixed(0) + '%'"
+                      ></div>
+                    </div>
+                  </div>
+                </div>
+              </template>
+              <div
+                x-show="!rhythm"
+                style="color: var(--text-muted); font-size: 0.78rem"
+              >
+                No rhythm data
+              </div>
             </div>
-            <div style="display:flex;gap:8px;">
-              <select x-model="selectedOutput" @change="setOutputDevice()" style="flex:1;">
-                <option value="">Speaker: System Default</option>
-                <template x-for="d in audioDevices.output_devices" :key="d.index">
-                  <option :value="d.index" x-text="'Speaker: ' + d.name + (d.is_default_output ? ' (default)' : '')"></option>
-                </template>
-              </select>
-            </div>
-            <div style="display:flex;gap:8px;align-items:center;">
-              <div class="tele-label" style="margin:0;min-width:60px;">TTS Provider</div>
-              <select x-model="ttsProvider" @change="setVoiceProvider()" style="flex:1;">
-                <template x-for="p in availableProviders" :key="p">
-                  <option :value="p" x-text="providerLabels[p] || p"></option>
-                </template>
-              </select>
-            </div>
-            <div style="display:flex;gap:8px;align-items:center;">
-              <div class="tele-label" style="margin:0;min-width:60px;">Voice</div>
-              <select x-model="selectedVoice" @change="setVoice()" style="flex:1;">
-                <template x-for="v in ttsVoices" :key="v.id">
-                  <option :value="v.id" x-text="v.name + ' (' + v.gender + ')'"></option>
-                </template>
-              </select>
+
+            <!-- Quick Controls -->
+            <div class="card">
+              <div class="card-title" style="margin-bottom: 10px">
+                Audio Controls
+              </div>
+              <div
+                class="controls-bar"
+                style="flex-direction: column; align-items: stretch"
+              >
+                <div style="display: flex; gap: 8px">
+                  <select
+                    x-model="selectedInput"
+                    @change="setInputDevice()"
+                    style="flex: 1"
+                  >
+                    <option value="">Mic: System Default</option>
+                    <template
+                      x-for="d in audioDevices.input_devices"
+                      :key="d.index"
+                    >
+                      <option
+                        :value="d.index"
+                        x-text="'Mic: ' + d.name + (d.is_default_input ? ' (default)' : '')"
+                      ></option>
+                    </template>
+                  </select>
+                </div>
+                <div style="display: flex; gap: 8px">
+                  <select
+                    x-model="selectedOutput"
+                    @change="setOutputDevice()"
+                    style="flex: 1"
+                  >
+                    <option value="">Speaker: System Default</option>
+                    <template
+                      x-for="d in audioDevices.output_devices"
+                      :key="d.index"
+                    >
+                      <option
+                        :value="d.index"
+                        x-text="'Speaker: ' + d.name + (d.is_default_output ? ' (default)' : '')"
+                      ></option>
+                    </template>
+                  </select>
+                </div>
+                <div style="display: flex; gap: 8px; align-items: center">
+                  <div class="tele-label" style="margin: 0; min-width: 60px">
+                    TTS Provider
+                  </div>
+                  <select
+                    x-model="ttsProvider"
+                    @change="setVoiceProvider()"
+                    style="flex: 1"
+                  >
+                    <template x-for="p in availableProviders" :key="p">
+                      <option
+                        :value="p"
+                        x-text="providerLabels[p] || p"
+                      ></option>
+                    </template>
+                  </select>
+                </div>
+                <div style="display: flex; gap: 8px; align-items: center">
+                  <div class="tele-label" style="margin: 0; min-width: 60px">
+                    Voice
+                  </div>
+                  <select
+                    x-model="selectedVoice"
+                    @change="setVoice()"
+                    style="flex: 1"
+                  >
+                    <template x-for="v in ttsVoices" :key="v.id">
+                      <option
+                        :value="v.id"
+                        x-text="v.name + ' (' + v.gender + ')'"
+                      ></option>
+                    </template>
+                  </select>
+                </div>
+              </div>
             </div>
           </div>
         </div>
-      </div>
-    </div>
 
-    <!-- ======== SIDEBAR ======== -->
-    <div class="side-col">
+        <!-- ======== SIDEBAR ======== -->
+        <div class="side-col">
+          <!-- Session Stats -->
+          <div class="card">
+            <div class="card-title" style="margin-bottom: 8px">
+              Session Stats
+            </div>
+            <div class="stat-row">
+              <span class="stat-label">Backchannels</span>
+              <span
+                class="stat-val"
+                style="color: var(--cyan)"
+                x-text="stats.backchannels_generated || 0"
+              ></span>
+            </div>
+            <div class="stat-row">
+              <span class="stat-label">Interrupts</span>
+              <span
+                class="stat-val"
+                style="color: var(--yellow)"
+                x-text="stats.interrupts_handled || 0"
+              ></span>
+            </div>
+            <div class="stat-row">
+              <span class="stat-label">Cache Hit Rate</span>
+              <span
+                class="stat-val"
+                style="color: var(--green)"
+                x-text="((stats.speculative_cache?.hit_rate||0)*100).toFixed(0) + '%'"
+              ></span>
+            </div>
+            <div class="stat-row">
+              <span class="stat-label">Transcript Turns</span>
+              <span class="stat-val" x-text="transcript.length"></span>
+            </div>
+            <div class="stat-row">
+              <span class="stat-label">Session Time</span>
+              <span
+                class="stat-val"
+                x-text="formatDuration(sessionSeconds)"
+              ></span>
+            </div>
+          </div>
 
-      <!-- Session Stats -->
-      <div class="card">
-        <div class="card-title" style="margin-bottom:8px">Session Stats</div>
-        <div class="stat-row">
-          <span class="stat-label">Backchannels</span>
-          <span class="stat-val" style="color:var(--cyan)" x-text="stats.backchannels_generated || 0"></span>
-        </div>
-        <div class="stat-row">
-          <span class="stat-label">Interrupts</span>
-          <span class="stat-val" style="color:var(--yellow)" x-text="stats.interrupts_handled || 0"></span>
-        </div>
-        <div class="stat-row">
-          <span class="stat-label">Cache Hit Rate</span>
-          <span class="stat-val" style="color:var(--green)" x-text="((stats.speculative_cache?.hit_rate||0)*100).toFixed(0) + '%'"></span>
-        </div>
-        <div class="stat-row">
-          <span class="stat-label">Transcript Turns</span>
-          <span class="stat-val" x-text="transcript.length"></span>
-        </div>
-        <div class="stat-row">
-          <span class="stat-label">Session Time</span>
-          <span class="stat-val" x-text="formatDuration(sessionSeconds)"></span>
-        </div>
-      </div>
+          <!-- Emotion Radar -->
+          <div class="card">
+            <div class="card-title" style="margin-bottom: 8px">
+              Emotion Radar
+            </div>
+            <div class="chart-box">
+              <canvas id="emotionRadar"></canvas>
+            </div>
+          </div>
 
-      <!-- Emotion Radar -->
-      <div class="card">
-        <div class="card-title" style="margin-bottom:8px">Emotion Radar</div>
-        <div class="chart-box">
-          <canvas id="emotionRadar"></canvas>
-        </div>
-      </div>
-
-      <!-- Active Speakers -->
-      <div class="card">
-        <div class="card-title" style="margin-bottom:8px">Active Speakers</div>
-        <template x-if="speakerData.speakers && speakerData.speakers.length > 0">
-          <div>
-            <template x-for="s in speakerData.speakers" :key="s.speaker_id">
-              <div class="stat-row">
-                <span class="stat-label">
-                  <span class="module-dot on" style="margin-right:4px;"></span>
-                  <span x-text="s.label || ('Speaker ' + (s.speaker_id||'?'))"></span>
-                  <template x-if="s.is_primary">
-                    <span class="badge badge-purple" style="margin-left:4px;">primary</span>
-                  </template>
-                </span>
-                <span class="stat-val" x-text="((s.confidence||0)*100).toFixed(0) + '%'"></span>
+          <!-- Active Speakers -->
+          <div class="card">
+            <div class="card-title" style="margin-bottom: 8px">
+              Active Speakers
+            </div>
+            <template
+              x-if="speakerData.speakers && speakerData.speakers.length > 0"
+            >
+              <div>
+                <template x-for="s in speakerData.speakers" :key="s.speaker_id">
+                  <div class="stat-row">
+                    <span class="stat-label">
+                      <span
+                        class="module-dot on"
+                        style="margin-right: 4px"
+                      ></span>
+                      <span
+                        x-text="s.label || ('Speaker ' + (s.speaker_id||'?'))"
+                      ></span>
+                      <template x-if="s.is_primary">
+                        <span
+                          class="badge badge-purple"
+                          style="margin-left: 4px"
+                          >primary</span
+                        >
+                      </template>
+                    </span>
+                    <span
+                      class="stat-val"
+                      x-text="((s.confidence||0)*100).toFixed(0) + '%'"
+                    ></span>
+                  </div>
+                </template>
               </div>
             </template>
+            <div
+              x-show="!speakerData.speakers || speakerData.speakers.length === 0"
+              style="color: var(--text-muted); font-size: 0.78rem"
+            >
+              No speakers detected
+            </div>
           </div>
-        </template>
-        <div x-show="!speakerData.speakers || speakerData.speakers.length === 0"
-             style="color:var(--text-muted);font-size:0.78rem;">No speakers detected</div>
-      </div>
 
-      <!-- System Resources -->
-      <div class="card">
-        <div class="card-title" style="margin-bottom:8px">System</div>
-        <div class="stat-row">
-          <span class="stat-label">CPU</span>
-          <span class="stat-val" x-text="(sysResources.cpu_percent||0).toFixed(1) + '%'"></span>
-        </div>
-        <div class="stat-row">
-          <span class="stat-label">RAM</span>
-          <span class="stat-val" x-text="(sysResources.ram_used_gb||0) + '/' + (sysResources.ram_total_gb||0) + ' GB'"></span>
-        </div>
-        <div class="stat-row">
-          <span class="stat-label">VRAM</span>
-          <span class="stat-val" x-text="(sysResources.vram_used_mb||0) + '/' + (sysResources.vram_total_mb||0) + ' MB'"></span>
+          <!-- System Resources -->
+          <div class="card">
+            <div class="card-title" style="margin-bottom: 8px">System</div>
+            <div class="stat-row">
+              <span class="stat-label">CPU</span>
+              <span
+                class="stat-val"
+                x-text="(sysResources.cpu_percent||0).toFixed(1) + '%'"
+              ></span>
+            </div>
+            <div class="stat-row">
+              <span class="stat-label">RAM</span>
+              <span
+                class="stat-val"
+                x-text="(sysResources.ram_used_gb||0) + '/' + (sysResources.ram_total_gb||0) + ' GB'"
+              ></span>
+            </div>
+            <div class="stat-row">
+              <span class="stat-label">VRAM</span>
+              <span
+                class="stat-val"
+                x-text="(sysResources.vram_used_mb||0) + '/' + (sysResources.vram_total_mb||0) + ' MB'"
+              ></span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
-  </div>
-</div>
 
-<script>
-function voiceDashboard() {
-  return {
-    engine: { fsm_state: null, running: false, state_duration_s: 0 },
-    voiceStatus: { voice_mode: 'legacy', running: false, tts_available: false, stt_available: false, wake_word_available: false },
-    emotion: null,
-    turnSignal: null,
-    latencyStages: {},
-    rhythm: null,
-    stats: {},
-    pipelineModules: {},
-    speakerData: { speakers: [], total_tracked: 0 },
-    sysResources: {},
+    <script>
+      function voiceDashboard() {
+        return {
+          engine: { fsm_state: null, running: false, state_duration_s: 0 },
+          voiceStatus: {
+            voice_mode: "legacy",
+            running: false,
+            tts_available: false,
+            stt_available: false,
+            wake_word_available: false,
+          },
+          emotion: null,
+          turnSignal: null,
+          latencyStages: {},
+          rhythm: null,
+          stats: {},
+          pipelineModules: {},
+          speakerData: { speakers: [], total_tracked: 0 },
+          sysResources: {},
 
-    transcript: [],
-    transcriptId: 0,
+          transcript: [],
+          transcriptId: 0,
 
-    audioDevices: { input_devices: [], output_devices: [] },
-    selectedInput: '',
-    selectedOutput: '',
-    ttsProvider: 'edge_tts',
-    selectedVoice: '',
-    availableProviders: [],
-    ttsVoices: [],
-    ttsTestStatus: '',
-    providerLabels: { edge_tts: 'Edge TTS', xtts_v2: 'XTTS v2', kokoro: 'Kokoro' },
+          audioDevices: { input_devices: [], output_devices: [] },
+          selectedInput: "",
+          selectedOutput: "",
+          ttsProvider: "kokoro",
+          selectedVoice: "",
+          availableProviders: [],
+          ttsVoices: [],
+          ttsTestStatus: "",
+          providerLabels: {
+            xtts_v2: "XTTS v2",
+            kokoro: "Kokoro",
+            csm: "CSM (Sesame)",
+          },
 
-    sessionSeconds: 0,
-    _intervals: [],
-    emotionChart: null,
-    waveformCtx: null,
-    waveformData: [],
+          sessionSeconds: 0,
+          _intervals: [],
+          emotionChart: null,
+          waveformCtx: null,
+          waveformData: [],
 
-    async init() {
-      await this.loadInitial();
-      this.connectTranscriptSSE();
-      this.initEmotionChart();
-      this.initWaveform();
+          async init() {
+            await this.loadInitial();
+            this.connectTranscriptSSE();
+            this.initEmotionChart();
+            this.initWaveform();
 
-      this._intervals.push(setInterval(() => this.pollEngine(), 1500));
-      this._intervals.push(setInterval(() => this.pollSystem(), 5000));
-      this._intervals.push(setInterval(() => { this.sessionSeconds++; }, 1000));
-      this._intervals.push(setInterval(() => this.animateWaveform(), 60));
-    },
+            this._intervals.push(setInterval(() => this.pollEngine(), 1500));
+            this._intervals.push(setInterval(() => this.pollSystem(), 5000));
+            this._intervals.push(
+              setInterval(() => {
+                this.sessionSeconds++;
+              }, 1000),
+            );
+            this._intervals.push(setInterval(() => this.animateWaveform(), 60));
+          },
 
-    async loadInitial() {
-      try {
-        const [devR, statusR, engineR, settingsR, voicesR] = await Promise.all([
-          fetch('/audio/devices').then(r => r.json()).catch(() => ({ input_devices: [], output_devices: [] })),
-          fetch('/audio/voice/status').then(r => r.json()).catch(() => ({})),
-          fetch('/voice-engine/status').then(r => r.json()).catch(() => ({})),
-          fetch('/audio/voice/settings').then(r => r.json()).catch(() => ({})),
-          fetch('/audio/voice/voices').then(r => r.json()).catch(() => ({ voices: {} })),
-        ]);
-        this.audioDevices = devR;
-        this.voiceStatus = statusR;
-        this.engine.fsm_state = engineR.fsm_state || null;
-        this.engine.running = engineR.running || false;
-        this.engine.state_duration_s = engineR.state_duration_s || 0;
-        this.voiceStatus.voice_mode = statusR.voice_mode || 'legacy';
-        if (statusR.current_input_device) this.selectedInput = statusR.current_input_device;
-        if (statusR.current_output_device) this.selectedOutput = statusR.current_output_device;
+          async loadInitial() {
+            try {
+              const [devR, statusR, engineR, settingsR, voicesR] =
+                await Promise.all([
+                  fetch("/audio/devices")
+                    .then((r) => r.json())
+                    .catch(() => ({ input_devices: [], output_devices: [] })),
+                  fetch("/audio/voice/status")
+                    .then((r) => r.json())
+                    .catch(() => ({})),
+                  fetch("/voice-engine/status")
+                    .then((r) => r.json())
+                    .catch(() => ({})),
+                  fetch("/audio/voice/settings")
+                    .then((r) => r.json())
+                    .catch(() => ({})),
+                  fetch("/audio/voice/voices")
+                    .then((r) => r.json())
+                    .catch(() => ({ voices: {} })),
+                ]);
+              this.audioDevices = devR;
+              this.voiceStatus = statusR;
+              this.engine.fsm_state = engineR.fsm_state || null;
+              this.engine.running = engineR.running || false;
+              this.engine.state_duration_s = engineR.state_duration_s || 0;
+              this.voiceStatus.voice_mode = statusR.voice_mode || "legacy";
+              if (statusR.current_input_device)
+                this.selectedInput = statusR.current_input_device;
+              if (statusR.current_output_device)
+                this.selectedOutput = statusR.current_output_device;
 
-        this.ttsProvider = settingsR.provider || 'edge_tts';
-        this.availableProviders = settingsR.available_providers || ['edge_tts'];
-        this.selectedVoice = voicesR.current_voice || '';
-        this.ttsVoices = (voicesR.voices || {})[this.ttsProvider] || [];
-      } catch(e) { console.error('loadInitial', e); }
+              this.ttsProvider = settingsR.provider || "kokoro";
+              this.availableProviders = settingsR.available_providers || [
+                "kokoro",
+              ];
+              this.selectedVoice = voicesR.current_voice || "";
+              this.ttsVoices = (voicesR.voices || {})[this.ttsProvider] || [];
+            } catch (e) {
+              console.error("loadInitial", e);
+            }
 
-      await this.pollEngine();
-    },
+            await this.pollEngine();
+          },
 
-    async pollEngine() {
-      const fetchers = [
-        fetch('/voice-engine/status').then(r => r.json()).catch(() => null),
-        fetch('/voice-engine/emotion').then(r => r.json()).catch(() => null),
-        fetch('/voice-engine/turn-signal').then(r => r.json()).catch(() => null),
-        fetch('/voice-engine/latency').then(r => r.json()).catch(() => null),
-        fetch('/voice-engine/stats').then(r => r.json()).catch(() => null),
-        fetch('/voice-engine/rhythm').then(r => r.json()).catch(() => null),
-        fetch('/voice-engine/pipeline-status').then(r => r.json()).catch(() => null),
-        fetch('/voice-engine/speaker').then(r => r.json()).catch(() => null),
-      ];
-      const [status, emo, turn, lat, st, rhy, pipe, spk] = await Promise.all(fetchers);
+          async pollEngine() {
+            const fetchers = [
+              fetch("/voice-engine/status")
+                .then((r) => r.json())
+                .catch(() => null),
+              fetch("/voice-engine/emotion")
+                .then((r) => r.json())
+                .catch(() => null),
+              fetch("/voice-engine/turn-signal")
+                .then((r) => r.json())
+                .catch(() => null),
+              fetch("/voice-engine/latency")
+                .then((r) => r.json())
+                .catch(() => null),
+              fetch("/voice-engine/stats")
+                .then((r) => r.json())
+                .catch(() => null),
+              fetch("/voice-engine/rhythm")
+                .then((r) => r.json())
+                .catch(() => null),
+              fetch("/voice-engine/pipeline-status")
+                .then((r) => r.json())
+                .catch(() => null),
+              fetch("/voice-engine/speaker")
+                .then((r) => r.json())
+                .catch(() => null),
+            ];
+            const [status, emo, turn, lat, st, rhy, pipe, spk] =
+              await Promise.all(fetchers);
 
-      if (status) {
-        this.engine.fsm_state = status.fsm_state || this.engine.fsm_state;
-        this.engine.running = status.running || false;
-        this.engine.state_duration_s = status.state_duration_s || 0;
-      }
-      if (emo && emo.available && emo.emotion) {
-        this.emotion = emo.emotion;
-        this.updateEmotionChart();
-      }
-      if (turn && turn.available && turn.signal) this.turnSignal = turn.signal;
-      if (lat && lat.available) this.latencyStages = lat.stages || {};
-      if (st && st.available) this.stats = st.stats || {};
-      if (rhy && rhy.available) {
-        this.rhythm = {
-          user: rhy.user_profile,
-          emily: rhy.emily_targets,
-          entrainment: rhy.entrainment_degree,
-        };
-      }
-      if (pipe && pipe.available) this.pipelineModules = pipe.modules || {};
-      if (spk && spk.available) this.speakerData = { speakers: spk.speakers || [], total_tracked: spk.total_tracked || 0 };
-    },
+            if (status) {
+              this.engine.fsm_state = status.fsm_state || this.engine.fsm_state;
+              this.engine.running = status.running || false;
+              this.engine.state_duration_s = status.state_duration_s || 0;
+            }
+            if (emo && emo.available && emo.emotion) {
+              this.emotion = emo.emotion;
+              this.updateEmotionChart();
+            }
+            if (turn && turn.available && turn.signal)
+              this.turnSignal = turn.signal;
+            if (lat && lat.available) this.latencyStages = lat.stages || {};
+            if (st && st.available) this.stats = st.stats || {};
+            if (rhy && rhy.available) {
+              this.rhythm = {
+                user: rhy.user_profile,
+                emily: rhy.emily_targets,
+                entrainment: rhy.entrainment_degree,
+              };
+            }
+            if (pipe && pipe.available)
+              this.pipelineModules = pipe.modules || {};
+            if (spk && spk.available)
+              this.speakerData = {
+                speakers: spk.speakers || [],
+                total_tracked: spk.total_tracked || 0,
+              };
+          },
 
-    async pollSystem() {
-      try {
-        const d = await fetch('/status').then(r => r.json());
-        this.sysResources = d.resources || {};
-      } catch(e) {}
-    },
+          async pollSystem() {
+            try {
+              const d = await fetch("/status").then((r) => r.json());
+              this.sysResources = d.resources || {};
+            } catch (e) {}
+          },
 
-    connectTranscriptSSE() {
-      try {
-        const evt = new EventSource('/chat/voice-transcript');
-        evt.onmessage = (e) => {
-          try {
-            const entry = JSON.parse(e.data);
-            const now = new Date();
-            const ts = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0') + ':' + String(now.getSeconds()).padStart(2,'0');
-            this.transcript.push({ id: this.transcriptId++, role: entry.role === 'emily' ? 'emily' : 'user', text: entry.text, time: ts });
-            if (this.transcript.length > 200) this.transcript = this.transcript.slice(-150);
-            this.$nextTick(() => {
-              const el = document.getElementById('transcriptBox');
-              if (el) el.scrollTop = el.scrollHeight;
+          connectTranscriptSSE() {
+            try {
+              const evt = new EventSource("/chat/voice-transcript");
+              evt.onmessage = (e) => {
+                try {
+                  const entry = JSON.parse(e.data);
+                  const now = new Date();
+                  const ts =
+                    String(now.getHours()).padStart(2, "0") +
+                    ":" +
+                    String(now.getMinutes()).padStart(2, "0") +
+                    ":" +
+                    String(now.getSeconds()).padStart(2, "0");
+                  this.transcript.push({
+                    id: this.transcriptId++,
+                    role: entry.role === "emily" ? "emily" : "user",
+                    text: entry.text,
+                    time: ts,
+                  });
+                  if (this.transcript.length > 200)
+                    this.transcript = this.transcript.slice(-150);
+                  this.$nextTick(() => {
+                    const el = document.getElementById("transcriptBox");
+                    if (el) el.scrollTop = el.scrollHeight;
+                  });
+                } catch (err) {}
+              };
+              evt.onerror = () => {
+                setTimeout(() => this.connectTranscriptSSE(), 5000);
+                evt.close();
+              };
+            } catch (e) {}
+          },
+
+          initEmotionChart() {
+            const ctx = document.getElementById("emotionRadar");
+            if (!ctx) return;
+            this.emotionChart = new Chart(ctx, {
+              type: "radar",
+              data: {
+                labels: ["Valence", "Arousal", "Engagement", "Cog. Load"],
+                datasets: [
+                  {
+                    label: "User",
+                    data: [0.5, 0.5, 0.5, 0.5],
+                    backgroundColor: "rgba(124,92,252,0.15)",
+                    borderColor: "#7c5cfc",
+                    borderWidth: 2,
+                    pointBackgroundColor: "#7c5cfc",
+                    pointRadius: 3,
+                  },
+                ],
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                  r: {
+                    beginAtZero: true,
+                    max: 1,
+                    min: 0,
+                    ticks: {
+                      stepSize: 0.25,
+                      color: "#555570",
+                      backdropColor: "transparent",
+                      font: { size: 9 },
+                    },
+                    grid: { color: "#1e1e30" },
+                    angleLines: { color: "#1e1e30" },
+                    pointLabels: { color: "#8888a0", font: { size: 10 } },
+                  },
+                },
+                plugins: { legend: { display: false } },
+              },
             });
-          } catch(err) {}
-        };
-        evt.onerror = () => { setTimeout(() => this.connectTranscriptSSE(), 5000); evt.close(); };
-      } catch(e) {}
-    },
+          },
 
-    initEmotionChart() {
-      const ctx = document.getElementById('emotionRadar');
-      if (!ctx) return;
-      this.emotionChart = new Chart(ctx, {
-        type: 'radar',
-        data: {
-          labels: ['Valence', 'Arousal', 'Engagement', 'Cog. Load'],
-          datasets: [{
-            label: 'User',
-            data: [0.5, 0.5, 0.5, 0.5],
-            backgroundColor: 'rgba(124,92,252,0.15)',
-            borderColor: '#7c5cfc',
-            borderWidth: 2,
-            pointBackgroundColor: '#7c5cfc',
-            pointRadius: 3,
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          scales: {
-            r: {
-              beginAtZero: true, max: 1, min: 0,
-              ticks: { stepSize: 0.25, color: '#555570', backdropColor: 'transparent', font: { size: 9 } },
-              grid: { color: '#1e1e30' },
-              angleLines: { color: '#1e1e30' },
-              pointLabels: { color: '#8888a0', font: { size: 10 } },
+          updateEmotionChart() {
+            if (!this.emotionChart || !this.emotion) return;
+            this.emotionChart.data.datasets[0].data = [
+              this.emotion.valence || 0,
+              this.emotion.arousal || 0,
+              this.emotion.engagement || 0,
+              this.emotion.cognitive_load || 0,
+            ];
+            this.emotionChart.update("none");
+          },
+
+          initWaveform() {
+            const canvas = document.getElementById("waveformCanvas");
+            if (!canvas) return;
+            this.waveformCtx = canvas.getContext("2d");
+            this.waveformData = new Array(200).fill(0);
+          },
+
+          animateWaveform() {
+            if (!this.waveformCtx) return;
+            const canvas = this.waveformCtx.canvas;
+            const dpr = window.devicePixelRatio || 1;
+            const w = canvas.clientWidth;
+            const h = canvas.clientHeight;
+            if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
+              canvas.width = w * dpr;
+              canvas.height = h * dpr;
+              this.waveformCtx.scale(dpr, dpr);
+            }
+            const ctx = this.waveformCtx;
+            ctx.clearRect(0, 0, w, h);
+
+            const isActive = this.engine.running;
+            const base = isActive ? 0.08 : 0.02;
+            const jitter = isActive ? 0.25 : 0.04;
+            const newVal = base + Math.random() * jitter;
+            this.waveformData.push(newVal);
+            if (this.waveformData.length > 200) this.waveformData.shift();
+
+            const step = w / (this.waveformData.length - 1);
+            const mid = h / 2;
+
+            // Input waveform
+            ctx.beginPath();
+            ctx.strokeStyle = "#60a5fa";
+            ctx.lineWidth = 1.5;
+            for (let i = 0; i < this.waveformData.length; i++) {
+              const x = i * step;
+              const amp = this.waveformData[i] * mid * 0.9;
+              const y = mid - amp * Math.sin(i * 0.3 + Date.now() * 0.003);
+              i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+
+            // Output waveform (offset)
+            ctx.beginPath();
+            ctx.strokeStyle = "#7c5cfc88";
+            ctx.lineWidth = 1;
+            for (let i = 0; i < this.waveformData.length; i++) {
+              const x = i * step;
+              const amp = this.waveformData[i] * mid * 0.5;
+              const y = mid + amp * Math.cos(i * 0.25 + Date.now() * 0.002);
+              i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+
+            // Center line
+            ctx.beginPath();
+            ctx.strokeStyle = "#1e1e30";
+            ctx.lineWidth = 0.5;
+            ctx.moveTo(0, mid);
+            ctx.lineTo(w, mid);
+            ctx.stroke();
+          },
+
+          async testTTS() {
+            this.ttsTestStatus = "Speaking...";
+            try {
+              const r = await fetch("/audio/voice/test-tts", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  text: "Hello! I'm Emily, your AI assistant.",
+                }),
+              });
+              this.ttsTestStatus = r.ok ? "Done!" : "Failed";
+            } catch (e) {
+              this.ttsTestStatus = "Error";
+            }
+            setTimeout(() => {
+              this.ttsTestStatus = "";
+            }, 3000);
+          },
+
+          async previewVoice() {
+            this.ttsTestStatus = "Preview...";
+            try {
+              const r = await fetch("/audio/voice/test-tts", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  text: "Hi there, this is how I sound.",
+                  engine: this.ttsProvider,
+                }),
+              });
+              this.ttsTestStatus = r.ok ? "Done!" : "Failed";
+            } catch (e) {
+              this.ttsTestStatus = "Error";
+            }
+            setTimeout(() => {
+              this.ttsTestStatus = "";
+            }, 3000);
+          },
+
+          async setInputDevice() {
+            try {
+              await fetch("/audio/devices/input", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ device: this.selectedInput || null }),
+              });
+            } catch (e) {
+              console.error("setInputDevice", e);
             }
           },
-          plugins: { legend: { display: false } }
-        }
-      });
-    },
 
-    updateEmotionChart() {
-      if (!this.emotionChart || !this.emotion) return;
-      this.emotionChart.data.datasets[0].data = [
-        this.emotion.valence || 0, this.emotion.arousal || 0,
-        this.emotion.engagement || 0, this.emotion.cognitive_load || 0,
-      ];
-      this.emotionChart.update('none');
-    },
+          async setOutputDevice() {
+            try {
+              await fetch("/audio/devices/output", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ device: this.selectedOutput || null }),
+              });
+            } catch (e) {
+              console.error("setOutputDevice", e);
+            }
+          },
 
-    initWaveform() {
-      const canvas = document.getElementById('waveformCanvas');
-      if (!canvas) return;
-      this.waveformCtx = canvas.getContext('2d');
-      this.waveformData = new Array(200).fill(0);
-    },
+          async setVoiceProvider() {
+            try {
+              await fetch("/audio/voice/settings", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ provider: this.ttsProvider }),
+              });
+              const voicesResp = await fetch("/audio/voice/voices").then((r) =>
+                r.json(),
+              );
+              this.ttsVoices =
+                (voicesResp.voices || {})[this.ttsProvider] || [];
+              if (
+                this.ttsVoices.length > 0 &&
+                !this.ttsVoices.find((v) => v.id === this.selectedVoice)
+              ) {
+                this.selectedVoice = this.ttsVoices[0].id;
+                await this.setVoice();
+              }
+            } catch (e) {
+              console.error("setVoiceProvider", e);
+            }
+          },
 
-    animateWaveform() {
-      if (!this.waveformCtx) return;
-      const canvas = this.waveformCtx.canvas;
-      const dpr = window.devicePixelRatio || 1;
-      const w = canvas.clientWidth;
-      const h = canvas.clientHeight;
-      if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
-        canvas.width = w * dpr;
-        canvas.height = h * dpr;
-        this.waveformCtx.scale(dpr, dpr);
+          async setVoice() {
+            try {
+              await fetch("/audio/voice/settings", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ voice: this.selectedVoice }),
+              });
+            } catch (e) {
+              console.error("setVoice", e);
+            }
+          },
+
+          fsmColor() {
+            const m = {
+              IDLE: "#34d399",
+              LISTENING: "#60a5fa",
+              PROCESSING: "#fbbf24",
+              RESPONDING: "#a78bfa",
+              TOOL_USE: "#22d3ee",
+              REFLECTING: "#555570",
+              ERROR: "#f87171",
+              SHUTDOWN: "#f87171",
+            };
+            return m[this.engine.fsm_state] || "#555570";
+          },
+
+          formatDuration(s) {
+            if (!s) return "0s";
+            s = Math.floor(s);
+            const h = Math.floor(s / 3600);
+            const m = Math.floor((s % 3600) / 60);
+            const sec = s % 60;
+            if (h > 0) return h + "h " + m + "m";
+            if (m > 0) return m + "m " + sec + "s";
+            return sec + "s";
+          },
+        };
       }
-      const ctx = this.waveformCtx;
-      ctx.clearRect(0, 0, w, h);
-
-      const isActive = this.engine.running;
-      const base = isActive ? 0.08 : 0.02;
-      const jitter = isActive ? 0.25 : 0.04;
-      const newVal = base + Math.random() * jitter;
-      this.waveformData.push(newVal);
-      if (this.waveformData.length > 200) this.waveformData.shift();
-
-      const step = w / (this.waveformData.length - 1);
-      const mid = h / 2;
-
-      // Input waveform
-      ctx.beginPath();
-      ctx.strokeStyle = '#60a5fa';
-      ctx.lineWidth = 1.5;
-      for (let i = 0; i < this.waveformData.length; i++) {
-        const x = i * step;
-        const amp = this.waveformData[i] * mid * 0.9;
-        const y = mid - amp * Math.sin(i * 0.3 + Date.now() * 0.003);
-        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-      }
-      ctx.stroke();
-
-      // Output waveform (offset)
-      ctx.beginPath();
-      ctx.strokeStyle = '#7c5cfc88';
-      ctx.lineWidth = 1;
-      for (let i = 0; i < this.waveformData.length; i++) {
-        const x = i * step;
-        const amp = this.waveformData[i] * mid * 0.5;
-        const y = mid + amp * Math.cos(i * 0.25 + Date.now() * 0.002);
-        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-      }
-      ctx.stroke();
-
-      // Center line
-      ctx.beginPath();
-      ctx.strokeStyle = '#1e1e30';
-      ctx.lineWidth = 0.5;
-      ctx.moveTo(0, mid);
-      ctx.lineTo(w, mid);
-      ctx.stroke();
-    },
-
-    async testTTS() {
-      this.ttsTestStatus = 'Speaking...';
-      try {
-        const r = await fetch('/audio/voice/test-tts', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: "Hello! I'm Emily, your AI assistant." })
-        });
-        this.ttsTestStatus = r.ok ? 'Done!' : 'Failed';
-      } catch(e) { this.ttsTestStatus = 'Error'; }
-      setTimeout(() => { this.ttsTestStatus = ''; }, 3000);
-    },
-
-    async previewVoice() {
-      this.ttsTestStatus = 'Preview...';
-      try {
-        const r = await fetch('/audio/voice/test-tts', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: "Hi there, this is how I sound.", engine: this.ttsProvider })
-        });
-        this.ttsTestStatus = r.ok ? 'Done!' : 'Failed';
-      } catch(e) { this.ttsTestStatus = 'Error'; }
-      setTimeout(() => { this.ttsTestStatus = ''; }, 3000);
-    },
-
-    async setInputDevice() {
-      try {
-        await fetch('/audio/devices/input', {
-          method: 'PUT', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ device: this.selectedInput || null })
-        });
-      } catch(e) { console.error('setInputDevice', e); }
-    },
-
-    async setOutputDevice() {
-      try {
-        await fetch('/audio/devices/output', {
-          method: 'PUT', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ device: this.selectedOutput || null })
-        });
-      } catch(e) { console.error('setOutputDevice', e); }
-    },
-
-    async setVoiceProvider() {
-      try {
-        await fetch('/audio/voice/settings', {
-          method: 'PUT', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ provider: this.ttsProvider })
-        });
-        const voicesResp = await fetch('/audio/voice/voices').then(r => r.json());
-        this.ttsVoices = (voicesResp.voices || {})[this.ttsProvider] || [];
-        if (this.ttsVoices.length > 0 && !this.ttsVoices.find(v => v.id === this.selectedVoice)) {
-          this.selectedVoice = this.ttsVoices[0].id;
-          await this.setVoice();
-        }
-      } catch(e) { console.error('setVoiceProvider', e); }
-    },
-
-    async setVoice() {
-      try {
-        await fetch('/audio/voice/settings', {
-          method: 'PUT', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ voice: this.selectedVoice })
-        });
-      } catch(e) { console.error('setVoice', e); }
-    },
-
-    fsmColor() {
-      const m = { IDLE: '#34d399', LISTENING: '#60a5fa', PROCESSING: '#fbbf24', RESPONDING: '#a78bfa', TOOL_USE: '#22d3ee', REFLECTING: '#555570', ERROR: '#f87171', SHUTDOWN: '#f87171' };
-      return m[this.engine.fsm_state] || '#555570';
-    },
-
-    formatDuration(s) {
-      if (!s) return '0s';
-      s = Math.floor(s);
-      const h = Math.floor(s / 3600);
-      const m = Math.floor((s % 3600) / 60);
-      const sec = s % 60;
-      if (h > 0) return h + 'h ' + m + 'm';
-      if (m > 0) return m + 'm ' + sec + 's';
-      return sec + 's';
-    },
-  };
-}
-</script>
-</body>
+    </script>
+  </body>
 </html>

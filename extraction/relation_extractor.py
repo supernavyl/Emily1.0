@@ -12,12 +12,15 @@ import json
 import re
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 
-from extraction.entity_extractor import ExtractedEntity
-from llm.client import ChatMessage, OllamaClient
+from llm.client import ChatMessage
 from llm.prompt_builder import PromptBuilder
+
+if TYPE_CHECKING:
+    from extraction.entity_extractor import ExtractedEntity
+    from llm.base import LLMClientProtocol
 from observability.logger import get_logger
 
 log = get_logger(__name__)
@@ -44,9 +47,7 @@ class ExtractedRelationship:
     raw_excerpt: str = ""
     source_session_id: str = ""
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    timestamp: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
-    )
+    timestamp: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
 
 def _extract_json_array(raw: str) -> list[dict[str, Any]]:
@@ -82,13 +83,13 @@ class RelationExtractor:
 
     def __init__(
         self,
-        llm_client: OllamaClient,
-        model: str = "qwen3:14b",
+        llm_client: LLMClientProtocol,
+        model: str = "Qwen2.5-14B-Instruct-abliterated",
     ) -> None:
         """
         Args:
-            llm_client: Shared Ollama async client.
-            model: Ollama model identifier.
+            llm_client: LLM client satisfying LLMClientProtocol.
+            model: Model identifier.
         """
         self._llm = llm_client
         self._model = model
@@ -113,10 +114,7 @@ class RelationExtractor:
         if len(entities) < 2:
             return []  # No pairs to relate
 
-        entity_dicts = [
-            {"canonical_name": e.canonical_name, "id": e.temp_id}
-            for e in entities
-        ]
+        entity_dicts = [{"canonical_name": e.canonical_name, "id": e.temp_id} for e in entities]
         prompt = _PROMPT_BUILDER.build_relation_extraction_prompt(text, entity_dicts)
         messages = [ChatMessage(role="user", content=prompt)]
 

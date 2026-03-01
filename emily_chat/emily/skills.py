@@ -42,7 +42,7 @@ EMILY_SKILLS: dict[str, EmilySkill] = {
             "uncertainty. Prefer depth over speed."
         ),
         enable_thinking=True,
-        preferred_models=["claude-opus-4-5", "o3", "deepseek-r2", "groq-deepseek-r1"],
+        preferred_models=["claude-opus-4-6", "o3", "deepseek-r2", "groq-deepseek-r1"],
         temperature=0.3,
     ),
     "code": EmilySkill(
@@ -58,7 +58,7 @@ EMILY_SKILLS: dict[str, EmilySkill] = {
         ),
         enable_thinking=True,
         enable_code_execution=True,
-        preferred_models=["claude-opus-4-5", "codestral-2", "deepseek-v3-2", "o4-mini"],
+        preferred_models=["claude-opus-4-6", "codestral-2", "deepseek-v3-2", "o4-mini"],
         temperature=0.1,
     ),
     "research": EmilySkill(
@@ -73,7 +73,7 @@ EMILY_SKILLS: dict[str, EmilySkill] = {
         ),
         enable_web_search=True,
         enable_thinking=True,
-        preferred_models=["claude-sonnet-4-5", "gemini-3-pro", "gpt-5", "groq-deepseek-r1"],
+        preferred_models=["claude-sonnet-4-6", "gemini-3-pro", "gpt-5", "groq-deepseek-r1"],
         temperature=0.2,
     ),
     "writing": EmilySkill(
@@ -87,7 +87,7 @@ EMILY_SKILLS: dict[str, EmilySkill] = {
             "questions if the purpose or audience is unclear. Prefer concrete, "
             "vivid language over abstract generalities."
         ),
-        preferred_models=["grok-4-1", "gpt-5-2", "claude-opus-4-5"],
+        preferred_models=["grok-4-1", "gpt-5-2", "claude-opus-4-6"],
         temperature=0.8,
     ),
     "concise": EmilySkill(
@@ -115,7 +115,7 @@ EMILY_SKILLS: dict[str, EmilySkill] = {
             "Explicitly state uncertainty levels."
         ),
         enable_thinking=True,
-        preferred_models=["claude-opus-4-5", "o3", "gemini-3-pro", "gpt-5"],
+        preferred_models=["claude-opus-4-6", "o3", "gemini-3-pro", "gpt-5"],
         temperature=0.2,
     ),
     "tutor": EmilySkill(
@@ -185,7 +185,88 @@ EMILY_SKILLS: dict[str, EmilySkill] = {
         icon="\u2696\ufe0f",
         description="Send the same message to multiple Emily engines simultaneously",
         multi_model=True,
-        models_to_compare=["claude-sonnet-4-5", "gpt-5", "gemini-3-flash"],
+        models_to_compare=["claude-sonnet-4-6", "gpt-5", "gemini-3-flash"],
+    ),
+    "ad_copywriter": EmilySkill(
+        name="Ad Copywriter",
+        icon="\U0001f4dd",
+        description="Emily writes high-converting ad copy for any platform",
+        system_addition=(
+            "You are a world-class direct-response copywriter. Generate "
+            "ad creatives that stop scrolling and drive action. Use proven "
+            "frameworks: AIDA, PAS, BAB. Write platform-specific copy "
+            "(Meta, TikTok, Google, YouTube). Always provide multiple "
+            "variations with different hooks. Be specific, benefit-driven, "
+            "and create urgency without being sleazy."
+        ),
+        enable_thinking=True,
+        preferred_models=["claude-opus-4-6", "gpt-5", "grok-4-1"],
+        temperature=0.85,
+    ),
+    "social_media": EmilySkill(
+        name="Social Media",
+        icon="\U0001f4f1",
+        description="Emily creates engaging social media content and strategies",
+        system_addition=(
+            "You are a social media strategist and content creator. "
+            "Understand platform algorithms, trending formats, and audience "
+            "psychology. Create content that drives engagement — hooks, "
+            "captions, hashtag strategies, posting schedules. Think like a "
+            "growth hacker: every post should have a clear goal. Adapt tone "
+            "per platform: professional for LinkedIn, casual for TikTok, "
+            "visual-first for Instagram."
+        ),
+        enable_web_search=True,
+        preferred_models=["claude-sonnet-4-6", "gpt-5", "gemini-3-pro"],
+        temperature=0.8,
+    ),
+    "video_script": EmilySkill(
+        name="Video Script",
+        icon="\U0001f3ac",
+        description="Emily writes video scripts optimized for engagement",
+        system_addition=(
+            "You are a video scriptwriter specializing in short-form "
+            "content (TikTok, Reels, Shorts) and long-form YouTube. "
+            "Structure every script with: hook (first 3 seconds), "
+            "problem/story, solution/value, CTA. Use pattern interrupts, "
+            "open loops, and emotional triggers. Include timing notes, "
+            "B-roll suggestions, and text overlay cues."
+        ),
+        enable_thinking=True,
+        preferred_models=["claude-opus-4-6", "grok-4-1", "gpt-5"],
+        temperature=0.8,
+    ),
+    "market_research": EmilySkill(
+        name="Market Research",
+        icon="\U0001f50d",
+        description="Emily analyzes markets, competitors, and trends",
+        system_addition=(
+            "You are a market research analyst. Analyze competitor "
+            "positioning, pricing strategies, ad creative patterns, and "
+            "audience demographics. Identify gaps and opportunities. "
+            "Use frameworks: Porter's Five Forces, SWOT, TAM/SAM/SOM. "
+            "Provide actionable insights, not just data. Quantify "
+            "market size and growth potential where possible."
+        ),
+        enable_web_search=True,
+        enable_thinking=True,
+        preferred_models=["claude-opus-4-6", "o3", "deepseek-r2"],
+        temperature=0.3,
+    ),
+    "singing": EmilySkill(
+        name="Singing & Music",
+        icon="\U0001f3b5",
+        description="Emily generates music, writes lyrics, and sings",
+        system_addition=(
+            "You can generate music and sing. When asked to sing or create "
+            "music, write expressive lyrics with natural rhythm and flow. "
+            "Structure songs with verse, chorus, bridge. Specify the style "
+            "(pop, jazz, lo-fi, rock, R&B, etc.) and mood. When writing "
+            "lyrics, focus on emotional resonance and singability — words "
+            "that feel good to say out loud. You have access to MusicGen "
+            "for instrumental generation and RVC for voice conversion."
+        ),
+        temperature=0.9,
     ),
 }
 

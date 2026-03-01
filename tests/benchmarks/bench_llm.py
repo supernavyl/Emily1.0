@@ -13,7 +13,6 @@ Run with:
 
 from __future__ import annotations
 
-import asyncio
 import re
 import time
 from typing import Any
@@ -39,10 +38,7 @@ BENCHMARK_PROMPTS = [
     {
         "name": "reasoning",
         "tier": "smart",
-        "prompt": (
-            "A farmer has 17 sheep. All but 9 die. How many are left? "
-            "Think step by step."
-        ),
+        "prompt": ("A farmer has 17 sheep. All but 9 die. How many are left? Think step by step."),
         "expected_keyword": "9",
     },
 ]
@@ -55,14 +51,18 @@ async def test_llm_latency(case: dict[str, Any]) -> None:
     """Measure first-token latency and response quality for each model tier."""
     try:
         from config import get_settings
-        from llm.client import ChatMessage, OllamaClient
+        from llm.client import ChatMessage
+        from llm.tabbyapi_client import TabbyAPIClient
 
         settings = get_settings()
-        client = OllamaClient(base_url=settings.llm.ollama_base_url)
+        client = TabbyAPIClient(
+            base_url=settings.llm.tabbyapi_base_url,
+            api_key=settings.llm.tabbyapi_api_key,
+        )
 
         healthy = await client.health_check()
         if not healthy:
-            pytest.skip("Ollama not running")
+            pytest.skip("TabbyAPI not running")
 
         model = getattr(settings.llm.models, case["tier"])
 
@@ -87,7 +87,9 @@ async def test_llm_latency(case: dict[str, Any]) -> None:
         answer_text = _THINK_RE.sub("", full_response).strip()
 
         print(f"\n[{case['name']}] tier={case['tier']} model={model}")
-        print(f"  First token: {first_token_latency:.0f}ms" if first_token_latency else "  No tokens")
+        print(
+            f"  First token: {first_token_latency:.0f}ms" if first_token_latency else "  No tokens"
+        )
         print(f"  Total: {total_time:.0f}ms")
         print(f"  Response: {answer_text[:80]}...")
 
@@ -111,6 +113,7 @@ async def test_embedding_throughput() -> None:
     """Measure embedding throughput for BGE-M3."""
     try:
         from llm.client import OllamaClient
+
         client = OllamaClient()
 
         if not await client.health_check():
@@ -129,7 +132,7 @@ async def test_embedding_throughput() -> None:
         elapsed = (time.monotonic() - t0) * 1000
 
         print(f"\n[embedding] model=bge-m3 texts={len(texts)}")
-        print(f"  Total: {elapsed:.0f}ms ({elapsed/len(texts):.0f}ms per text)")
+        print(f"  Total: {elapsed:.0f}ms ({elapsed / len(texts):.0f}ms per text)")
         print(f"  Embedding dim: {len(results[0].embedding)}")
 
         assert len(results) == len(texts)
