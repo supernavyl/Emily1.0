@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import html
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -103,7 +103,7 @@ def _build_frontmatter(
     """
     lines = [
         "---",
-        f"title: \"{conv.title}\"",
+        f'title: "{conv.title}"',
         f"date: {conv.created_at.isoformat()}",
         f"model: {conv.model or 'unknown'}",
         f"skill: {conv.skill_id or 'none'}",
@@ -214,7 +214,7 @@ class ExportEngine:
                 }
                 for msg in messages
             ],
-            "exported_at": datetime.now(timezone.utc).isoformat(),
+            "exported_at": datetime.now(UTC).isoformat(),
         }
         return json.dumps(data, indent=2, ensure_ascii=False)
 
@@ -261,7 +261,7 @@ class ExportEngine:
             css=_HTML_CSS,
             meta=_escape(_build_meta_line(conv)),
             body="\n".join(body_parts),
-            export_date=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+            export_date=datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC"),
         )
 
     async def to_pdf(
@@ -281,6 +281,7 @@ class ExportEngine:
         html_content = await self.to_html(conv, messages)
         try:
             import weasyprint  # type: ignore[import-untyped]
+
             doc = weasyprint.HTML(string=html_content)
             return doc.write_pdf()
         except ImportError:
@@ -311,9 +312,9 @@ class ExportEngine:
         out = output_dir or _DEFAULT_EXPORT_DIR
         out.mkdir(parents=True, exist_ok=True)
 
-        safe_title = "".join(
-            c if c.isalnum() or c in " -_" else "_" for c in conv.title
-        )[:50].strip()
+        safe_title = "".join(c if c.isalnum() or c in " -_" else "_" for c in conv.title)[
+            :50
+        ].strip()
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
         if fmt == "markdown":

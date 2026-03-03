@@ -38,10 +38,10 @@ def main() -> None:
 
     settings = AppSettings.load()
 
-    from emily_chat.ui.theme_engine import ThemeEngine
+    from emily_chat.controller import ChatController
     from emily_chat.ui.main_window import MainWindow
     from emily_chat.ui.system_tray import SystemTrayManager
-    from emily_chat.controller import ChatController
+    from emily_chat.ui.theme_engine import ThemeEngine
 
     theme_engine = ThemeEngine(app)
     theme_engine.apply_theme(settings.theme)

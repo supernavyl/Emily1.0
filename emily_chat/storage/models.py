@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -15,9 +14,9 @@ class ConversationSummary(BaseModel):
     title: str
     created_at: datetime
     updated_at: datetime
-    model: Optional[str] = None
-    provider: Optional[str] = None
-    skill_id: Optional[str] = None
+    model: str | None = None
+    provider: str | None = None
+    skill_id: str | None = None
     pinned: bool = False
     archived: bool = False
     tags: list[str] = Field(default_factory=list)
@@ -26,8 +25,8 @@ class ConversationSummary(BaseModel):
     total_tokens_out: int = 0
     total_thinking_tokens: int = 0
     total_cost_usd: float = 0.0
-    parent_id: Optional[str] = None
-    branch_from_message_id: Optional[str] = None
+    parent_id: str | None = None
+    branch_from_message_id: str | None = None
 
 
 class Message(BaseModel):
@@ -37,22 +36,22 @@ class Message(BaseModel):
     conversation_id: str
     role: str  # "user" | "assistant" | "system"
     content: str
-    content_raw: Optional[str] = None
-    thinking_content: Optional[str] = None
-    model: Optional[str] = None
-    provider: Optional[str] = None
+    content_raw: str | None = None
+    thinking_content: str | None = None
+    model: str | None = None
+    provider: str | None = None
     tokens_in: int = 0
     tokens_out: int = 0
     tokens_thinking: int = 0
     cost_usd: float = 0.0
-    latency_ms: Optional[int] = None
-    first_token_ms: Optional[int] = None
+    latency_ms: int | None = None
+    first_token_ms: int | None = None
     created_at: datetime = Field(default_factory=datetime.now)
     edited: bool = False
     stopped: bool = False
     rating: int = 0  # 1 | -1 | 0
     version: int = 1
-    parent_message_id: Optional[str] = None
+    parent_message_id: str | None = None
 
 
 class SearchResult(BaseModel):
