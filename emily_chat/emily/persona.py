@@ -15,12 +15,33 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from emily_chat.emily.identity_contract import EMILY_CORE_IDENTITY
 from emily_chat.emily.response_filter import EmilyResponseFilter
 from emily_chat.emily.skills import EmilySkill
+
+# Module-level lazy loader for the living autobiography.
+# Loaded once on first request, updated in-place when ReflectionAgent
+# calls AutobiographyManager.update().
+_autobiography_manager: object = None
+
+
+def _get_autobiography_text() -> str:
+    """Return Emily's current autobiography text, loading once on first call."""
+    global _autobiography_manager
+    if _autobiography_manager is None:
+        try:
+            from persona.autobiography import AutobiographyManager
+
+            mgr = AutobiographyManager()
+            mgr.load_sync()
+            _autobiography_manager = mgr
+        except Exception:
+            _autobiography_manager = False  # sentinel: failed, don't retry
+    if not _autobiography_manager:
+        return ""
+    return _autobiography_manager.get_for_prompt()  # type: ignore[union-attr]
 
 
 # ── supporting dataclasses ──────────────────────────────────────
@@ -38,10 +59,7 @@ class PrivacyGrants:
 
     def any_granted(self) -> bool:
         """Return True if at least one category is granted."""
-        return any(
-            (self.contacts, self.files, self.calendar,
-             self.knowledge_base, self.passwords)
-        )
+        return any((self.contacts, self.files, self.calendar, self.knowledge_base, self.passwords))
 
 
 @dataclass
@@ -56,13 +74,9 @@ class SessionContext:
         """Render the session context as a prompt fragment."""
         parts: list[str] = []
         if self.active_tools:
-            parts.append(
-                f"Active tools this session: {', '.join(self.active_tools)}"
-            )
+            parts.append(f"Active tools this session: {', '.join(self.active_tools)}")
         if self.provider_name:
-            parts.append(
-                f"Current cloud provider: {self.provider_name}"
-            )
+            parts.append(f"Current cloud provider: {self.provider_name}")
         return "\n".join(parts)
 
 
@@ -154,9 +168,7 @@ class EmilyPersonaEngine:
         Returns:
             The assembled system-prompt string.
         """
-        dt = session_context.current_datetime or datetime.now(
-            tz=timezone.utc
-        ).strftime("%Y-%m-%d %H:%M UTC")
+        dt = session_context.current_datetime or datetime.now(tz=UTC).strftime("%Y-%m-%d %H:%M UTC")
 
         identity = EMILY_CORE_IDENTITY.format(
             current_datetime=dt,
@@ -165,17 +177,20 @@ class EmilyPersonaEngine:
 
         sections: list[str] = [identity]
 
+        # 1.5 — living autobiography (evolving first-person self-narrative)
+        autobiography = _get_autobiography_text()
+        if autobiography:
+            sections.append(f"\n━━ WHO I AM ━━\n{autobiography}")
+
         # 2 — skill
         if skill.system_addition:
-            sections.append(
-                f"\n━━ ACTIVE SKILL: {skill.name} ━━\n{skill.system_addition}"
-            )
+            sections.append(f"\n━━ ACTIVE SKILL: {skill.name} ━━\n{skill.system_addition}")
 
         # 3 — privacy-gated context
         if privacy_grants.any_granted():
             granted = [
-                cat for cat in ("contacts", "files", "calendar",
-                                "knowledge_base", "passwords")
+                cat
+                for cat in ("contacts", "files", "calendar", "knowledge_base", "passwords")
                 if getattr(privacy_grants, cat)
             ]
             sections.append(
@@ -189,7 +204,18 @@ class EmilyPersonaEngine:
         if session_block:
             sections.append(f"\n━━ SESSION ━━\n{session_block}")
 
-        # 5 — response-format guidance
+        # 5 — behavior rules (user-defined, from settings)
+        try:
+            from api.routes.settings import get_rules
+
+            rules = get_rules()
+            if rules:
+                rules_text = "\n".join(f"• {r}" for r in rules)
+                sections.append(f"\n━━ BEHAVIOR RULES ━━\n{rules_text}")
+        except Exception:
+            pass
+
+        # 6 — response-format guidance
         sections.append(
             "\n━━ RESPONSE FORMAT ━━\n"
             "Use Markdown for structure (headers, lists, code blocks, tables).\n"
@@ -250,7 +276,7 @@ class EmilyPersonaEngine:
     def enforce_privacy_boundary(
         message: str,
         grants: PrivacyGrants,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Detect requests for private data the user has not yet granted.
 
         Args:

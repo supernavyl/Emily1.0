@@ -130,17 +130,23 @@ class PersonaProfile:
             history.append(history_entry)
             # Cap history
             if len(history) > self._MAX_HISTORY:
-                self._profile["evolution_history"] = history[-self._MAX_HISTORY:]
+                self._profile["evolution_history"] = history[-self._MAX_HISTORY :]
 
             self._profile["updated_at"] = time.time()
             await self._save()
-            log.info("persona_evolved", changes={k: f"{v[0]:.3f}→{v[1]:.3f}" for k, v in changes.items()}, reason=reason)
+            log.info(
+                "persona_evolved",
+                changes={k: f"{v[0]:.3f}→{v[1]:.3f}" for k, v in changes.items()},
+                reason=reason,
+            )
 
         return changes
 
     def _save_sync(self) -> None:
         """Synchronous save for initialization."""
-        self._path.write_text(json.dumps(self._profile, indent=2, ensure_ascii=False), encoding="utf-8")
+        self._path.write_text(
+            json.dumps(self._profile, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
 
     async def _save(self) -> None:
         """Async save via thread pool."""

@@ -9,18 +9,27 @@ Maintains a 4-dimensional continuous emotional state vector:
 
 State transitions are smooth (EMA-based), not discrete. The emotional state
 influences TTS prosody, response style, and proactivity thresholds.
+
+State is persisted to ``data/emotional_state.json`` so Emily retains her mood
+across restarts.  Writes are debounced to at most once per 5 seconds and use
+atomic rename to prevent corruption.
 """
 
 from __future__ import annotations
 
+import json
+import os
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from pathlib import Path
 
 from observability.logger import get_logger
 from observability.metrics import EMILY_EMOTIONAL_STATE
 
 log = get_logger(__name__)
+
+_STATE_FILE = Path("data/emotional_state.json")
+_SAVE_DEBOUNCE_S = 5.0
 
 
 @dataclass
@@ -60,8 +69,49 @@ class EmotionalStateManager:
     _CLAMP_MIN = 0.05
     _CLAMP_MAX = 0.95
 
-    def __init__(self) -> None:
+    def __init__(self, state_file: Path = _STATE_FILE) -> None:
+        self._state_file = state_file
+        self._last_save_time: float = 0.0
         self._state = EmotionalState()
+        self._load()
+
+    # ── Persistence ────────────────────────────────────────────────
+
+    def _load(self) -> None:
+        """Load persisted emotional state from disk if it exists."""
+        if not self._state_file.exists():
+            return
+        try:
+            data = json.loads(self._state_file.read_text())
+            for dim in ("engagement", "confidence", "concern", "enthusiasm"):
+                if dim in data:
+                    setattr(self._state, dim, float(data[dim]))
+            if "timestamp" in data:
+                self._state.timestamp = float(data["timestamp"])
+            log.info("emotional_state_loaded", state=self._state.to_dict())
+        except Exception as exc:
+            log.warning("emotional_state_load_failed", error=str(exc))
+
+    def _save(self) -> None:
+        """Persist state to disk (debounced, atomic write)."""
+        now = time.monotonic()
+        if now - self._last_save_time < _SAVE_DEBOUNCE_S:
+            return
+
+        try:
+            self._state_file.parent.mkdir(parents=True, exist_ok=True)
+            tmp = self._state_file.with_suffix(".tmp")
+            payload = {
+                **self._state.to_dict(),
+                "timestamp": self._state.timestamp,
+            }
+            tmp.write_text(json.dumps(payload, indent=2))
+            os.replace(tmp, self._state_file)
+            self._last_save_time = now
+        except Exception as exc:
+            log.warning("emotional_state_save_failed", error=str(exc))
+
+    # ── State mutations ────────────────────────────────────────────
 
     def update(self, deltas: dict[str, float]) -> EmotionalState:
         """
@@ -83,6 +133,7 @@ class EmotionalStateManager:
 
         self._state.timestamp = time.time()
         self._state._update_metrics()
+        self._save()
         log.debug("emotional_state_updated", state=self._state.to_dict())
         return self._state
 
@@ -130,3 +181,18 @@ class EmotionalStateManager:
             "enthusiasm": (0.6 - self._state.enthusiasm) * decay,
         }
         self.update(neutral_deltas)
+
+
+# ── Module-level singleton ──────────────────────────────────────────────────
+# Shared across all agents — ConversationAgent writes, TTS prosody reads,
+# Brain Dashboard observes via Prometheus gauges.
+
+_manager: EmotionalStateManager | None = None
+
+
+def get_emotional_state() -> EmotionalStateManager:
+    """Return the shared EmotionalStateManager singleton."""
+    global _manager
+    if _manager is None:
+        _manager = EmotionalStateManager()
+    return _manager

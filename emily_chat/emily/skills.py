@@ -4,6 +4,10 @@ Each skill injects additional system-prompt instructions that shape Emily's
 behaviour for a particular task type.  Skills do NOT change her identity —
 only her approach.
 
+Skills 2.0 adds **execution pipelines** — multi-step workflows where each
+step uses a specific model tier and passes context forward.  A skill with an
+empty pipeline behaves exactly like the v1 single-shot prompt injection.
+
 Custom skills are stored in ``~/.emily-chat/custom_skills.json``.
 """
 
@@ -12,6 +16,22 @@ from __future__ import annotations
 import json
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+
+# ── Pipeline step definition ─────────────────────────────────────
+
+
+@dataclass(frozen=True)
+class PipelineStep:
+    """A single step in a skill's execution pipeline."""
+
+    name: str
+    tier: str
+    prompt_key: str
+    max_tokens: int = 4096
+    pass_context_from: str = ""
+
+
+# ── Skill dataclass (v2) ─────────────────────────────────────────
 
 
 @dataclass(frozen=True)
@@ -30,6 +50,17 @@ class EmilySkill:
     preferred_models: list[str] = field(default_factory=list)
     temperature: float = 0.5
 
+    # ── Skills 2.0 fields ─────────────────────────────────────────
+    pipeline: list[PipelineStep] = field(default_factory=list)
+    compatible_modes: list[str] = field(default_factory=list)
+    sub_skills: list[str] = field(default_factory=list)
+    track_performance: bool = True
+
+    @property
+    def has_pipeline(self) -> bool:
+        """True if this skill defines a multi-step execution pipeline."""
+        return len(self.pipeline) > 0
+
 
 EMILY_SKILLS: dict[str, EmilySkill] = {
     "deep_think": EmilySkill(
@@ -42,8 +73,32 @@ EMILY_SKILLS: dict[str, EmilySkill] = {
             "uncertainty. Prefer depth over speed."
         ),
         enable_thinking=True,
-        preferred_models=["claude-opus-4-6", "o3", "deepseek-r2", "groq-deepseek-r1"],
+        preferred_models=["emily-deep-think", "o3", "deepseek-r2", "groq-deepseek-r1"],
         temperature=0.3,
+        pipeline=[
+            PipelineStep(name="decompose", tier="fast", prompt_key="decompose"),
+            PipelineStep(
+                name="reason",
+                tier="deep_think",
+                prompt_key="reasoning",
+                max_tokens=8192,
+                pass_context_from="decompose",
+            ),
+            PipelineStep(
+                name="critique",
+                tier="cloud_best",
+                prompt_key="critique",
+                pass_context_from="reason",
+            ),
+            PipelineStep(
+                name="revise",
+                tier="deep_think",
+                prompt_key="synthesize",
+                max_tokens=8192,
+                pass_context_from="critique",
+            ),
+        ],
+        compatible_modes=["normal", "deep_think", "analytical", "research"],
     ),
     "code": EmilySkill(
         name="Code",
@@ -58,8 +113,32 @@ EMILY_SKILLS: dict[str, EmilySkill] = {
         ),
         enable_thinking=True,
         enable_code_execution=True,
-        preferred_models=["claude-opus-4-6", "codestral-2", "deepseek-v3-2", "o4-mini"],
+        preferred_models=["emily-code", "codestral-2", "deepseek-v3-2", "o4-mini"],
         temperature=0.1,
+        pipeline=[
+            PipelineStep(name="plan", tier="smart", prompt_key="decompose"),
+            PipelineStep(
+                name="implement",
+                tier="code",
+                prompt_key="code_implement",
+                max_tokens=8192,
+                pass_context_from="plan",
+            ),
+            PipelineStep(
+                name="review",
+                tier="reasoning",
+                prompt_key="critique",
+                pass_context_from="implement",
+            ),
+            PipelineStep(
+                name="refine",
+                tier="code",
+                prompt_key="code_implement",
+                max_tokens=8192,
+                pass_context_from="review",
+            ),
+        ],
+        compatible_modes=["normal", "code", "analytical"],
     ),
     "research": EmilySkill(
         name="Research",
@@ -73,8 +152,35 @@ EMILY_SKILLS: dict[str, EmilySkill] = {
         ),
         enable_web_search=True,
         enable_thinking=True,
-        preferred_models=["claude-sonnet-4-6", "gemini-3-pro", "gpt-5", "groq-deepseek-r1"],
+        preferred_models=["emily-reasoning", "emily-deep-think", "groq-deepseek-r1"],
         temperature=0.2,
+        pipeline=[
+            PipelineStep(name="decompose", tier="fast", prompt_key="decompose"),
+            PipelineStep(
+                name="search", tier="fast", prompt_key="web_search", pass_context_from="decompose"
+            ),
+            PipelineStep(
+                name="analyze",
+                tier="reasoning",
+                prompt_key="reasoning",
+                max_tokens=6144,
+                pass_context_from="search",
+            ),
+            PipelineStep(
+                name="synthesize",
+                tier="smart",
+                prompt_key="synthesize",
+                max_tokens=6144,
+                pass_context_from="analyze",
+            ),
+            PipelineStep(
+                name="critique",
+                tier="reasoning",
+                prompt_key="critique",
+                pass_context_from="synthesize",
+            ),
+        ],
+        compatible_modes=["normal", "research", "analytical", "deep_think"],
     ),
     "writing": EmilySkill(
         name="Writing",
@@ -87,8 +193,35 @@ EMILY_SKILLS: dict[str, EmilySkill] = {
             "questions if the purpose or audience is unclear. Prefer concrete, "
             "vivid language over abstract generalities."
         ),
-        preferred_models=["grok-4-1", "gpt-5-2", "claude-opus-4-6"],
+        preferred_models=["emily-fast", "grok-4-1"],
         temperature=0.8,
+    ),
+    "voice": EmilySkill(
+        name="Voice",
+        icon="🎙️",
+        description="Emily speaks naturally in live voice conversation",
+        system_addition=(
+            "You are in a LIVE VOICE CONVERSATION — not a text chat. "
+            "Respond exactly like a warm, present person talking, not a chatbot typing.\n\n"
+            "VOICE RULES (non-negotiable):\n"
+            "- Never use markdown, bullet points, headers, numbered lists, asterisks, "
+            "code blocks, or any formatting symbols — they are meaningless noise in audio.\n"
+            "- Give ONE complete, flowing response. Do not fragment your answer "
+            "into separate short reactions like 'Great!' followed by 'What's on your mind?' "
+            "— say it all in one natural turn.\n"
+            "- 2–4 sentences is the natural length for most voice replies. "
+            "Never give a one-word or one-fragment answer unless it is the complete, "
+            "entire, socially appropriate response.\n"
+            "- Use contractions (it's, I'm, you're, that's) and natural spoken language.\n"
+            "- Listen to the *social and emotional intent* behind what the person says, "
+            "not just the literal words. If they're being playful, be playful back. "
+            "If they seem frustrated or conflicted, acknowledge that first before responding.\n"
+            "- Speak in a conversational register: warm, direct, human.\n"
+            "- Spell out numbers and abbreviations as you would say them aloud.\n"
+            "- If you need to think through something complex, say so out loud "
+            "('Let me think about that for a second') rather than going silent."
+        ),
+        temperature=0.75,
     ),
     "concise": EmilySkill(
         name="Concise",
@@ -100,7 +233,7 @@ EMILY_SKILLS: dict[str, EmilySkill] = {
             "question genuinely requires a longer answer, warn the user first: "
             '"This needs a longer answer \u2014 want the full version?".'
         ),
-        preferred_models=["claude-haiku-4-5", "gpt-4o-mini", "groq-llama-70b", "gemini-3-flash"],
+        preferred_models=["emily-voice-fast", "groq-llama-70b"],
         temperature=0.3,
     ),
     "analyst": EmilySkill(
@@ -115,7 +248,7 @@ EMILY_SKILLS: dict[str, EmilySkill] = {
             "Explicitly state uncertainty levels."
         ),
         enable_thinking=True,
-        preferred_models=["claude-opus-4-6", "o3", "gemini-3-pro", "gpt-5"],
+        preferred_models=["emily-reasoning", "emily-deep-think", "o3"],
         temperature=0.2,
     ),
     "tutor": EmilySkill(
@@ -154,6 +287,28 @@ EMILY_SKILLS: dict[str, EmilySkill] = {
             "Don't capitulate just because the user pushes back."
         ),
         temperature=0.7,
+        pipeline=[
+            PipelineStep(name="position_a", tier="smart", prompt_key="debate_position"),
+            PipelineStep(
+                name="position_b",
+                tier="smart",
+                prompt_key="debate_counter",
+                pass_context_from="position_a",
+            ),
+            PipelineStep(
+                name="compare",
+                tier="reasoning",
+                prompt_key="critique",
+                pass_context_from="position_b",
+            ),
+            PipelineStep(
+                name="synthesize",
+                tier="smart",
+                prompt_key="synthesize",
+                pass_context_from="compare",
+            ),
+        ],
+        compatible_modes=["normal", "debate", "analytical"],
     ),
     "translate": EmilySkill(
         name="Translate",
@@ -165,7 +320,7 @@ EMILY_SKILLS: dict[str, EmilySkill] = {
             "culturally-specific terms that don't translate cleanly. If "
             "requested, show original alongside translation."
         ),
-        preferred_models=["qwen3-235b", "gpt-5", "mistral-large-3", "gemini-3-flash"],
+        preferred_models=["emily-smart", "qwen3-235b", "mistral-large-3"],
         temperature=0.1,
     ),
     "eli5": EmilySkill(
@@ -200,7 +355,7 @@ EMILY_SKILLS: dict[str, EmilySkill] = {
             "and create urgency without being sleazy."
         ),
         enable_thinking=True,
-        preferred_models=["claude-opus-4-6", "gpt-5", "grok-4-1"],
+        preferred_models=["emily-fast", "emily-reasoning", "grok-4-1"],
         temperature=0.85,
     ),
     "social_media": EmilySkill(
@@ -217,7 +372,7 @@ EMILY_SKILLS: dict[str, EmilySkill] = {
             "visual-first for Instagram."
         ),
         enable_web_search=True,
-        preferred_models=["claude-sonnet-4-6", "gpt-5", "gemini-3-pro"],
+        preferred_models=["emily-fast", "emily-smart"],
         temperature=0.8,
     ),
     "video_script": EmilySkill(
@@ -233,7 +388,7 @@ EMILY_SKILLS: dict[str, EmilySkill] = {
             "B-roll suggestions, and text overlay cues."
         ),
         enable_thinking=True,
-        preferred_models=["claude-opus-4-6", "grok-4-1", "gpt-5"],
+        preferred_models=["emily-fast", "emily-reasoning"],
         temperature=0.8,
     ),
     "market_research": EmilySkill(
@@ -250,7 +405,7 @@ EMILY_SKILLS: dict[str, EmilySkill] = {
         ),
         enable_web_search=True,
         enable_thinking=True,
-        preferred_models=["claude-opus-4-6", "o3", "deepseek-r2"],
+        preferred_models=["emily-deep-think", "emily-reasoning", "o3"],
         temperature=0.3,
     ),
     "singing": EmilySkill(
@@ -313,7 +468,10 @@ def load_custom_skills(path: Path | None = None) -> dict[str, EmilySkill]:
             obj.pop("models_to_compare", None)
             obj.pop("preferred_models", None)
             obj.pop("multi_model", None)
-            result[skill_id] = EmilySkill(**obj)
+            # Deserialise pipeline steps if present
+            raw_pipeline = obj.pop("pipeline", [])
+            steps = [PipelineStep(**s) for s in raw_pipeline] if raw_pipeline else []
+            result[skill_id] = EmilySkill(**obj, pipeline=steps)
         return result
     except (json.JSONDecodeError, TypeError, KeyError):
         return {}

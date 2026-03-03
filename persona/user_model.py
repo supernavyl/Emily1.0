@@ -117,7 +117,16 @@ class UserModelingEngine:
             pace_wpm = 120  # Default assumed pace
 
         # Simple sentiment signals
-        negative_words = {"angry", "frustrated", "annoyed", "confused", "wrong", "bad", "hate", "stupid"}
+        negative_words = {
+            "angry",
+            "frustrated",
+            "annoyed",
+            "confused",
+            "wrong",
+            "bad",
+            "hate",
+            "stupid",
+        }
         positive_words = {"great", "thanks", "perfect", "excellent", "love", "amazing"}
         neg_count = sum(1 for w in words if w in negative_words)
         pos_count = sum(1 for w in words if w in positive_words)
@@ -125,7 +134,9 @@ class UserModelingEngine:
         signals["positive_words"] = pos_count
 
         # Determine mood
-        mood, confidence = self._classify_mood(filler_ratio, pace_wpm, neg_count, pos_count, signals)
+        mood, confidence = self._classify_mood(
+            filler_ratio, pace_wpm, neg_count, pos_count, signals
+        )
 
         state = UserEmotionalState(mood=mood, confidence=confidence, signals=signals)
         self._current_state = state

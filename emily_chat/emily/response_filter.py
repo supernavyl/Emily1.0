@@ -35,15 +35,16 @@ class EmilyResponseFilter:
         (r"(?i)\bI'?m Kimi\b", "I'm Emily"),
         (r"(?i)\bI'?m Mistral\b", "I'm Emily"),
         (r"(?i)\bI'?m Llama\b", "I'm Emily"),
-        (r"(?i)\bI'?m (?:an AI|a language model) and I don'?t have\b",
-         "I'm Emily and I don't have"),
+        (
+            r"(?i)\bI'?m (?:an AI|a language model) and I don'?t have\b",
+            "I'm Emily and I don't have",
+        ),
         (r"(?i)\bAs a large language model\b", "As Emily"),
     ]
 
     def __init__(self) -> None:
         self._compiled: list[tuple[re.Pattern[str], str]] = [
-            (re.compile(pattern), replacement)
-            for pattern, replacement in self._RAW_REPLACEMENTS
+            (re.compile(pattern), replacement) for pattern, replacement in self._RAW_REPLACEMENTS
         ]
 
     def filter_chunk(self, chunk: str) -> str:
