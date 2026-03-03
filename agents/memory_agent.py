@@ -12,8 +12,6 @@ through MemoryManager; the MemoryAgent handles:
 
 from __future__ import annotations
 
-from typing import Any
-
 from agents.base import BaseAgent
 from core.bus import Message, Priority
 from observability.logger import get_logger

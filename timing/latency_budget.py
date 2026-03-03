@@ -11,8 +11,9 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import Coroutine
 from dataclasses import dataclass, field
-from typing import Any, Callable, Coroutine, TypeVar
+from typing import Any, TypeVar
 
 from observability.logger import get_logger
 
@@ -116,7 +117,7 @@ class LatencyBudget:
             self._record(stage, latency_ms, exceeded=False)
             return result
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             latency_ms = (time.monotonic() - t0) * 1000.0
             self._record(stage, latency_ms, exceeded=True)
             self._record_violation(stage)
@@ -197,6 +198,7 @@ class LatencyBudget:
 
             latencies = [r.latency_ms for r in records]
             import numpy as np
+
             report[s] = {
                 "p50": float(np.percentile(latencies, 50)),
                 "p95": float(np.percentile(latencies, 95)),

@@ -18,8 +18,9 @@ States:
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable, Coroutine
 from enum import Enum, auto
-from typing import Callable, Coroutine, Any
+from typing import Any
 
 from observability.logger import get_logger
 

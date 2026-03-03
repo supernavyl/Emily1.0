@@ -13,7 +13,6 @@ falling back to the `age` CLI tool.
 from __future__ import annotations
 
 import asyncio
-import os
 import subprocess
 from pathlib import Path
 
@@ -27,6 +26,7 @@ _DEFAULT_KEY_PATH = Path.home() / ".emily_key"
 def _pyrage_available() -> bool:
     try:
         import pyrage  # type: ignore[import-untyped]  # noqa: F401
+
         return True
     except ImportError:
         return False
@@ -88,6 +88,7 @@ class AgeEncryption:
 
         if self._pyrage:
             import pyrage
+
             identity = pyrage.x25519.Identity.generate()
             self._key_path.write_text(str(identity))
             self._key_path.chmod(0o600)
@@ -95,9 +96,10 @@ class AgeEncryption:
             return self._key_path
 
         if self._age_cli:
-            result = subprocess.run(
+            subprocess.run(
                 ["age-keygen", "-o", str(self._key_path)],
-                check=True, capture_output=True,
+                check=True,
+                capture_output=True,
             )
             self._key_path.chmod(0o600)
             log.info("age_key_generated_cli", path=str(self._key_path))
@@ -121,8 +123,7 @@ class AgeEncryption:
         if not self.is_available():
             if self._strict:
                 raise RuntimeError(
-                    "Encryption required but no backend available. "
-                    "Install pyrage or age CLI."
+                    "Encryption required but no backend available. Install pyrage or age CLI."
                 )
             return plaintext
 
@@ -130,6 +131,7 @@ class AgeEncryption:
 
         if self._pyrage:
             import pyrage
+
             identity_str = self._key_path.read_text().strip()
             identity = pyrage.x25519.Identity.from_str(identity_str)
             recipient = identity.to_public()
@@ -160,13 +162,13 @@ class AgeEncryption:
         if not self.is_available():
             if self._strict:
                 raise RuntimeError(
-                    "Encryption required but no backend available. "
-                    "Install pyrage or age CLI."
+                    "Encryption required but no backend available. Install pyrage or age CLI."
                 )
             return ciphertext
 
         if self._pyrage:
             import pyrage
+
             identity_str = self._key_path.read_text().strip()
             identity = pyrage.x25519.Identity.from_str(identity_str)
             return pyrage.decrypt(ciphertext, [identity])

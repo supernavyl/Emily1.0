@@ -16,8 +16,9 @@ All consent decisions are recorded in the audit log.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from dataclasses import dataclass, field
-from enum import Enum, auto
+from enum import StrEnum
 from typing import Any
 
 from observability.logger import get_logger
@@ -26,20 +27,49 @@ from security.audit_log import AuditLog
 log = get_logger(__name__)
 
 # Words that count as spoken consent
-_AFFIRMATIVE_WORDS = frozenset({
-    "yes", "yeah", "yep", "yup", "sure", "ok", "okay", "go", "proceed",
-    "confirm", "affirm", "approved", "allow", "accept", "do it", "go ahead",
-})
+_AFFIRMATIVE_WORDS = frozenset(
+    {
+        "yes",
+        "yeah",
+        "yep",
+        "yup",
+        "sure",
+        "ok",
+        "okay",
+        "go",
+        "proceed",
+        "confirm",
+        "affirm",
+        "approved",
+        "allow",
+        "accept",
+        "do it",
+        "go ahead",
+    }
+)
 
 # Words that count as spoken denial
-_NEGATIVE_WORDS = frozenset({
-    "no", "nope", "nah", "stop", "cancel", "abort", "deny", "reject",
-    "don't", "dont", "negative", "decline",
-})
+_NEGATIVE_WORDS = frozenset(
+    {
+        "no",
+        "nope",
+        "nah",
+        "stop",
+        "cancel",
+        "abort",
+        "deny",
+        "reject",
+        "don't",
+        "dont",
+        "negative",
+        "decline",
+    }
+)
 
 
-class ConsentDecision(str, Enum):
+class ConsentDecision(StrEnum):
     """Outcome of a consent request."""
+
     APPROVED = "approved"
     DENIED = "denied"
     TIMEOUT = "timeout"
@@ -49,11 +79,11 @@ class ConsentDecision(str, Enum):
 class ConsentRequest:
     """A pending consent request."""
 
-    action: str          # Human-readable action description
-    tool_name: str       # Tool/plugin name
-    actor: str           # Agent requesting consent
+    action: str  # Human-readable action description
+    tool_name: str  # Tool/plugin name
+    actor: str  # Agent requesting consent
     parameters: dict[str, Any] = field(default_factory=dict)
-    risk_level: str = "medium"   # "low" | "medium" | "high"
+    risk_level: str = "medium"  # "low" | "medium" | "high"
 
 
 class ConsentGate:
@@ -163,7 +193,7 @@ class ConsentGate:
             if any(w in answer_lower for w in _AFFIRMATIVE_WORDS):
                 return ConsentDecision.APPROVED
             return ConsentDecision.DENIED
-        except asyncio.TimeoutError:
+        except TimeoutError:
             log.warning("consent_timeout", tool=req.tool_name, timeout_s=self._timeout)
             return ConsentDecision.TIMEOUT
         except EOFError:
@@ -188,10 +218,8 @@ class ConsentGate:
         else:
             return  # Ambiguous — ignore
 
-        try:
+        with contextlib.suppress(asyncio.QueueFull):
             self._pending_queue.put_nowait(decision)
-        except asyncio.QueueFull:
-            pass
 
     async def submit_programmatic(self, decision: ConsentDecision) -> None:
         """

@@ -27,12 +27,14 @@ Message envelope format (all buses):
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import time
 import uuid
+from collections.abc import AsyncIterator, Callable, Coroutine
 from dataclasses import dataclass, field
 from enum import IntEnum
-from typing import Any, AsyncIterator, Callable, Coroutine
+from typing import Any
 
 import zmq
 import zmq.asyncio
@@ -96,7 +98,7 @@ class Message:
         ).encode()
 
     @classmethod
-    def from_bytes(cls, data: bytes) -> "Message":
+    def from_bytes(cls, data: bytes) -> Message:
         """Deserialize a Message from JSON bytes."""
         raw = json.loads(data.decode())
         return cls(
@@ -155,7 +157,9 @@ class PerceptionBus:
         log.info("perception_bus_subscriber_started", port=self._pub_port)
         self._running = True
 
-    async def publish(self, event_type: str, payload: dict[str, Any], priority: Priority = Priority.ACTIVE) -> None:
+    async def publish(
+        self, event_type: str, payload: dict[str, Any], priority: Priority = Priority.ACTIVE
+    ) -> None:
         """
         Publish a perception event.
 
@@ -229,10 +233,15 @@ class AgentBus:
         self._queue: asyncio.PriorityQueue[tuple[int, Message]] = asyncio.PriorityQueue()
         self._handler_tasks: set[asyncio.Task[None]] = set()
         self._brain_hub: Any | None = None
+        self._event_recorder: Any | None = None  # EventRecorder for full payload capture
 
     def set_brain_hub(self, hub: Any) -> None:
         """Attach a BrainEventHub for live event mirroring."""
         self._brain_hub = hub
+
+    def set_event_recorder(self, recorder: Any) -> None:
+        """Attach an EventRecorder for full message payload capture."""
+        self._event_recorder = recorder
 
     async def start(self) -> None:
         """Initialize both push and pull sockets."""
@@ -267,6 +276,25 @@ class AgentBus:
             raise RuntimeError("AgentBus not started")
         await self._push_socket.send(message.to_bytes())
         AGENT_QUEUE_DEPTH.inc()
+
+        # Record full payload for replay debugger
+        if self._event_recorder is not None:
+            with contextlib.suppress(Exception):
+                self._event_recorder.record_bus_message(
+                    "send",
+                    {
+                        "id": message.id,
+                        "sender": message.sender,
+                        "recipient": message.recipient,
+                        "type": message.type,
+                        "payload": message.payload,
+                        "priority": int(message.priority),
+                        "task_id": message.task_id,
+                        "deadline_ms": message.deadline_ms,
+                        "context_refs": message.context_refs,
+                    },
+                )
+
         log.debug(
             "agent_message_sent",
             sender=message.sender,
@@ -313,19 +341,41 @@ class AgentBus:
                 msg = Message.from_bytes(raw)
                 AGENT_QUEUE_DEPTH.dec()
 
+                # Record full payload for replay debugger
+                if self._event_recorder is not None:
+                    with contextlib.suppress(Exception):
+                        self._event_recorder.record_bus_message(
+                            "recv",
+                            {
+                                "id": msg.id,
+                                "sender": msg.sender,
+                                "recipient": msg.recipient,
+                                "type": msg.type,
+                                "payload": msg.payload,
+                                "priority": int(msg.priority),
+                                "task_id": msg.task_id,
+                                "deadline_ms": msg.deadline_ms,
+                                "context_refs": msg.context_refs,
+                            },
+                        )
+
                 handler = self._handlers.get(msg.recipient) or self._handlers.get("*")
                 if handler is None:
                     log.warning("no_handler_for_agent", recipient=msg.recipient)
                     continue
 
                 if self._brain_hub is not None:
-                    await self._brain_hub.emit("agent", "message", {
-                        "sender": msg.sender,
-                        "recipient": msg.recipient,
-                        "type": msg.type,
-                        "task_id": msg.task_id,
-                        "priority": int(msg.priority),
-                    })
+                    await self._brain_hub.emit(
+                        "agent",
+                        "message",
+                        {
+                            "sender": msg.sender,
+                            "recipient": msg.recipient,
+                            "type": msg.type,
+                            "task_id": msg.task_id,
+                            "priority": int(msg.priority),
+                        },
+                    )
 
                 task = asyncio.create_task(handler(msg))
                 self._handler_tasks.add(task)

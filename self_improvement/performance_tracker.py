@@ -33,8 +33,8 @@ _LOG_PATH = Path("data/performance_log.jsonl")
 class PerformanceEvent:
     """A single performance measurement."""
 
-    category: str          # "llm", "stt", "tts", "rag", "agent", "react"
-    metric: str            # e.g., "latency_ms", "confidence", "relevance_score"
+    category: str  # "llm", "stt", "tts", "rag", "agent", "react"
+    metric: str  # e.g., "latency_ms", "confidence", "relevance_score"
     value: float
     context: dict[str, Any] = field(default_factory=dict)
     ts: float = field(default_factory=time.time)
@@ -49,7 +49,7 @@ class PerformanceEvent:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "PerformanceEvent":
+    def from_dict(cls, data: dict[str, Any]) -> PerformanceEvent:
         return cls(
             category=data["category"],
             metric=data["metric"],
@@ -144,9 +144,11 @@ class PerformanceTracker:
             for line in f:
                 try:
                     data = json.loads(line.strip())
-                    if (data.get("category") == category
-                            and data.get("metric") == metric
-                            and data.get("ts", 0) >= cutoff):
+                    if (
+                        data.get("category") == category
+                        and data.get("metric") == metric
+                        and data.get("ts", 0) >= cutoff
+                    ):
                         values.append(float(data["value"]))
                 except (json.JSONDecodeError, ValueError):
                     continue
@@ -200,16 +202,18 @@ class PerformanceTracker:
                 continue
             sorted_vals = sorted(vals)
             p95_idx = int(0.95 * len(sorted_vals))
-            summaries.append(PerformanceSummary(
-                category=cat,
-                metric=met,
-                count=len(vals),
-                mean=mean(vals),
-                median=median(vals),
-                std=stdev(vals) if len(vals) > 1 else 0.0,
-                p95=sorted_vals[min(p95_idx, len(sorted_vals) - 1)],
-                window_hours=window_hours,
-            ))
+            summaries.append(
+                PerformanceSummary(
+                    category=cat,
+                    metric=met,
+                    count=len(vals),
+                    mean=mean(vals),
+                    median=median(vals),
+                    std=stdev(vals) if len(vals) > 1 else 0.0,
+                    p95=sorted_vals[min(p95_idx, len(sorted_vals) - 1)],
+                    window_hours=window_hours,
+                )
+            )
         return summaries
 
     def prune_old_entries(self, keep_days: int = 30) -> int:

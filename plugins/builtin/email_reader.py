@@ -81,13 +81,15 @@ class EmailReaderTool(BaseTool):
             for key in list(mbox.keys())[-max_msgs:]:
                 try:
                     msg = mbox[key]
-                    messages.append({
-                        "from": msg.get("From", ""),
-                        "to": msg.get("To", ""),
-                        "subject": msg.get("Subject", ""),
-                        "date": msg.get("Date", ""),
-                        "snippet": _get_body_snippet(msg),
-                    })
+                    messages.append(
+                        {
+                            "from": msg.get("From", ""),
+                            "to": msg.get("To", ""),
+                            "subject": msg.get("Subject", ""),
+                            "date": msg.get("Date", ""),
+                            "snippet": _get_body_snippet(msg),
+                        }
+                    )
                 except Exception:
                     continue
             return list(reversed(messages))

@@ -35,8 +35,8 @@ class RAGFeedbackEvent:
     chunk_id: str
     document_source: str
     query: str
-    relevance_score: float       # Retriever's relevance score (0-1)
-    used_in_response: bool       # Whether this chunk was cited in the LLM response
+    relevance_score: float  # Retriever's relevance score (0-1)
+    used_in_response: bool  # Whether this chunk was cited in the LLM response
     user_feedback: str = "none"  # "positive", "negative", "none"
     ts: float = field(default_factory=time.time)
 
@@ -138,7 +138,11 @@ class RAGFeedbackLoop:
                     src = data.get("document_source", "unknown")
                     if src not in doc_stats:
                         doc_stats[src] = {
-                            "total": 0, "used": 0, "positive": 0, "negative": 0, "scores": []
+                            "total": 0,
+                            "used": 0,
+                            "positive": 0,
+                            "negative": 0,
+                            "scores": [],
                         }
                     s = doc_stats[src]
                     s["total"] += 1

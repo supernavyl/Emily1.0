@@ -54,9 +54,7 @@ class SelfImprovementEngine:
         summary: dict[str, Any] = {}
 
         # 1. Compute performance summaries
-        perf_summaries = await asyncio.to_thread(
-            self.performance.get_all_summaries, 24.0
-        )
+        perf_summaries = await asyncio.to_thread(self.performance.get_all_summaries, 24.0)
         summary["performance_categories"] = len(perf_summaries)
         regressions = []
         for s in perf_summaries:
@@ -139,9 +137,7 @@ class SelfImprovementEngine:
             relevance_score: Retriever's confidence score.
             used: Whether the chunk was cited in the response.
         """
-        self.performance.record(
-            "rag", "relevance_score", relevance_score, {"source": source}
-        )
+        self.performance.record("rag", "relevance_score", relevance_score, {"source": source})
         self.rag_feedback.record(
             chunk_id=chunk_id,
             document_source=source,

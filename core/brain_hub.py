@@ -13,6 +13,7 @@ all subsystem taps are no-ops (they check ``if hub is not None``).
 from __future__ import annotations
 
 import collections
+import contextlib
 import threading
 import time
 from typing import Any
@@ -24,12 +25,12 @@ _MAX_RING = 1000
 _LOG_RATE_LIMIT = 50  # max log events per second
 
 
-def get_brain_hub() -> "BrainEventHub | None":
+def get_brain_hub() -> BrainEventHub | None:
     """Return the global hub singleton, or None in headless mode."""
     return _hub_instance
 
 
-def set_brain_hub(hub: "BrainEventHub") -> None:
+def set_brain_hub(hub: BrainEventHub) -> None:
     """Install the global hub singleton (called once at startup)."""
     global _hub_instance
     with _hub_lock:
@@ -55,6 +56,19 @@ class BrainEventHub:
         self._log_timestamps: collections.deque[float] = collections.deque(maxlen=_LOG_RATE_LIMIT)
         self._signals: Any = None  # set by attach_signals() — primary
         self._extra_signals: list[Any] = []
+        self._recorders: list[Any] = []  # persistent recorder callbacks
+
+    def attach_recorder(self, callback: Any) -> None:
+        """Attach a persistent event recorder callback.
+
+        The callback receives the event dict for every ``emit_sync`` call
+        (including events that pass log rate-limiting).  Used by
+        :class:`observability.event_recorder.EventRecorder`.
+
+        Args:
+            callback: ``Callable[[dict], None]`` — must be thread-safe.
+        """
+        self._recorders.append(callback)
 
     def attach_signals(self, signals: Any) -> None:
         """
@@ -112,6 +126,11 @@ class BrainEventHub:
 
         with self._lock:
             self._ring.append(event)
+
+        # Persistent recorders (e.g. EventRecorder for replay debugger)
+        for recorder in self._recorders:
+            with contextlib.suppress(Exception):
+                recorder(event)
 
         all_signals = []
         if self._signals is not None:

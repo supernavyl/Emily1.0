@@ -12,12 +12,12 @@ from __future__ import annotations
 import json
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from enum import Enum
+from datetime import UTC, datetime
+from enum import StrEnum
 from typing import Any
 
 
-class CredentialType(str, Enum):
+class CredentialType(StrEnum):
     """Supported credential types."""
 
     PASSWORD = "PASSWORD"
@@ -31,7 +31,7 @@ class CredentialType(str, Enum):
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _uuid() -> str:
@@ -53,8 +53,8 @@ class Credential:
     name: str = ""
     service: str = ""
     username: str = ""
-    secret: str = ""          # AES-GCM ciphertext (hex) — NEVER plaintext at rest
-    totp_seed: str = ""       # AES-GCM ciphertext (hex) — only for TOTP type
+    secret: str = ""  # AES-GCM ciphertext (hex) — NEVER plaintext at rest
+    totp_seed: str = ""  # AES-GCM ciphertext (hex) — only for TOTP type
     url: str = ""
     tags: list[str] = field(default_factory=list)
     associated_entity_ids: list[str] = field(default_factory=list)
@@ -87,7 +87,7 @@ class Credential:
         }
 
     @classmethod
-    def from_db_row(cls, row: dict[str, Any]) -> "Credential":
+    def from_db_row(cls, row: dict[str, Any]) -> Credential:
         """Deserialize from SQLite row dict."""
         return cls(
             id=row["id"],
@@ -133,7 +133,7 @@ class CredentialSummary:
     associated_entity_ids: list[str]
 
     @classmethod
-    def from_credential(cls, cred: Credential) -> "CredentialSummary":
+    def from_credential(cls, cred: Credential) -> CredentialSummary:
         """Build a summary from a full Credential, stripping secret fields."""
         return cls(
             id=cred.id,

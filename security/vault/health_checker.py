@@ -12,12 +12,11 @@ from __future__ import annotations
 import hashlib
 import math
 import re
-import string
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 
-from security.vault.models import CredentialSummary
 from observability.logger import get_logger
+from security.vault.models import CredentialSummary
 
 log = get_logger(__name__)
 
@@ -28,9 +27,9 @@ class HealthAlert:
 
     credential_id: str
     credential_name: str
-    alert_type: str   # "reused"|"expiring"|"expired"|"weak"|"no_totp"
+    alert_type: str  # "reused"|"expiring"|"expired"|"weak"|"no_totp"
     message: str
-    severity: str     # "low"|"medium"|"high"|"critical"
+    severity: str  # "low"|"medium"|"high"|"critical"
 
 
 class PasswordStrengthScorer:
@@ -67,19 +66,21 @@ class PasswordStrengthScorer:
         diversity_score = classes / 4
 
         # Shannon entropy estimate
-        charset_size = sum([
-            26 if re.search(r"[a-z]", password) else 0,
-            26 if re.search(r"[A-Z]", password) else 0,
-            10 if re.search(r"\d", password) else 0,
-            32 if re.search(r"[^a-zA-Z0-9]", password) else 0,
-        ])
+        charset_size = sum(
+            [
+                26 if re.search(r"[a-z]", password) else 0,
+                26 if re.search(r"[A-Z]", password) else 0,
+                10 if re.search(r"\d", password) else 0,
+                32 if re.search(r"[^a-zA-Z0-9]", password) else 0,
+            ]
+        )
         if charset_size > 0:
             entropy_bits = len(password) * math.log2(charset_size)
             entropy_score = min(entropy_bits / 100, 1.0)
         else:
             entropy_score = 0.0
 
-        return (length_score * 0.4 + diversity_score * 0.3 + entropy_score * 0.3)
+        return length_score * 0.4 + diversity_score * 0.3 + entropy_score * 0.3
 
     @staticmethod
     def hibp_prefix(password: str) -> str:
@@ -135,21 +136,25 @@ class VaultHealthChecker:
 
             days_left = (exp - today).days
             if days_left < 0:
-                alerts.append(HealthAlert(
-                    credential_id=s.id,
-                    credential_name=s.name,
-                    alert_type="expired",
-                    message=f"'{s.name}' expired {abs(days_left)} days ago",
-                    severity="critical",
-                ))
+                alerts.append(
+                    HealthAlert(
+                        credential_id=s.id,
+                        credential_name=s.name,
+                        alert_type="expired",
+                        message=f"'{s.name}' expired {abs(days_left)} days ago",
+                        severity="critical",
+                    )
+                )
             elif days_left <= warn_days:
-                alerts.append(HealthAlert(
-                    credential_id=s.id,
-                    credential_name=s.name,
-                    alert_type="expiring",
-                    message=f"'{s.name}' expires in {days_left} days",
-                    severity="high" if days_left <= 7 else "medium",
-                ))
+                alerts.append(
+                    HealthAlert(
+                        credential_id=s.id,
+                        credential_name=s.name,
+                        alert_type="expiring",
+                        message=f"'{s.name}' expires in {days_left} days",
+                        severity="high" if days_left <= 7 else "medium",
+                    )
+                )
 
         return alerts
 
@@ -171,14 +176,15 @@ class VaultHealthChecker:
         alerts = []
         for s in summaries:
             if s.password_strength < weak_threshold:
-                alerts.append(HealthAlert(
-                    credential_id=s.id,
-                    credential_name=s.name,
-                    alert_type="weak",
-                    message=(
-                        f"'{s.name}' has a weak password "
-                        f"(score: {s.password_strength:.2f})"
-                    ),
-                    severity="high" if s.password_strength < 0.2 else "medium",
-                ))
+                alerts.append(
+                    HealthAlert(
+                        credential_id=s.id,
+                        credential_name=s.name,
+                        alert_type="weak",
+                        message=(
+                            f"'{s.name}' has a weak password (score: {s.password_strength:.2f})"
+                        ),
+                        severity="high" if s.password_strength < 0.2 else "medium",
+                    )
+                )
         return alerts

@@ -37,10 +37,10 @@ _GAP_LOG_PATH = Path("data/capability_gaps.jsonl")
 class CapabilityGap:
     """A single detected capability gap."""
 
-    gap_type: str          # "tool_missing", "knowledge_gap", etc.
-    description: str       # Human-readable description of what Emily couldn't do
+    gap_type: str  # "tool_missing", "knowledge_gap", etc.
+    description: str  # Human-readable description of what Emily couldn't do
     context: dict[str, Any] = field(default_factory=dict)
-    confidence: float = 1.0    # How confident we are this is a real gap (0-1)
+    confidence: float = 1.0  # How confident we are this is a real gap (0-1)
     resolved: bool = False
     ts: float = field(default_factory=time.time)
     gap_id: str = field(default_factory=lambda: f"gap_{int(time.time() * 1000)}")
@@ -57,7 +57,7 @@ class CapabilityGap:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "CapabilityGap":
+    def from_dict(cls, data: dict[str, Any]) -> CapabilityGap:
         return cls(
             gap_id=data.get("gap_id", f"gap_{int(time.time() * 1000)}"),
             gap_type=data["gap_type"],

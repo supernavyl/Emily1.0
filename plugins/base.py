@@ -17,6 +17,12 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
 
+# Best-effort tracing import
+try:
+    from observability.tracing import async_trace_span as _async_trace_span
+except ImportError:
+    _async_trace_span = None  # type: ignore[assignment]
+
 
 @dataclass
 class ToolResult:
@@ -29,12 +35,14 @@ class ToolResult:
     metadata: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
-    def ok(cls, output: Any, execution_time_ms: float = 0.0, **metadata: Any) -> "ToolResult":
+    def ok(cls, output: Any, execution_time_ms: float = 0.0, **metadata: Any) -> ToolResult:
         """Create a successful result."""
-        return cls(success=True, output=output, execution_time_ms=execution_time_ms, metadata=metadata)
+        return cls(
+            success=True, output=output, execution_time_ms=execution_time_ms, metadata=metadata
+        )
 
     @classmethod
-    def fail(cls, error: str, execution_time_ms: float = 0.0) -> "ToolResult":
+    def fail(cls, error: str, execution_time_ms: float = 0.0) -> ToolResult:
         """Create a failed result."""
         return cls(success=False, output=None, error=error, execution_time_ms=execution_time_ms)
 
@@ -47,11 +55,11 @@ class ValidationResult:
     errors: list[str] = field(default_factory=list)
 
     @classmethod
-    def ok(cls) -> "ValidationResult":
+    def ok(cls) -> ValidationResult:
         return cls(valid=True)
 
     @classmethod
-    def fail(cls, *errors: str) -> "ValidationResult":
+    def fail(cls, *errors: str) -> ValidationResult:
         return cls(valid=False, errors=list(errors))
 
 
@@ -181,15 +189,53 @@ class BaseTool(ABC):
         Returns:
             ToolResult.
         """
+        # Check runtime tool-capability permissions (Settings → Privacy → Tool Access)
+        try:
+            from api.routes.settings import is_tool_enabled
+
+            if not is_tool_enabled(self.name):
+                return ToolResult.fail(
+                    f"'{self.name}' is disabled. Enable it in Settings → Privacy → Tool Access."
+                )
+        except ImportError:
+            pass  # Running outside the API context (CLI / tests) — allow
+
         validation = await self.validate(params)
         if not validation.valid:
             return ToolResult.fail(f"Validation failed: {'; '.join(validation.errors)}")
 
         t0 = time.monotonic()
+        _span = None
+        if _async_trace_span is not None:
+            from observability.tracing import get_tracer
+
+            _span = get_tracer("emily").start_span(
+                "tool.execute",
+                attributes={"tool_name": self.name},
+            )
         try:
             result = await self.execute(params, context)
             result.execution_time_ms = (time.monotonic() - t0) * 1000.0
+            self._record_metrics(result)
             return result
         except Exception as exc:
             elapsed = (time.monotonic() - t0) * 1000.0
-            return ToolResult.fail(str(exc), execution_time_ms=elapsed)
+            fail_result = ToolResult.fail(str(exc), execution_time_ms=elapsed)
+            self._record_metrics(fail_result)
+            return fail_result
+        finally:
+            if _span is not None:
+                _span.end()
+
+    def _record_metrics(self, result: ToolResult) -> None:
+        """Record Prometheus metrics for this tool execution."""
+        try:
+            from observability.metrics import TOOL_CALLS_TOTAL, TOOL_EXECUTION_LATENCY
+
+            status = "ok" if result.success else "error"
+            TOOL_CALLS_TOTAL.labels(tool_name=self.name, status=status).inc()
+            TOOL_EXECUTION_LATENCY.labels(tool_name=self.name).observe(
+                result.execution_time_ms / 1000.0
+            )
+        except Exception:
+            pass  # Metrics should never break tool execution

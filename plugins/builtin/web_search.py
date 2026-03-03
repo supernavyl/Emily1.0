@@ -84,19 +84,20 @@ class WebSearchTool(BaseTool):
 
             results = []
             for r in data.get("results", [])[:num]:
-                results.append({
-                    "title": r.get("title", ""),
-                    "url": r.get("url", ""),
-                    "snippet": r.get("content", ""),
-                    "engine": r.get("engine", ""),
-                })
+                results.append(
+                    {
+                        "title": r.get("title", ""),
+                        "url": r.get("url", ""),
+                        "snippet": r.get("content", ""),
+                        "engine": r.get("engine", ""),
+                    }
+                )
 
             return ToolResult.ok(results, query=query, total_found=len(data.get("results", [])))
 
         except httpx.ConnectError:
             return ToolResult.fail(
-                f"Cannot connect to SearXNG at {self._url}. "
-                "Run: docker-compose up -d searxng"
+                f"Cannot connect to SearXNG at {self._url}. Run: docker-compose up -d searxng"
             )
         except Exception as exc:
             return ToolResult.fail(str(exc))

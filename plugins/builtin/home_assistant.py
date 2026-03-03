@@ -91,7 +91,9 @@ class HomeAssistantTool(BaseTool):
         action = params["action"]
 
         if not self._token:
-            return ToolResult.fail("Home Assistant token not configured. Set EMILY_TOOLS__HOME_ASSISTANT__TOKEN in .env")
+            return ToolResult.fail(
+                "Home Assistant token not configured. Set EMILY_TOOLS__HOME_ASSISTANT__TOKEN in .env"
+            )
 
         try:
             async with httpx.AsyncClient(

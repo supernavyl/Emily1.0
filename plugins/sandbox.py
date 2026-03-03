@@ -14,6 +14,7 @@ Falls back to plain subprocess with restricted env when bubblewrap is unavailabl
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import shutil
 import tempfile
@@ -60,18 +61,31 @@ async def run_sandboxed(
     # Build bubblewrap arguments
     bwrap_args = [
         "bwrap",
-        "--ro-bind", "/usr", "/usr",
-        "--ro-bind", "/lib", "/lib",
-        "--ro-bind", "/lib64", "/lib64",
-        "--ro-bind", "/bin", "/bin",
-        "--ro-bind", "/sbin", "/sbin",
-        "--proc", "/proc",
-        "--dev", "/dev",
-        "--tmpfs", "/tmp",
-        "--unshare-net",        # No network
-        "--unshare-pid",        # Isolated process tree
-        "--no-new-privs",       # No privilege escalation
-        "--die-with-parent",    # Kill sandbox if parent dies
+        "--ro-bind",
+        "/usr",
+        "/usr",
+        "--ro-bind",
+        "/lib",
+        "/lib",
+        "--ro-bind",
+        "/lib64",
+        "/lib64",
+        "--ro-bind",
+        "/bin",
+        "/bin",
+        "--ro-bind",
+        "/sbin",
+        "/sbin",
+        "--proc",
+        "/proc",
+        "--dev",
+        "/dev",
+        "--tmpfs",
+        "/tmp",
+        "--unshare-net",  # No network
+        "--unshare-pid",  # Isolated process tree
+        "--no-new-privs",  # No privilege escalation
+        "--die-with-parent",  # Kill sandbox if parent dies
     ]
 
     # Bind-mount allowed paths read-write
@@ -125,19 +139,34 @@ async def run_python_sandboxed(
             timeout_s=timeout_s,
         )
     finally:
-        try:
+        with contextlib.suppress(OSError):
             os.unlink(tmp_path)
-        except OSError:
-            pass
 
 
 # Builtins that are not exposed to user code in the sandbox (blocked for security)
-_BLOCKED_BUILTINS = frozenset({
-    "__import__", "eval", "exec", "compile", "open", "input",
-    "__loader__", "__spec__", "breakpoint", "getattr", "setattr",
-    "delattr", "globals", "locals", "vars", "dir", "memoryview",
-    "exec", "reload", "__build_class__",
-})
+_BLOCKED_BUILTINS = frozenset(
+    {
+        "__import__",
+        "eval",
+        "exec",
+        "compile",
+        "open",
+        "input",
+        "__loader__",
+        "__spec__",
+        "breakpoint",
+        "getattr",
+        "setattr",
+        "delattr",
+        "globals",
+        "locals",
+        "vars",
+        "dir",
+        "memoryview",
+        "reload",
+        "__build_class__",
+    }
+)
 
 
 def _wrap_code(code: str) -> str:
@@ -160,7 +189,7 @@ _safe_builtins = dict((k, v) for k, v in _orig.items() if k not in _blocked)
 __builtins__ = _safe_builtins
 
 try:
-{chr(10).join('    ' + line for line in code.splitlines())}
+{chr(10).join("    " + line for line in code.splitlines())}
 except Exception as _e:
     print(f"Error: {{_e}}", file=sys.stderr)
     sys.exit(1)
@@ -180,15 +209,17 @@ async def _run_subprocess(
             env={"PATH": "/usr/bin:/bin", "HOME": "/tmp"},
         )
         try:
-            stdout_b, stderr_b = await asyncio.wait_for(
-                proc.communicate(), timeout=timeout_s
-            )
-        except asyncio.TimeoutError:
+            stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=timeout_s)
+        except TimeoutError:
             proc.kill()
             await proc.communicate()
             return "", "Timeout exceeded", 124
 
-        return stdout_b.decode(errors="replace"), stderr_b.decode(errors="replace"), proc.returncode or 0
+        return (
+            stdout_b.decode(errors="replace"),
+            stderr_b.decode(errors="replace"),
+            proc.returncode or 0,
+        )
 
     except Exception as exc:
         return "", str(exc), 1
@@ -215,14 +246,16 @@ async def _run_plain(
             env=env,
         )
         try:
-            stdout_b, stderr_b = await asyncio.wait_for(
-                proc.communicate(), timeout=timeout_s
-            )
-        except asyncio.TimeoutError:
+            stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=timeout_s)
+        except TimeoutError:
             proc.kill()
             await proc.communicate()
             return "", "Timeout exceeded", 124
 
-        return stdout_b.decode(errors="replace"), stderr_b.decode(errors="replace"), proc.returncode or 0
+        return (
+            stdout_b.decode(errors="replace"),
+            stderr_b.decode(errors="replace"),
+            proc.returncode or 0,
+        )
     except Exception as exc:
         return "", str(exc), 1

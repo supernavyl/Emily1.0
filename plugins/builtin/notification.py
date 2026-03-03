@@ -55,9 +55,12 @@ class NotificationTool(BaseTool):
 
         cmd = [
             "notify-send",
-            "--urgency", urgency,
-            "--expire-time", str(timeout_ms),
-            "--app-name", "Emily",
+            "--urgency",
+            urgency,
+            "--expire-time",
+            str(timeout_ms),
+            "--app-name",
+            "Emily",
             title,
             message,
         ]
@@ -74,7 +77,7 @@ class NotificationTool(BaseTool):
             return ToolResult.ok(f"Notification sent: {title}")
         except FileNotFoundError:
             return ToolResult.fail("notify-send not found. Install libnotify.")
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return ToolResult.fail("Notification command timed out")
         except Exception as exc:
             return ToolResult.fail(str(exc))

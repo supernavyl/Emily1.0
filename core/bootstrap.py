@@ -18,6 +18,7 @@ import json
 import re
 import signal
 import time
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Self
 
@@ -32,11 +33,13 @@ from core.fsm import SystemFSM, SystemState
 from core.scheduler import Scheduler
 from llm.fleet import LLMFleet
 from memory.manager import MemoryManager
+from observability.event_recorder import EventRecorder
 from observability.logger import configure_logging, get_logger
 from observability.metrics import start_metrics_server
 from observability.tracing import configure_tracing
 from perception.audio.pipeline import AudioPipeline
 from perception.vision.pipeline import VisionPipeline
+from proactive.engine import Alert, ProactiveEngine, ProactiveScheduler
 from security.manager import SecurityManager
 from self_improvement.engine import SelfImprovementEngine
 from users.owner_identity import OwnerIdentityManager
@@ -51,6 +54,18 @@ except ImportError:
     _automation_available = False
 
 log = get_logger(__name__)
+
+
+@dataclass
+class HealthReport:
+    """Result of pre-startup backend health checks."""
+
+    ollama_ok: bool = False
+    qdrant_ok: bool = False
+    cuda_available: bool = False
+    vram_free_mb: int = 0
+    warnings: list[str] = field(default_factory=list)
+
 
 # Patterns that indicate the user wants Emily to sing / generate music.
 _SING_RE = re.compile(
@@ -109,13 +124,25 @@ class Bootstrap:
             data_path=settings.owner.identity_file
         )
         self.registry: AgentRegistry | None = None
+        self.proactive_engine: ProactiveEngine | None = None
+        self.proactive_scheduler: ProactiveScheduler | None = None
         self.automation_engine: object | None = None
+        self.event_recorder: EventRecorder = EventRecorder(
+            replay_dir=settings.replay.dir,
+            compress_after_hours=settings.replay.compress_after_hours,
+            enabled=settings.replay.enabled,
+        )
         self._background_tasks: list[asyncio.Task[None]] = []
         self._shutdown_event = asyncio.Event()
+        self._degraded_backends: set[str] = set()
+        self._health_report: HealthReport | None = None
 
         if brain_hub is not None:
             self.perception_bus.set_brain_hub(brain_hub)
             self.agent_bus.set_brain_hub(brain_hub)
+
+        # Wire event recorder into bus (full payload capture)
+        self.agent_bus.set_event_recorder(self.event_recorder)
 
     @classmethod
     def create(
@@ -177,6 +204,11 @@ class Bootstrap:
         Path("prompts/archive").mkdir(parents=True, exist_ok=True)
         Path("plugins/generated").mkdir(parents=True, exist_ok=True)
 
+        # 2a. Event recorder (replay debugger) — attach to hub and start session
+        if hub is not None:
+            self.event_recorder.attach(hub)
+        self.event_recorder.start_session()
+
         # 3. Metrics server
         start_metrics_server(port=s.observability.metrics_port)
 
@@ -194,9 +226,34 @@ class Bootstrap:
         # 7. LLM fleet
         await self.fleet.startup()
 
+        # 7a. Backend health checks (after fleet so Ollama client is ready)
+        self._health_report = await self._verify_backends()
+
         # 8. Memory system
         await self.memory.startup()
+        self.memory.set_fleet(self.fleet)
         await self._wire_retriever()
+
+        # 8a. Document ingestion pipeline (non-critical)
+        self.ingestor = None
+        self.rag_watcher = None
+        try:
+            from rag.ingestor import DocumentIngestor
+            from rag.watcher import RAGFileWatcher
+
+            self.ingestor = DocumentIngestor(
+                config=s.rag,
+                vector_store=getattr(self.memory, "_retriever", None)
+                and getattr(self.memory._retriever, "_vector_store", None),
+            )
+            self.rag_watcher = RAGFileWatcher(
+                config=s.rag,
+                on_file_change=self.ingestor.ingest_file,
+            )
+            await self.rag_watcher.start()
+            log.info("rag_ingestion_pipeline_started", watch_dirs=s.rag.watch_dirs)
+        except Exception as exc:
+            log.warning("rag_ingestion_pipeline_failed", error=str(exc))
 
         # Load owner identity (non-critical)
         try:
@@ -205,9 +262,38 @@ class Bootstrap:
             log.warning("identity_manager_load_failed", error=str(exc))
 
         # 9. Agent registry
-        self.registry = AgentRegistry(self.agent_bus, self.fleet, self.memory)
+        self.registry = AgentRegistry(
+            self.agent_bus,
+            self.fleet,
+            self.memory,
+            settings=self.settings,
+            self_improvement=self.self_improvement,
+        )
         await self.registry.start_all()
         self.add_background_task(self.agent_bus.run())
+
+        # 9a. Self-improvement idle cycle (every 30 min)
+        self.add_background_task(self._idle_improvement_loop())
+        # 9b. First reflection 15 min after startup (gives time to accumulate episodes)
+        self.add_background_task(self._schedule_initial_reflection())
+        # 9c. Memory consolidation loop (summarize unsummarized episodes)
+        self.add_background_task(self._memory_consolidation_loop())
+
+        # 9d. Proactive engine (non-critical)
+        try:
+            from memory.knowledge_store import KnowledgeStore
+
+            knowledge_store = KnowledgeStore()
+            await knowledge_store.connect()
+            self.proactive_engine = ProactiveEngine(store=knowledge_store)
+            self.proactive_scheduler = ProactiveScheduler(
+                self.proactive_engine, check_interval_minutes=30
+            )
+            self.proactive_scheduler.on_alert(self._on_proactive_alert)
+            await self.proactive_scheduler.start()
+            log.info("proactive_engine_started")
+        except Exception as exc:
+            log.warning("proactive_engine_start_failed", error=str(exc))
 
         # 10. Vision pipeline (non-critical — degrade gracefully)
         try:
@@ -256,6 +342,7 @@ class Bootstrap:
                 prompt_builder=PromptBuilder(),
                 identity_manager=self.identity_manager,
             )
+            self._emily_llm_provider = emily_llm
             # Adapter: reuses Emily's already-loaded Kokoro TTS instance
             emily_tts = EmilyTTSProvider(tts_manager=self.tts_manager)  # type: ignore[possibly-undefined]
 
@@ -354,6 +441,10 @@ class Bootstrap:
         # Stop security services
         await self.security.stop()
 
+        # Stop event recorder (flush + compress old sessions)
+        self.event_recorder.end_session()
+        self.event_recorder.compress_old_sessions()
+
         # Stop buses
         await self.scheduler.stop()
         self.agent_bus.stop()
@@ -383,8 +474,130 @@ class Bootstrap:
         self._background_tasks.append(task)
         return task
 
+    async def _verify_backends(self) -> HealthReport:
+        """
+        Run health checks against all configured backends before agent registration.
+
+        Checks Ollama, Qdrant (if semantic memory is enabled), CUDA availability,
+        and free VRAM. Individual check failures are non-fatal — they are logged
+        and added to ``self._degraded_backends``. A ``RuntimeError`` is raised
+        only when no LLM backend at all is reachable.
+
+        Returns:
+            A ``HealthReport`` populated with per-backend results.
+        """
+        import subprocess
+
+        import httpx
+
+        report = HealthReport()
+        s = self.settings
+
+        # --- Ollama ping ---
+        ollama_url = s.llm.ollama_base_url + "/api/tags"
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.get(ollama_url)
+                resp.raise_for_status()
+            report.ollama_ok = True
+            log.info("health_check_ollama_ok", url=s.llm.ollama_base_url)
+        except Exception as exc:
+            msg = f"Ollama unreachable at {s.llm.ollama_base_url}: {exc}"
+            log.warning("health_check_ollama_failed", error=str(exc))
+            report.warnings.append(msg)
+            self._degraded_backends.add("ollama")
+
+        # --- Qdrant ping (only when semantic memory is configured) ---
+        semantic_enabled = getattr(s.memory.semantic, "enabled", True)
+        if semantic_enabled:
+            qdrant_url = s.memory.semantic.qdrant_url + "/collections"
+            try:
+                async with httpx.AsyncClient(timeout=3.0) as client:
+                    resp = await client.get(qdrant_url)
+                    resp.raise_for_status()
+                report.qdrant_ok = True
+                log.info("health_check_qdrant_ok", url=s.memory.semantic.qdrant_url)
+            except Exception as exc:
+                msg = f"Qdrant unreachable at {s.memory.semantic.qdrant_url}: {exc}"
+                log.warning("health_check_qdrant_failed", error=str(exc))
+                report.warnings.append(msg)
+                self._degraded_backends.add("qdrant")
+        else:
+            log.info("health_check_qdrant_skipped", reason="semantic_memory_disabled")
+
+        # --- CUDA availability ---
+        try:
+            import torch  # lazy import — torch is an optional dependency
+
+            report.cuda_available = torch.cuda.is_available()
+            if report.cuda_available:
+                log.info("health_check_cuda_ok")
+            else:
+                log.warning("health_check_cuda_unavailable")
+                report.warnings.append("CUDA is not available — GPU acceleration disabled")
+        except ImportError:
+            log.info("health_check_cuda_skipped", reason="torch_not_installed")
+
+        # --- Free VRAM via nvidia-smi ---
+        async def _query_vram() -> int:
+            try:
+                result = await asyncio.to_thread(
+                    subprocess.run,
+                    [
+                        "nvidia-smi",
+                        "--query-gpu=memory.free",
+                        "--format=csv,noheader,nounits",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=3,
+                )
+                if result.returncode == 0:
+                    first_line = result.stdout.strip().splitlines()[0]
+                    return int(first_line.strip())
+            except Exception:
+                pass
+            return 0
+
+        report.vram_free_mb = await _query_vram()
+        if report.vram_free_mb > 0:
+            log.info("health_check_vram", free_mb=report.vram_free_mb)
+        else:
+            log.info("health_check_vram_unavailable", reason="nvidia-smi_not_available_or_no_gpu")
+
+        # --- Critical failure guard: no LLM backend at all ---
+        # If Ollama is down AND TabbyAPI is also unreachable, Emily cannot chat.
+        tabbyapi_ok = False
+        tabbyapi_url = s.llm.tabbyapi_base_url + "/v1/models"
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.get(tabbyapi_url)
+                resp.raise_for_status()
+            tabbyapi_ok = True
+            log.info("health_check_tabbyapi_ok", url=s.llm.tabbyapi_base_url)
+        except Exception as exc:
+            log.info("health_check_tabbyapi_unreachable", error=str(exc))
+
+        if not report.ollama_ok and not tabbyapi_ok:
+            raise RuntimeError("No LLM backend available — cannot start Emily")
+
+        if report.warnings:
+            log.warning(
+                "health_check_degraded_backends",
+                degraded=list(self._degraded_backends),
+                warnings=report.warnings,
+            )
+        else:
+            log.info("health_check_all_ok")
+
+        return report
+
     async def _wire_retriever(self) -> None:
-        """Create HybridRetriever with Qdrant + BM25 + reranker and attach to memory."""
+        """Create HybridRetriever and attach to memory.
+
+        When Qdrant is healthy: full hybrid mode (BM25 + dense + reranker).
+        When Qdrant is degraded: BM25-only keyword search still works.
+        """
         try:
             from memory.semantic.bm25 import BM25Index
             from memory.semantic.reranker import CrossEncoderReranker
@@ -392,13 +605,29 @@ class Bootstrap:
             from memory.semantic.vector_store import QdrantVectorStore
 
             s = self.settings
-            vector_store = QdrantVectorStore(config=s.memory.semantic)
-            await vector_store.ensure_collection()
 
+            # Vector store: only create if Qdrant passed health check
+            vector_store = None
+            if "qdrant" not in self._degraded_backends:
+                try:
+                    vector_store = QdrantVectorStore(config=s.memory.semantic)
+                    await vector_store.ensure_collection()
+                except Exception as exc:
+                    log.warning("qdrant_connect_failed_bm25_only", error=str(exc))
+                    self._degraded_backends.add("qdrant")
+
+            # BM25: always available (returns [] when index is empty)
             bm25 = BM25Index(index_path=s.memory.semantic.bm25_index_path)
+            bm25.load()
 
-            reranker = CrossEncoderReranker()
-            await reranker.load()
+            # Reranker: only useful with dense results, skip in BM25-only mode
+            reranker = None
+            if vector_store is not None:
+                try:
+                    reranker = CrossEncoderReranker()
+                    await reranker.load()
+                except Exception as exc:
+                    log.warning("reranker_load_failed", error=str(exc))
 
             async def _embed(text: str) -> list[float]:
                 result = await self.fleet.embed(text)
@@ -412,7 +641,8 @@ class Bootstrap:
                 reranker=reranker,
             )
             self.memory.set_retriever(retriever)
-            log.info("retriever_wired")
+            mode = "hybrid" if vector_store else "bm25_only"
+            log.info("retriever_wired", mode=mode)
         except Exception as exc:
             log.warning("retriever_unavailable_degraded_mode", error=str(exc))
 
@@ -463,6 +693,7 @@ class Bootstrap:
                 audio_pipeline=self.audio_pipeline,
                 tts_manager=self.tts_manager,
                 voice_engine=self.voice_engine_instance,
+                emily_llm=getattr(self, "_emily_llm_provider", None),
             )
         except ImportError:
             pass
@@ -747,6 +978,53 @@ class Bootstrap:
         except Exception as exc:
             log.error("llm_voice_response_failed", error=str(exc))
             return ""
+
+    async def _idle_improvement_loop(self) -> None:
+        """Background task: run the self-improvement idle cycle every 30 minutes."""
+        while True:
+            await asyncio.sleep(30 * 60)
+            try:
+                await self.self_improvement.run_idle_cycle()
+            except Exception as exc:
+                log.warning("idle_cycle_error", error=str(exc))
+
+    async def _on_proactive_alert(self, alert: Alert) -> None:
+        """Handle a proactive alert from the scheduler."""
+        if self.brain_hub is not None:
+            await self.brain_hub.emit("proactive", "alert", alert.to_dict())
+        log.info(
+            "proactive_alert",
+            alert_type=alert.alert_type,
+            severity=alert.severity,
+            title=alert.title,
+        )
+
+    async def _memory_consolidation_loop(self) -> None:
+        """Background task: summarize unsummarized episodes periodically."""
+        interval = self.settings.memory.consolidation.idle_trigger_minutes * 60
+        limit = self.settings.memory.consolidation.max_episodes_per_run
+        while True:
+            await asyncio.sleep(interval)
+            try:
+                count = await self.memory.summarize_unsummarized(limit=limit)
+                if count:
+                    log.info("memory_consolidation_ran", summarized=count)
+            except Exception as exc:
+                log.warning("memory_consolidation_error", error=str(exc))
+
+    async def _schedule_initial_reflection(self) -> None:
+        """Trigger the first reflection cycle 15 minutes after startup."""
+        await asyncio.sleep(15 * 60)
+        try:
+            await self.agent_bus.send_to(
+                recipient="ReflectionAgent",
+                msg_type="reflection.trigger",
+                payload={},
+                sender="bootstrap",
+            )
+            log.info("initial_reflection_triggered")
+        except Exception as exc:
+            log.warning("initial_reflection_schedule_failed", error=str(exc))
 
     async def run_until_shutdown(self) -> None:
         """

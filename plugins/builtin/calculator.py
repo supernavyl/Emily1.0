@@ -7,7 +7,8 @@ from typing import Any
 from plugins.base import BaseTool, ExecutionContext, ToolResult
 
 try:
-    import sympy  # type: ignore[import-untyped]
+    import sympy  # type: ignore[import-untyped]  # noqa: F401
+
     _SYMPY_AVAILABLE = True
 except ImportError:
     _SYMPY_AVAILABLE = False
@@ -33,7 +34,7 @@ class CalculatorTool(BaseTool):
             "expression": {
                 "type": "string",
                 "description": "Mathematical expression or equation to evaluate. "
-                               "Examples: '2 + 2', 'solve(x**2 - 4, x)', 'diff(sin(x), x)'",
+                "Examples: '2 + 2', 'solve(x**2 - 4, x)', 'diff(sin(x), x)'",
             }
         },
         "required": ["expression"],
@@ -66,8 +67,8 @@ class CalculatorTool(BaseTool):
     async def _sympy_eval(self, expr: str) -> ToolResult:
         """Evaluate using sympy for full symbolic math support."""
         import asyncio
-        import sympy
-        from sympy import symbols, solve, diff, integrate, simplify, expand, factor
+
+        from sympy import diff, expand, factor, integrate, simplify, solve, symbols
 
         def _compute() -> str:
             namespace = {
@@ -84,13 +85,23 @@ class CalculatorTool(BaseTool):
                 "n": symbols("n"),
             }
             # Allow basic sympy functions
-            from sympy import (sin, cos, tan, exp, log, sqrt, pi, E,
-                               oo, Rational, factorial)
-            namespace.update({
-                "sin": sin, "cos": cos, "tan": tan, "exp": exp,
-                "log": log, "sqrt": sqrt, "pi": pi, "E": E,
-                "oo": oo, "Rational": Rational, "factorial": factorial,
-            })
+            from sympy import E, Rational, cos, exp, factorial, log, oo, pi, sin, sqrt, tan
+
+            namespace.update(
+                {
+                    "sin": sin,
+                    "cos": cos,
+                    "tan": tan,
+                    "exp": exp,
+                    "log": log,
+                    "sqrt": sqrt,
+                    "pi": pi,
+                    "E": E,
+                    "oo": oo,
+                    "Rational": Rational,
+                    "factorial": factorial,
+                }
+            )
             result = eval(expr, {"__builtins__": {}}, namespace)  # noqa: S307
             return str(result)
 
@@ -103,16 +114,29 @@ class CalculatorTool(BaseTool):
     async def _safe_eval(self, expr: str) -> ToolResult:
         """Fallback: evaluate simple arithmetic with Python's eval."""
         import ast
+
         try:
             tree = ast.parse(expr, mode="eval")
             # Only allow safe node types
             for node in ast.walk(tree):
-                if not isinstance(node, (
-                    ast.Expression, ast.BinOp, ast.UnaryOp, ast.Num,
-                    ast.Add, ast.Sub, ast.Mult, ast.Div, ast.Pow,
-                    ast.Mod, ast.FloorDiv, ast.USub, ast.UAdd,
-                    ast.Constant, ast.Load,
-                )):
+                if not isinstance(
+                    node,
+                    ast.Expression
+                    | ast.BinOp
+                    | ast.UnaryOp
+                    | ast.Num
+                    | ast.Add
+                    | ast.Sub
+                    | ast.Mult
+                    | ast.Div
+                    | ast.Pow
+                    | ast.Mod
+                    | ast.FloorDiv
+                    | ast.USub
+                    | ast.UAdd
+                    | ast.Constant
+                    | ast.Load,
+                ):
                     return ToolResult.fail(f"Unsafe expression: {type(node).__name__}")
             result = eval(compile(tree, "<expr>", "eval"))  # noqa: S307
             return ToolResult.ok(str(result))

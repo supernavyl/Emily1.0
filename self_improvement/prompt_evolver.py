@@ -35,8 +35,8 @@ _ARCHIVE_DIR = Path("prompts/archive")
 class PromptVariant:
     """A single versioned prompt variant."""
 
-    slot: str           # e.g., "system_prompt"
-    version: str        # e.g., "v1", "v2"
+    slot: str  # e.g., "system_prompt"
+    version: str  # e.g., "v1", "v2"
     content: str
     wins: int = 0
     losses: int = 0
@@ -72,7 +72,7 @@ class PromptVariant:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any], content: str = "") -> "PromptVariant":
+    def from_dict(cls, data: dict[str, Any], content: str = "") -> PromptVariant:
         v = cls(
             slot=data["slot"],
             version=data["version"],
@@ -135,10 +135,7 @@ class PromptEvolver:
     def _save_stats(self) -> None:
         """Persist variant statistics to disk."""
         self._stats_path.parent.mkdir(parents=True, exist_ok=True)
-        data = {
-            slot: [v.to_dict() for v in variants]
-            for slot, variants in self._variants.items()
-        }
+        data = {slot: [v.to_dict() for v in variants] for slot, variants in self._variants.items()}
         self._stats_path.write_text(json.dumps(data, indent=2))
 
     def _load_prompt_file(self, slot: str, version: str) -> str:
@@ -246,8 +243,10 @@ class PromptEvolver:
             return
 
         best = max(variants, key=lambda v: v.avg_score)
-        if (best.sample_count >= self._MIN_SAMPLES_TO_PROMOTE
-                and best.win_rate >= self._PROMOTION_WIN_RATE_THRESHOLD):
+        if (
+            best.sample_count >= self._MIN_SAMPLES_TO_PROMOTE
+            and best.win_rate >= self._PROMOTION_WIN_RATE_THRESHOLD
+        ):
             # Archive non-best variants
             for v in variants:
                 if v.version != best.version:

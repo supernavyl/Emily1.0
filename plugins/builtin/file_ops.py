@@ -9,12 +9,23 @@ from plugins.base import BaseTool, ExecutionContext, ToolResult, ValidationResul
 
 
 def _is_path_allowed(path: str, allowed_paths: list[str]) -> bool:
-    """Check if the given path is within one of the allowed directories."""
+    """Check if the given path is within one of the allowed directories.
+
+    When *allowed_paths* is empty (the default when no ExecutionContext paths
+    were passed), fall back to the global config's tools.allowed_paths so that
+    the config.yaml setting is always respected.
+    """
+    effective = allowed_paths
+    if not effective:
+        try:
+            from config import get_settings
+
+            effective = get_settings().tools.allowed_paths
+        except Exception:
+            return False
+
     resolved = Path(path).resolve()
-    for allowed in allowed_paths:
-        if resolved.is_relative_to(Path(allowed).resolve()):
-            return True
-    return False
+    return any(resolved.is_relative_to(Path(allowed).resolve()) for allowed in effective)
 
 
 class FileReaderTool(BaseTool):
@@ -22,15 +33,22 @@ class FileReaderTool(BaseTool):
 
     name = "file_reader"
     description = (
-        "Read the contents of a file. "
-        "Only files within configured allowed paths can be read."
+        "Read the contents of a file. Only files within configured allowed paths can be read."
     )
     parameters = {
         "type": "object",
         "properties": {
             "path": {"type": "string", "description": "Absolute or relative file path to read."},
-            "encoding": {"type": "string", "description": "File encoding. Default: utf-8.", "default": "utf-8"},
-            "max_bytes": {"type": "integer", "description": "Maximum bytes to read. Default: 1MB.", "default": 1048576},
+            "encoding": {
+                "type": "string",
+                "description": "File encoding. Default: utf-8.",
+                "default": "utf-8",
+            },
+            "max_bytes": {
+                "type": "integer",
+                "description": "Maximum bytes to read. Default: 1MB.",
+                "default": 1048576,
+            },
         },
         "required": ["path"],
     }
@@ -97,7 +115,11 @@ class FileWriterTool(BaseTool):
         "properties": {
             "path": {"type": "string", "description": "File path to write to."},
             "content": {"type": "string", "description": "Content to write."},
-            "encoding": {"type": "string", "description": "File encoding. Default: utf-8.", "default": "utf-8"},
+            "encoding": {
+                "type": "string",
+                "description": "File encoding. Default: utf-8.",
+                "default": "utf-8",
+            },
             "mode": {
                 "type": "string",
                 "description": "Write mode: 'overwrite' or 'append'. Default: overwrite.",

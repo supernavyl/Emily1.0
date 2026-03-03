@@ -22,10 +22,10 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 # Argon2id parameters (OWASP recommended minimums for interactive login)
 _ARGON2_TIME_COST: Final = 3
-_ARGON2_MEMORY_COST: Final = 65536   # 64 MiB
+_ARGON2_MEMORY_COST: Final = 65536  # 64 MiB
 _ARGON2_PARALLELISM: Final = 4
-_KEY_LEN: Final = 32                  # 256-bit AES key
-_NONCE_LEN: Final = 12                # 96-bit GCM nonce
+_KEY_LEN: Final = 32  # 256-bit AES key
+_NONCE_LEN: Final = 12  # 96-bit GCM nonce
 
 # Fixed salt for KDF — stored alongside vault metadata, not the master password.
 # Using a fixed salt means the vault key is always re-derivable from the

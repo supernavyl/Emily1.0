@@ -16,7 +16,7 @@ from observability.logger import get_logger
 log = get_logger(__name__)
 
 try:
-    from prometheus_client import Counter, Histogram, Gauge
+    from prometheus_client import Counter, Gauge, Histogram
 
     VOICE_STAGE_LATENCY = Histogram(
         "emily_voice_stage_latency_seconds",
@@ -77,7 +77,7 @@ except ImportError:
     class _NoOp:
         """No-op metrics when prometheus_client is unavailable."""
 
-        def labels(self, *args: object, **kwargs: object) -> "_NoOp":
+        def labels(self, *args: object, **kwargs: object) -> _NoOp:
             return self
 
         def observe(self, *args: object) -> None:

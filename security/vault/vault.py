@@ -21,7 +21,7 @@ import asyncio
 import secrets
 import string
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -34,7 +34,6 @@ from security.vault.health_checker import VaultHealthChecker
 from security.vault.models import (
     Credential,
     CredentialSummary,
-    CredentialType,
 )
 from security.vault.totp import TOTPProvider
 
@@ -108,7 +107,7 @@ class CredentialVault:
         self._audit = AuditLog(path=audit_log_path)
 
         self._db: aiosqlite.Connection | None = None
-        self._key: bytearray | None = None          # zeroed on lock()
+        self._key: bytearray | None = None  # zeroed on lock()
         self._vault_id: str = ""
         self._lock_task: asyncio.Task[None] | None = None
 
@@ -125,9 +124,7 @@ class CredentialVault:
         await self._db.executescript(_VAULT_SCHEMA)
 
         # Ensure vault_id exists
-        async with self._db.execute(
-            "SELECT value FROM vault_meta WHERE key = 'vault_id'"
-        ) as cur:
+        async with self._db.execute("SELECT value FROM vault_meta WHERE key = 'vault_id'") as cur:
             row = await cur.fetchone()
             if row:
                 self._vault_id = row["value"]
@@ -290,7 +287,7 @@ class CredentialVault:
             cred.totp_seed = self._crypto.decrypt_hex(key, cred.totp_seed)
 
         # Update last_accessed
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         cred.last_accessed = now
         await db.execute(
             "UPDATE credentials SET last_accessed = ? WHERE id = ?",
@@ -356,12 +353,13 @@ class CredentialVault:
 
         updates.pop("secret", None)  # Never update secret via this path
         updates.pop("totp_seed", None)
-        updates["updated_at"] = datetime.now(timezone.utc).isoformat()
+        updates["updated_at"] = datetime.now(UTC).isoformat()
 
         set_clause = ", ".join(f"{k} = :{k}" for k in updates)
         updates["id"] = credential_id
         await db.execute(
-            f"UPDATE credentials SET {set_clause} WHERE id = :id", updates  # noqa: S608
+            f"UPDATE credentials SET {set_clause} WHERE id = :id",
+            updates,  # noqa: S608
         )
         await db.commit()
 
@@ -388,7 +386,7 @@ class CredentialVault:
         )
         await db.execute(
             "UPDATE credentials SET is_deleted = 1, updated_at = ? WHERE id = ?",
-            (datetime.now(timezone.utc).isoformat(), credential_id),
+            (datetime.now(UTC).isoformat(), credential_id),
         )
         await db.commit()
         log.info("credential_soft_deleted", cred_id=credential_id)

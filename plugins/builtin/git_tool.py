@@ -56,7 +56,9 @@ class GitTool(BaseTool):
         """
         subcmd = params["subcommand"]
         if subcmd not in _GIT_SUBCOMMANDS:
-            return ToolResult.fail(f"Subcommand '{subcmd}' not allowed. Use: {sorted(_GIT_SUBCOMMANDS)}")
+            return ToolResult.fail(
+                f"Subcommand '{subcmd}' not allowed. Use: {sorted(_GIT_SUBCOMMANDS)}"
+            )
 
         repo = params["repo_path"]
         args = params.get("args", [])

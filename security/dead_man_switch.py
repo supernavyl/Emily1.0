@@ -18,6 +18,7 @@ The switch timer is reset every time a user utterance is processed.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import time
 from pathlib import Path
 
@@ -84,10 +85,8 @@ class DeadManSwitch:
         """Stop the dead man's switch monitor."""
         if self._task:
             self._task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._task
-            except asyncio.CancelledError:
-                pass
 
     async def _monitor(self) -> None:
         """Main monitoring loop."""
@@ -124,6 +123,7 @@ class DeadManSwitch:
                     log.info("dead_man_switch_wiped_file", path=str(target))
                 elif target.is_dir():
                     import shutil
+
                     shutil.rmtree(target)
                     log.info("dead_man_switch_wiped_dir", path=str(target))
             except Exception as exc:

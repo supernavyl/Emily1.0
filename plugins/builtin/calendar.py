@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC
 from pathlib import Path
 from typing import Any
 
@@ -75,13 +76,14 @@ class CalendarTool(BaseTool):
     async def _read_ics(self, path: Path, days_ahead: int) -> ToolResult:
         """Read and parse an iCal file."""
         try:
-            import icalendar  # type: ignore[import-untyped]
             import asyncio
-            from datetime import datetime, timedelta, timezone
+            from datetime import datetime, timedelta
+
+            import icalendar  # type: ignore[import-untyped]
 
             def _parse() -> list[dict[str, str]]:
                 cal = icalendar.Calendar.from_ical(path.read_bytes())
-                now = datetime.now(tz=timezone.utc)
+                now = datetime.now(tz=UTC)
                 cutoff = now + timedelta(days=days_ahead)
                 events = []
                 for component in cal.walk():
@@ -89,17 +91,22 @@ class CalendarTool(BaseTool):
                         dtstart = component.get("dtstart")
                         if dtstart:
                             start = dtstart.dt
-                            if hasattr(start, "tzinfo"):
-                                if start.tzinfo is None:
-                                    start = start.replace(tzinfo=timezone.utc)
+                            if hasattr(start, "tzinfo") and start.tzinfo is None:
+                                start = start.replace(tzinfo=UTC)
                             if now.date() <= start.date() <= cutoff.date():
-                                events.append({
-                                    "summary": str(component.get("summary", "")),
-                                    "start": str(start),
-                                    "end": str(component.get("dtend", {}).dt if component.get("dtend") else ""),
-                                    "location": str(component.get("location", "")),
-                                    "description": str(component.get("description", ""))[:200],
-                                })
+                                events.append(
+                                    {
+                                        "summary": str(component.get("summary", "")),
+                                        "start": str(start),
+                                        "end": str(
+                                            component.get("dtend", {}).dt
+                                            if component.get("dtend")
+                                            else ""
+                                        ),
+                                        "location": str(component.get("location", "")),
+                                        "description": str(component.get("description", ""))[:200],
+                                    }
+                                )
                 return sorted(events, key=lambda e: e["start"])
 
             events = await asyncio.to_thread(_parse)

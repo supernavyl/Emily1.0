@@ -19,6 +19,8 @@ from security.audit_log import AuditLog
 from security.consent import ConsentDecision, ConsentGate, ConsentRequest
 from security.dead_man_switch import DeadManSwitch
 from security.encryption import AgeEncryption
+from security.llm_guard import LLMGuard
+from security.llm_guard import ScanResult as LLMGuardResult
 from security.pii_scrubber import PIIScrubber, ScrubResult
 
 log = get_logger(__name__)
@@ -56,6 +58,7 @@ class SecurityManager:
             key_path=Path(config.key_file).expanduser(),
             strict=config.encrypt_at_rest,
         )
+        self.llm_guard = LLMGuard(enabled=True)
 
     async def start(self) -> None:
         """Start background security services."""
@@ -136,6 +139,14 @@ class SecurityManager:
         decision = await self.consent_gate.request(req)
         return decision == ConsentDecision.APPROVED
 
+    async def scan_input(self, prompt: str) -> LLMGuardResult:
+        """Scan user input for prompt injection, toxicity, and secrets."""
+        return await self.llm_guard.scan_input(prompt)
+
+    async def scan_output(self, prompt: str, response: str) -> LLMGuardResult:
+        """Scan LLM output for safety issues before delivery."""
+        return await self.llm_guard.scan_output(prompt, response)
+
     def record_heartbeat(self) -> None:
         """Record a user interaction heartbeat for the dead man's switch."""
         self.dead_man_switch.heartbeat()
@@ -146,6 +157,7 @@ class _NoOpScrubber:
 
     def scrub(self, text: str) -> ScrubResult:
         from security.pii_scrubber import ScrubResult
+
         return ScrubResult(original=text, scrubbed=text, entities_found=[])
 
     def scrub_dict(self, data: dict, fields: list | None = None) -> dict:

@@ -76,13 +76,20 @@ class ProcessManagerTool(BaseTool):
                     name_filter = params.get("name_filter", "")
                     if name_filter and name_filter.lower() not in (info.get("name") or "").lower():
                         continue
-                    procs.append({
-                        "pid": info["pid"],
-                        "name": info["name"],
-                        "cpu_percent": info["cpu_percent"],
-                        "memory_mb": round((info["memory_info"].rss if info["memory_info"] else 0) / 1024 / 1024, 1),
-                        "status": info["status"],
-                    })
+                    procs.append(
+                        {
+                            "pid": info["pid"],
+                            "name": info["name"],
+                            "cpu_percent": info["cpu_percent"],
+                            "memory_mb": round(
+                                (info["memory_info"].rss if info["memory_info"] else 0)
+                                / 1024
+                                / 1024,
+                                1,
+                            ),
+                            "status": info["status"],
+                        }
+                    )
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     continue
             procs.sort(key=lambda p: p["cpu_percent"] or 0, reverse=True)

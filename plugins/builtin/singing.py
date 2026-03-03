@@ -95,13 +95,13 @@ class SingingTool(BaseTool):
         duration = params.get("duration_seconds", 30)
 
         descriptions = {
-            "generate": f"Generate {duration}s of instrumental music: \"{prompt}\""
-                        + (f" in {style} style" if style else ""),
-            "voice_convert": f"Convert audio to Emily's singing voice: \"{prompt}\"",
-            "full_song": f"Generate a full song with vocals: \"{prompt}\""
-                         + (f" in {style} style" if style else ""),
+            "generate": f'Generate {duration}s of instrumental music: "{prompt}"'
+            + (f" in {style} style" if style else ""),
+            "voice_convert": f'Convert audio to Emily\'s singing voice: "{prompt}"',
+            "full_song": f'Generate a full song with vocals: "{prompt}"'
+            + (f" in {style} style" if style else ""),
         }
-        return descriptions.get(mode, f"Generate music: \"{prompt}\"")
+        return descriptions.get(mode, f'Generate music: "{prompt}"')
 
     async def validate(self, params: dict[str, Any]) -> ValidationResult:
         """Validate parameters before execution.
@@ -125,19 +125,13 @@ class SingingTool(BaseTool):
         if mode == "voice_convert":
             audio_path = params.get("input_audio_path")
             if not audio_path:
-                return ValidationResult.fail(
-                    "voice_convert mode requires input_audio_path."
-                )
+                return ValidationResult.fail("voice_convert mode requires input_audio_path.")
             if not Path(audio_path).exists():
-                return ValidationResult.fail(
-                    f"Input audio file not found: {audio_path}"
-                )
+                return ValidationResult.fail(f"Input audio file not found: {audio_path}")
 
         duration = params.get("duration_seconds", 30)
         if isinstance(duration, int) and (duration < 1 or duration > 300):
-            return ValidationResult.fail(
-                "duration_seconds must be between 1 and 300."
-            )
+            return ValidationResult.fail("duration_seconds must be between 1 and 300.")
 
         return ValidationResult.ok()
 
@@ -183,9 +177,7 @@ class SingingTool(BaseTool):
             output_dir = Path(self._config.output_dir)
             output_dir.mkdir(parents=True, exist_ok=True)
             output_path = output_dir / f"emily_song_{int(time.time())}.pcm"
-            await asyncio.to_thread(
-                output_path.write_bytes, b"".join(chunks)
-            )
+            await asyncio.to_thread(output_path.write_bytes, b"".join(chunks))
 
             elapsed = (time.monotonic() - t0) * 1000.0
             return ToolResult.ok(

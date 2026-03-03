@@ -22,9 +22,9 @@ Log format per line (JSONL):
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import json
-import os
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -61,7 +61,7 @@ class AuditEntry:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "AuditEntry":
+    def from_dict(cls, data: dict[str, Any]) -> AuditEntry:
         entry = cls(
             event=data["event"],
             actor=data["actor"],
@@ -226,10 +226,8 @@ class AuditLog:
         recent = lines[-n:]
         entries = []
         for line in recent:
-            try:
+            with contextlib.suppress(Exception):
                 entries.append(AuditEntry.from_dict(json.loads(line)))
-            except Exception:
-                pass
         return entries
 
     async def trim_retention_days(self, days: int) -> int:

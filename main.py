@@ -32,8 +32,8 @@ def _run_emily_gui(config_path: str = "config.yaml") -> None:
     from PySide6.QtCore import QTimer
     from PySide6.QtWidgets import QApplication
 
+    from core.async_bridge import AsyncRunner
     from core.brain_hub import BrainEventHub, set_brain_hub
-    from emily_chat.ui.async_bridge import AsyncRunner
     from ui.brain.dashboard import BrainDashboard
     from ui.voice.dashboard import VoiceDashboard
     from ui.voice.poller import VoiceEnginePoller
@@ -71,7 +71,7 @@ def _run_emily_gui(config_path: str = "config.yaml") -> None:
             log.info("voice_dashboard_engine_wired")
         elif not getattr(bootstrap, "_shutdown_event", None):
             return
-        elif getattr(bootstrap, "_shutdown_event").is_set():
+        elif bootstrap._shutdown_event.is_set():
             _wire_timer.stop()
 
     _wire_timer = QTimer()
@@ -90,7 +90,7 @@ def _run_emily_gui(config_path: str = "config.yaml") -> None:
             log.info("emily_main_loop_started")
             await emily.run_until_shutdown()
 
-    token = runner.submit(_bootstrap_main())
+    runner.submit(_bootstrap_main())
 
     def _on_error(tok: str, tb: str) -> None:
         log.error("bootstrap_gui_error", traceback=tb[:2000])
@@ -113,15 +113,20 @@ def cli() -> None:
     """Console script entry point."""
     parser = argparse.ArgumentParser(description="Emily — Cognitive AI Voice OS")
     parser.add_argument(
-        "--config", default="config.yaml", help="Path to config.yaml",
+        "--config",
+        default="config.yaml",
+        help="Path to config.yaml",
     )
     gui_group = parser.add_mutually_exclusive_group()
     gui_group.add_argument(
-        "--gui", action="store_true", default=True,
+        "--gui",
+        action="store_true",
+        default=True,
         help="Launch with Brain Dashboard GUI (default)",
     )
     gui_group.add_argument(
-        "--no-gui", action="store_true",
+        "--no-gui",
+        action="store_true",
         help="Headless mode — voice only, no desktop GUI",
     )
     args = parser.parse_args()

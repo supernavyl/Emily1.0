@@ -8,7 +8,7 @@ a unified interface for starting, stopping, and sending messages.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from agents.conversation import ConversationAgent
 from agents.memory_agent import MemoryAgent
@@ -39,22 +39,34 @@ class AgentRegistry:
         bus: AgentBus,
         fleet: LLMFleet,
         memory: MemoryManager,
+        settings: Any | None = None,
+        self_improvement: Any | None = None,
     ) -> None:
         """
         Args:
             bus: Shared AgentBus.
             fleet: LLM fleet.
             memory: Unified memory manager.
+            settings: Emily settings for tool config etc.
+            self_improvement: SelfImprovementEngine instance.
         """
         self._bus = bus
         self._fleet = fleet
         self._memory = memory
+        self._settings = settings
+        self._self_improvement = self_improvement
         self._agents: dict[str, BaseAgent] = {}
 
     def _build_core_agents(self) -> list[BaseAgent]:
         """Instantiate all core agents."""
         return [
-            ConversationAgent(self._bus, self._fleet, self._memory),
+            ConversationAgent(
+                self._bus,
+                self._fleet,
+                self._memory,
+                settings=self._settings,
+                self_improvement=self._self_improvement,
+            ),
             PlannerAgent(self._bus, self._fleet, self._memory),
             MemoryAgent(self._bus, self._fleet, self._memory),
             ReflectionAgent(self._bus, self._fleet, self._memory),

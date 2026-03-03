@@ -70,10 +70,7 @@ class WebFetchTool(BaseTool):
                 resp.raise_for_status()
                 content_type = resp.headers.get("content-type", "")
 
-            if "html" in content_type:
-                text = self._extract_text(resp.text)
-            else:
-                text = resp.text
+            text = self._extract_text(resp.text) if "html" in content_type else resp.text
 
             text = text[:max_chars]
             return ToolResult.ok(text, url=url, content_type=content_type)

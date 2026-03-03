@@ -40,6 +40,7 @@ def configure_logging(
 
     if brain_tap:
         from observability.brain_tap import brain_tap_processor
+
         shared_processors.append(brain_tap_processor)
 
     if log_format == "json":
@@ -52,9 +53,7 @@ def configure_logging(
             *shared_processors,
             structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
         ],
-        wrapper_class=structlog.make_filtering_bound_logger(
-            logging.getLevelName(log_level)
-        ),
+        wrapper_class=structlog.make_filtering_bound_logger(logging.getLevelName(log_level)),
         context_class=dict,
         logger_factory=structlog.stdlib.LoggerFactory(),
         cache_logger_on_first_use=True,
