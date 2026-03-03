@@ -47,8 +47,8 @@ class RAGFileWatcher:
         """Start the file system observer."""
         self._loop = asyncio.get_running_loop()
         try:
+            from watchdog.events import FileSystemEventHandler  # type: ignore[import-untyped]
             from watchdog.observers import Observer  # type: ignore[import-untyped]
-            from watchdog.events import FileSystemEventHandler, FileCreatedEvent, FileModifiedEvent  # type: ignore[import-untyped]
 
             watcher = self
 
@@ -56,13 +56,15 @@ class RAGFileWatcher:
                 def on_created(self, event: Any) -> None:
                     if not event.is_directory:
                         asyncio.run_coroutine_threadsafe(
-                            watcher._on_change(event.src_path), watcher._loop  # type: ignore[arg-type]
+                            watcher._on_change(event.src_path),
+                            watcher._loop,  # type: ignore[arg-type]
                         )
 
                 def on_modified(self, event: Any) -> None:
                     if not event.is_directory:
                         asyncio.run_coroutine_threadsafe(
-                            watcher._on_change(event.src_path), watcher._loop  # type: ignore[arg-type]
+                            watcher._on_change(event.src_path),
+                            watcher._loop,  # type: ignore[arg-type]
                         )
 
             self._observer = Observer()
@@ -83,6 +85,7 @@ class RAGFileWatcher:
     async def _on_change(self, path: str) -> None:
         """Handle a file system event."""
         from rag.ingestor import _PARSER_MAP
+
         suffix = Path(path).suffix.lower()
         if suffix in _PARSER_MAP:
             log.info("rag_file_changed", path=path)

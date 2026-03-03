@@ -36,13 +36,14 @@ def _parse_python(p: Path) -> str:
     source = p.read_text(encoding="utf-8", errors="replace")
     try:
         tree = ast.parse(source)
-        sections = [f"# File: {p.name}\n", source]
         # Add a structure summary as a comment block
         summary_lines = [f"# Structure of {p.name}:"]
         for node in ast.walk(tree):
-            if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
-                indent = "  " if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) else ""
-                summary_lines.append(f"# {indent}{type(node).__name__}: {node.name} (line {node.lineno})")
+            if isinstance(node, ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef):
+                indent = "  " if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) else ""
+                summary_lines.append(
+                    f"# {indent}{type(node).__name__}: {node.name} (line {node.lineno})"
+                )
         return "\n".join(summary_lines) + "\n\n" + source
     except SyntaxError:
         return source
@@ -51,6 +52,7 @@ def _parse_python(p: Path) -> str:
 def _parse_notebook(p: Path) -> str:
     """Extract code and markdown cells from a Jupyter notebook."""
     import json
+
     try:
         nb = json.loads(p.read_text(encoding="utf-8"))
         cells: list[str] = []

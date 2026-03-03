@@ -85,7 +85,9 @@ class SemanticChunker:
         self.parent_size = parent_size
         self.overlap = overlap
 
-    def chunk(self, text: str, source: str = "", metadata: dict[str, Any] | None = None) -> list[Chunk]:
+    def chunk(
+        self, text: str, source: str = "", metadata: dict[str, Any] | None = None
+    ) -> list[Chunk]:
         """
         Chunk a document into parent and child chunks.
 
@@ -121,13 +123,15 @@ class SemanticChunker:
             sent_tokens = _count_tokens(sentence)
             if current_tokens + sent_tokens > self.parent_size and current_sentences:
                 content = " ".join(current_sentences)
-                parents.append(Chunk(
-                    content=content,
-                    source=source,
-                    chunk_index=chunk_index,
-                    is_parent=True,
-                    metadata=meta.copy(),
-                ))
+                parents.append(
+                    Chunk(
+                        content=content,
+                        source=source,
+                        chunk_index=chunk_index,
+                        is_parent=True,
+                        metadata=meta.copy(),
+                    )
+                )
                 # Overlap: keep last N tokens worth of sentences
                 overlap_sentences = self._take_overlap(current_sentences)
                 current_sentences = overlap_sentences + [sentence]
@@ -139,13 +143,15 @@ class SemanticChunker:
 
         if current_sentences:
             content = " ".join(current_sentences)
-            parents.append(Chunk(
-                content=content,
-                source=source,
-                chunk_index=chunk_index,
-                is_parent=True,
-                metadata=meta.copy(),
-            ))
+            parents.append(
+                Chunk(
+                    content=content,
+                    source=source,
+                    chunk_index=chunk_index,
+                    is_parent=True,
+                    metadata=meta.copy(),
+                )
+            )
 
         return parents
 
@@ -161,14 +167,16 @@ class SemanticChunker:
             sent_tokens = _count_tokens(sentence)
             if current_tokens + sent_tokens > self.child_size and current_sentences:
                 content = " ".join(current_sentences)
-                children.append(Chunk(
-                    content=content,
-                    source=source,
-                    chunk_index=child_index,
-                    parent_id=parent.id,
-                    is_parent=False,
-                    metadata=meta.copy(),
-                ))
+                children.append(
+                    Chunk(
+                        content=content,
+                        source=source,
+                        chunk_index=child_index,
+                        parent_id=parent.id,
+                        is_parent=False,
+                        metadata=meta.copy(),
+                    )
+                )
                 overlap_sentences = self._take_overlap(current_sentences)
                 current_sentences = overlap_sentences + [sentence]
                 current_tokens = sum(_count_tokens(s) for s in current_sentences)
@@ -179,14 +187,16 @@ class SemanticChunker:
 
         if current_sentences:
             content = " ".join(current_sentences)
-            children.append(Chunk(
-                content=content,
-                source=source,
-                chunk_index=child_index,
-                parent_id=parent.id,
-                is_parent=False,
-                metadata=meta.copy(),
-            ))
+            children.append(
+                Chunk(
+                    content=content,
+                    source=source,
+                    chunk_index=child_index,
+                    parent_id=parent.id,
+                    is_parent=False,
+                    metadata=meta.copy(),
+                )
+            )
 
         return children
 

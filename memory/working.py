@@ -167,10 +167,7 @@ class WorkingMemory:
             return
 
         # Collect trimmable entries (not pinned, not system role)
-        trimmable = [
-            e for e in self._entries
-            if not e.pinned and e.role != "system"
-        ]
+        trimmable = [e for e in self._entries if not e.pinned and e.role != "system"]
         trimmable.sort(key=lambda e: (e.importance, e.timestamp))
 
         for entry in trimmable:
@@ -191,10 +188,7 @@ class WorkingMemory:
         Returns:
             Ordered list of ChatMessage objects.
         """
-        return [
-            ChatMessage(role=e.role, content=e.content)
-            for e in self._entries
-        ]
+        return [ChatMessage(role=e.role, content=e.content) for e in self._entries]
 
     def to_dict_list(self) -> list[dict[str, str]]:
         """

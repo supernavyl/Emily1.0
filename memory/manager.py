@@ -13,18 +13,25 @@ enabling the manager to:
 from __future__ import annotations
 
 import asyncio
+import re
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from memory.episodic import Episode, EpisodicMemory
 
 if TYPE_CHECKING:
     from config import EmilySettings
+    from llm.fleet import LLMFleet
+import contextlib
+
 from memory.interaction_logger import InteractionLogger
 from memory.procedural import ProceduralMemory
 from memory.sensory_buffer import PerceptionEvent, SensoryBuffer
 from memory.working import WorkingMemory
 from observability.logger import get_logger
+from observability.metrics import RAG_RETRIEVAL_LATENCY
+from observability.tracing import async_trace_span
 
 log = get_logger(__name__)
 
@@ -61,6 +68,7 @@ class MemoryManager:
 
         self._session_start: float = time.time()
         self._retriever: Any | None = None
+        self._fleet: LLMFleet | None = None
         self._brain_hub = brain_hub
 
     async def startup(self) -> None:
@@ -185,6 +193,11 @@ class MemoryManager:
         )
 
         await self.episodic.save_episode(episode)
+
+        # Fire background summarization if fleet is available
+        if self._fleet is not None:
+            asyncio.create_task(self._summarize_episode(episode))
+
         self.working.clear()
         self._session_start = time.time()
 
@@ -207,6 +220,14 @@ class MemoryManager:
         self._retriever = retriever
         log.info("retriever_attached", retriever=type(retriever).__name__)
 
+    def set_fleet(self, fleet: LLMFleet) -> None:
+        """Attach the LLM fleet for background summarization tasks.
+
+        Args:
+            fleet: The LLMFleet instance.
+        """
+        self._fleet = fleet
+
     async def retrieve_context(
         self,
         query: str,
@@ -227,22 +248,176 @@ class MemoryManager:
         """
         if self._retriever is None:
             return []
-        try:
-            results = await self._retriever.retrieve(query, top_k=top_k)
-            if self._brain_hub is not None:
-                await self._brain_hub.emit(
-                    "memory",
-                    "context_retrieved",
-                    {
-                        "query": query[:120],
-                        "top_k": top_k,
-                        "results": len(results),
-                    },
-                )
-            return results
-        except Exception as exc:
-            log.warning("retrieval_failed", query=query[:80], error=str(exc))
+
+        import time as _time
+
+        _t0 = _time.monotonic()
+        async with async_trace_span(
+            "memory.rag_retrieval",
+            attributes={"top_k": str(top_k)},
+        ):
+            try:
+                results = await self._retriever.retrieve(query, top_k=top_k)
+                RAG_RETRIEVAL_LATENCY.observe(_time.monotonic() - _t0)
+                if self._brain_hub is not None:
+                    await self._brain_hub.emit(
+                        "memory",
+                        "context_retrieved",
+                        {
+                            "query": query[:120],
+                            "top_k": top_k,
+                            "results": len(results),
+                        },
+                    )
+                return results
+            except Exception as exc:
+                log.warning("retrieval_failed", query=query[:80], error=str(exc))
             return []
+
+    _RECALL_RE = re.compile(
+        r"\b(?:remember\s+when|do\s+you\s+remember|what\s+did\s+we\s+(?:discuss|talk)\s+about|"
+        r"last\s+time\s+(?:we|I)|we\s+(?:talked|discussed|mentioned)\s+(?:about\s+)?|"
+        r"you\s+(?:told|said|mentioned)\s+(?:that\s+)?|recall\s+(?:when|our|the)|"
+        r"from\s+(?:our\s+)?(?:last|previous|earlier)\s+conversation)\b",
+        re.IGNORECASE,
+    )
+
+    def has_recall_intent(self, text: str) -> bool:
+        """Detect if the user is asking about past conversations."""
+        return bool(self._RECALL_RE.search(text))
+
+    async def recall_cross_session(
+        self,
+        query: str,
+        max_episodes: int = 5,
+        max_interactions: int = 10,
+    ) -> list[dict[str, Any]]:
+        """Search episodic memory and interaction logs for cross-session context.
+
+        Args:
+            query: The user's recall query.
+            max_episodes: Max episodic results.
+            max_interactions: Max interaction results.
+
+        Returns:
+            List of context chunks formatted for RAG injection.
+        """
+        chunks: list[dict[str, Any]] = []
+
+        # Extract likely topic from the query (strip the recall intent prefix)
+        topic = self._RECALL_RE.sub("", query).strip().strip("?.,!")
+
+        # 1. Search episodic summaries
+        try:
+            episodes = await self.episodic.search_by_topic(topic, limit=max_episodes)
+            for ep in episodes:
+                chunks.append(
+                    {
+                        "content": f"[Session {ep.id[:8]}] {ep.summary}",
+                        "source": f"past conversation ({ep.emotional_tone})",
+                        "score": 0.8,
+                        "chunk_id": f"episode-{ep.id}",
+                    }
+                )
+        except Exception as exc:
+            log.debug("episodic_recall_failed", error=str(exc))
+
+        # 2. Search interaction logs (full-text)
+        if self.interaction_logger and topic:
+            try:
+                interactions = await self.interaction_logger.search_interactions(
+                    topic, limit=max_interactions
+                )
+                for ix in interactions:
+                    chunks.append(
+                        {
+                            "content": f"[{ix.role}] {ix.content}",
+                            "source": f"past interaction ({ix.session_id[:8]})",
+                            "score": 0.7,
+                            "chunk_id": f"interaction-{ix.session_id}-{ix.timestamp}",
+                        }
+                    )
+            except Exception as exc:
+                log.debug("interaction_recall_failed", error=str(exc))
+
+        log.info("cross_session_recall", query=topic[:80], n_results=len(chunks))
+        return chunks
+
+    async def _summarize_episode(self, episode: Episode) -> None:
+        """Summarize a single episode using the FAST tier and update it in the DB."""
+        if self._fleet is None:
+            return
+        try:
+            from llm.client import ChatMessage
+            from llm.router import ModelTier
+
+            transcript_text = episode.summary  # Currently the raw prefix
+            if episode.full_transcript_path:
+                with contextlib.suppress(Exception):
+                    transcript_text = Path(episode.full_transcript_path).read_text(
+                        encoding="utf-8"
+                    )[:4000]
+
+            messages = [
+                ChatMessage(
+                    role="system",
+                    content=(
+                        "You are a concise summarizer. Extract: 1) a 2-3 sentence summary, "
+                        "2) a list of topics discussed, 3) key decisions made, "
+                        "4) any action items. Respond in JSON with keys: "
+                        "summary, topics, key_decisions, action_items, emotional_tone."
+                    ),
+                ),
+                ChatMessage(
+                    role="user",
+                    content=f"Summarize this conversation:\n\n{transcript_text}",
+                ),
+            ]
+
+            result = await self._fleet.chat(
+                user_message="summarize conversation",
+                messages=messages,
+                force_tier=ModelTier.FAST,
+                max_tokens=512,
+            )
+
+            import json
+
+            try:
+                parsed = json.loads(result.content)
+            except json.JSONDecodeError:
+                # LLM didn't return valid JSON — use the raw text as summary
+                episode.summary = result.content.strip()[:500]
+                await self.episodic.save_episode(episode)
+                return
+
+            episode.summary = parsed.get("summary", episode.summary)
+            episode.topics = parsed.get("topics", episode.topics)
+            episode.key_decisions = parsed.get("key_decisions", episode.key_decisions)
+            episode.action_items = parsed.get("action_items", episode.action_items)
+            episode.emotional_tone = parsed.get("emotional_tone", episode.emotional_tone)
+            await self.episodic.save_episode(episode)
+            log.info("episode_summarized", episode_id=episode.id)
+        except Exception as exc:
+            log.warning("episode_summarization_failed", episode_id=episode.id, error=str(exc))
+
+    async def summarize_unsummarized(self, limit: int = 20) -> int:
+        """Consolidation pass: summarize any episodes still using raw transcript prefixes.
+
+        Args:
+            limit: Maximum episodes to process per run.
+
+        Returns:
+            Number of episodes summarized.
+        """
+        episodes = await self.episodic.get_unsummarized_episodes(limit=limit)
+        count = 0
+        for ep in episodes:
+            await self._summarize_episode(ep)
+            count += 1
+        if count:
+            log.info("consolidation_complete", summarized=count)
+        return count
 
     def push_perception(self, event_type: str, payload: dict[str, Any]) -> None:
         """

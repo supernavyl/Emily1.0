@@ -20,6 +20,7 @@ def parse(path: str) -> str:
     """
     try:
         import fitz  # type: ignore[import-untyped]  # PyMuPDF
+
         doc = fitz.open(path)
         pages: list[str] = []
         for page in doc:
@@ -40,6 +41,7 @@ def _ocr_page(page: object) -> str:
     """Run Tesseract OCR on a page rendered as an image."""
     try:
         import fitz
+
         mat = fitz.Matrix(2, 2)  # 2x zoom for better OCR quality
         pix = page.get_pixmap(matrix=mat)  # type: ignore[union-attr]
         img_bytes = pix.tobytes("png")
@@ -51,9 +53,11 @@ def _ocr_page(page: object) -> str:
 def _tesseract_ocr(img_bytes: bytes) -> str:
     """Run Tesseract OCR on image bytes."""
     try:
+        import io
+
         import pytesseract  # type: ignore[import-untyped]
         from PIL import Image
-        import io
+
         img = Image.open(io.BytesIO(img_bytes))
         return pytesseract.image_to_string(img)
     except ImportError:
@@ -67,6 +71,7 @@ def _fallback_read(path: str) -> str:
         # Very crude text extraction from PDF binary
         text = raw.decode("latin-1", errors="ignore")
         import re
+
         text = re.sub(r"[^\x20-\x7E\n]", " ", text)
         text = re.sub(r"\s+", " ", text)
         return text[:50000]

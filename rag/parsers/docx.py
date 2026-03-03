@@ -15,6 +15,7 @@ def parse(path: str) -> str:
     """
     try:
         from docx import Document  # type: ignore[import-untyped]
+
         doc = Document(path)
         paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
         # Also extract text from tables

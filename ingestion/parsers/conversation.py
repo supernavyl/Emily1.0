@@ -24,7 +24,7 @@ class ParsedTranscript:
     """A parsed conversation transcript ready for entity extraction."""
 
     session_id: str = ""
-    full_text: str = ""           # Concatenated speaker turns
+    full_text: str = ""  # Concatenated speaker turns
     raw_turns: list[dict] = None  # type: ignore[assignment]
 
     def __post_init__(self) -> None:
@@ -60,8 +60,7 @@ async def parse_transcript_file(path: Path) -> ParsedTranscript:
             turns = json.loads(raw)
             transcript.raw_turns = turns
             transcript.full_text = "\n".join(
-                f"{t.get('role', 'unknown').title()}: {t.get('content', '')}"
-                for t in turns
+                f"{t.get('role', 'unknown').title()}: {t.get('content', '')}" for t in turns
             )
         except json.JSONDecodeError:
             transcript.full_text = raw

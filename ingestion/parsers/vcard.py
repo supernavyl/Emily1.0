@@ -29,12 +29,12 @@ class ParsedContact:
     phone_numbers: list[str] = field(default_factory=list)
     organization: str = ""
     title: str = ""
-    birthday: str = ""          # YYYY-MM-DD or MM-DD
+    birthday: str = ""  # YYYY-MM-DD or MM-DD
     home_location: str = ""
     work_location: str = ""
     social_profiles: dict[str, str] = field(default_factory=dict)
     notes: str = ""
-    raw_text: str = ""          # Full text representation for LLM extraction
+    raw_text: str = ""  # Full text representation for LLM extraction
 
 
 def _parse_date(val: Any) -> str:
@@ -119,9 +119,7 @@ def _parse_vcard_content(content: str) -> list[ParsedContact]:
             # Organization / title
             if hasattr(vcard, "org"):
                 org_val = vcard.org.value
-                contact.organization = (
-                    org_val[0] if isinstance(org_val, list) else str(org_val)
-                )
+                contact.organization = org_val[0] if isinstance(org_val, list) else str(org_val)
             if hasattr(vcard, "title"):
                 contact.title = str(vcard.title.value).strip()
 
@@ -133,9 +131,7 @@ def _parse_vcard_content(content: str) -> list[ParsedContact]:
             if hasattr(vcard, "adr_list"):
                 for adr in vcard.adr_list:
                     val = adr.value
-                    addr_str = ", ".join(
-                        str(p) for p in [val.city, val.region, val.country] if p
-                    )
+                    addr_str = ", ".join(str(p) for p in [val.city, val.region, val.country] if p)
                     adr_type = str(getattr(adr, "type_param", "home")).lower()
                     if "work" in adr_type:
                         contact.work_location = addr_str
@@ -163,5 +159,5 @@ def _parse_vcard_content(content: str) -> list[ParsedContact]:
     except Exception as exc:
         log.error("vcard_parse_error", error=str(exc))
 
-    log.info("vcard_parsed", count=len(contacts), path=str(path))
+    log.info("vcard_parsed", count=len(contacts))
     return contacts

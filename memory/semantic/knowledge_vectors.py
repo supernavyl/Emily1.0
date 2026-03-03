@@ -23,14 +23,14 @@ import math
 import time
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from observability.logger import get_logger
 
 log = get_logger(__name__)
 
-_DENSE_DIM = 1024     # BGE-M3 dense dimension
+_DENSE_DIM = 1024  # BGE-M3 dense dimension
 _DECAY_HALF_LIFE = 30 * 86400  # 30 days in seconds
 
 
@@ -49,8 +49,8 @@ class KnowledgePoint:
     """
 
     id: str
-    text: str                         # Human-readable text for the embedding
-    record_type: str                  # entity|fact|event|knowledge
+    text: str  # Human-readable text for the embedding
+    record_type: str  # entity|fact|event|knowledge
     entity_ids: list[str] = field(default_factory=list)
     source_session: str = ""
     confidence: float = 1.0
@@ -58,9 +58,7 @@ class KnowledgePoint:
     access_count: int = 0
     last_accessed: float = field(default_factory=time.time)
     tags: list[str] = field(default_factory=list)
-    timestamp: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
-    )
+    timestamp: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     extra: dict[str, Any] = field(default_factory=dict)
 
     def to_payload(self) -> dict[str, Any]:
@@ -160,10 +158,7 @@ class KnowledgeVectorStore:
             from qdrant_client.models import Distance, VectorParams
 
             self._client = AsyncQdrantClient(url=self._url)
-            existing = {
-                c.name
-                for c in (await self._client.get_collections()).collections
-            }
+            existing = {c.name for c in (await self._client.get_collections()).collections}
 
             for col_name in self.COLLECTIONS.values():
                 if col_name not in existing:
@@ -263,7 +258,7 @@ class KnowledgeVectorStore:
 
         # Group by collection to minimise round trips
         batches: dict[str, list[PointStruct]] = {}
-        for point, emb in zip(points, embeddings):
+        for point, emb in zip(points, embeddings, strict=False):
             col = self._collection_for(point.record_type)
             qdrant_id = self.make_point_id(col, point.id)
             p = PointStruct(id=qdrant_id, vector=emb, payload=point.to_payload())
@@ -302,25 +297,32 @@ class KnowledgeVectorStore:
         # Build filter conditions
         filter_conditions: list[dict[str, Any]] = []
         if entity_id_filter:
-            filter_conditions.append({
-                "key": "entity_ids",
-                "match": {"any": [entity_id_filter]},
-            })
+            filter_conditions.append(
+                {
+                    "key": "entity_ids",
+                    "match": {"any": [entity_id_filter]},
+                }
+            )
         if min_importance is not None:
-            filter_conditions.append({
-                "key": "importance_score",
-                "range": {"gte": min_importance},
-            })
+            filter_conditions.append(
+                {
+                    "key": "importance_score",
+                    "range": {"gte": min_importance},
+                }
+            )
 
         qdrant_filter = None
         if filter_conditions:
-            from qdrant_client.models import Filter, FieldCondition, MatchAny, Range
-            qdrant_filter = Filter(must=[
-                FieldCondition(**c) if "match" not in c else FieldCondition(
-                    key=c["key"], match=MatchAny(any=c["match"]["any"])
-                )
-                for c in filter_conditions
-            ])
+            from qdrant_client.models import FieldCondition, Filter, MatchAny
+
+            qdrant_filter = Filter(
+                must=[
+                    FieldCondition(**c)
+                    if "match" not in c
+                    else FieldCondition(key=c["key"], match=MatchAny(any=c["match"]["any"]))
+                    for c in filter_conditions
+                ]
+            )
 
         results = await self._client.search(
             collection_name=collection,
@@ -395,7 +397,7 @@ class KnowledgeVectorStore:
         if not self._available or self._client is None:
             return
 
-        from qdrant_client.models import Filter, FieldCondition, MatchAny
+        from qdrant_client.models import FieldCondition, Filter, MatchAny
 
         collection = self._collection_for(record_type)
         await self._client.delete(

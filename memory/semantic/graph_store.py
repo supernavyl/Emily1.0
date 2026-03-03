@@ -43,6 +43,7 @@ class KnowledgeGraph:
         """Initialize or load the knowledge graph."""
         try:
             import networkx as nx  # type: ignore[import-untyped]
+
             graph_path = Path(self._GRAPH_PATH)
             if graph_path.exists():
                 data = json.loads(graph_path.read_text())
@@ -59,6 +60,7 @@ class KnowledgeGraph:
             log.warning("networkx_not_installed_knowledge_graph_disabled")
         except Exception as exc:
             import networkx as nx
+
             log.error("knowledge_graph_load_error", error=str(exc))
             self._graph = nx.DiGraph()
             self._available = True
@@ -126,7 +128,6 @@ class KnowledgeGraph:
         if not self._available or self._graph is None:
             return []
 
-        import networkx as nx
         neighbors: list[dict[str, Any]] = []
         visited = {entity}
 
@@ -139,12 +140,14 @@ class KnowledgeGraph:
                         visited.add(neighbor)
                         next_frontier.append(neighbor)
                         node_data = self._graph.nodes[neighbor]  # type: ignore[union-attr]
-                        neighbors.append({
-                            "name": neighbor,
-                            "entity_type": node_data.get("entity_type", "unknown"),
-                            "relationship": data.get("relationship", "related_to"),
-                            "source": node,
-                        })
+                        neighbors.append(
+                            {
+                                "name": neighbor,
+                                "entity_type": node_data.get("entity_type", "unknown"),
+                                "relationship": data.get("relationship", "related_to"),
+                                "source": node,
+                            }
+                        )
             frontier = next_frontier
 
         return neighbors
@@ -170,6 +173,7 @@ class KnowledgeGraph:
             return
         try:
             import networkx as nx
+
             data = nx.node_link_data(self._graph)
             path = Path(self._GRAPH_PATH)
             path.parent.mkdir(parents=True, exist_ok=True)

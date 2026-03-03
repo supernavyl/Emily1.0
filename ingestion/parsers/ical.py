@@ -9,8 +9,9 @@ coordinator to persist.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -25,7 +26,7 @@ class ParsedEvent:
 
     title: str = ""
     event_type: str = "calendar"
-    datetime_str: str = ""    # ISO8601
+    datetime_str: str = ""  # ISO8601
     duration_minutes: int | None = None
     location: str = ""
     description: str = ""
@@ -37,14 +38,15 @@ class ParsedEvent:
 def _dt_to_iso(dt_value: Any) -> str:
     """Convert icalendar date/datetime to ISO8601 string."""
     try:
-        from datetime import date as date_type, datetime as dt_type
+        from datetime import date as date_type
+        from datetime import datetime as dt_type
+
         if isinstance(dt_value, dt_type):
             if dt_value.tzinfo is None:
-                dt_value = dt_value.replace(tzinfo=timezone.utc)
+                dt_value = dt_value.replace(tzinfo=UTC)
             return dt_value.isoformat()
         if isinstance(dt_value, date_type):
-            return datetime(dt_value.year, dt_value.month, dt_value.day,
-                            tzinfo=timezone.utc).isoformat()
+            return datetime(dt_value.year, dt_value.month, dt_value.day, tzinfo=UTC).isoformat()
     except Exception:
         pass
     return str(dt_value)
@@ -106,12 +108,8 @@ def _parse_ical_content(content: bytes) -> list[ParsedEvent]:
                 except Exception:
                     pass
             elif duration_prop:
-                try:
-                    event.duration_minutes = int(
-                        duration_prop.dt.total_seconds() / 60
-                    )
-                except Exception:
-                    pass
+                with contextlib.suppress(Exception):
+                    event.duration_minutes = int(duration_prop.dt.total_seconds() / 60)
 
             location = component.get("LOCATION")
             event.location = str(location) if location else ""
@@ -126,9 +124,7 @@ def _parse_ical_content(content: bytes) -> list[ParsedEvent]:
             attendees_raw = component.get("ATTENDEE", [])
             if not isinstance(attendees_raw, list):
                 attendees_raw = [attendees_raw]
-            event.attendees = [
-                str(a).replace("mailto:", "") for a in attendees_raw
-            ]
+            event.attendees = [str(a).replace("mailto:", "") for a in attendees_raw]
 
             parts = [f"Event: {event.title}"]
             if event.datetime_str:

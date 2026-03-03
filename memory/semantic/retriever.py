@@ -50,7 +50,9 @@ def _reciprocal_rank_fusion(
             scores[chunk_id] = scores.get(chunk_id, 0.0) + 1.0 / (k + rank)
             items[chunk_id] = item
 
-    fused = sorted(items.values(), key=lambda x: scores.get(x.get("chunk_id", ""), 0.0), reverse=True)
+    fused = sorted(
+        items.values(), key=lambda x: scores.get(x.get("chunk_id", ""), 0.0), reverse=True
+    )
     for item in fused:
         cid = item.get("chunk_id") or item.get("id", "")
         item["rrf_score"] = scores.get(cid, 0.0)
@@ -68,7 +70,7 @@ class HybridRetriever:
     def __init__(
         self,
         config: RAGConfig,
-        vector_store: QdrantVectorStore,
+        vector_store: QdrantVectorStore | None,
         bm25: BM25Index,
         embedder: Any,
         reranker: Any | None = None,
@@ -76,7 +78,7 @@ class HybridRetriever:
         """
         Args:
             config: RAG configuration.
-            vector_store: Qdrant vector store instance.
+            vector_store: Qdrant vector store, or None for BM25-only mode.
             bm25: BM25 index instance.
             embedder: Embedding function: async (text: str) -> list[float].
             reranker: Optional CrossEncoderReranker for final re-scoring.
@@ -105,21 +107,23 @@ class HybridRetriever:
             Ranked list of chunk dicts ready for LLM context.
         """
         import time
+
         t0 = time.monotonic()
         final_k = top_k or self._config.final_top_k
 
-        queries = [query]
         # Query expansion (requires LLM — skipped if embedder is not a fleet)
         # Full expansion implemented in Phase 9 when fleet is available to retriever
 
-        # Embed the query
-        query_vector = await self._embedder(query)
+        # BM25 sparse search (always available)
+        bm25_results = await asyncio.to_thread(self._bm25.search, query, self._config.rerank_top_k)
 
-        # Run BM25 and dense search in parallel
-        bm25_results, dense_results = await asyncio.gather(
-            asyncio.to_thread(self._bm25.search, query, self._config.rerank_top_k),
-            self._vector_store.search(query_vector, top_k=self._config.rerank_top_k),
-        )
+        # Dense vector search (only when Qdrant is wired)
+        dense_results: list[dict[str, Any]] = []
+        if self._vector_store is not None:
+            query_vector = await self._embedder(query)
+            dense_results = await self._vector_store.search(
+                query_vector, top_k=self._config.rerank_top_k
+            )
 
         # Normalize BM25 scores to [0, 1]
         if bm25_results:
@@ -127,11 +131,12 @@ class HybridRetriever:
             for r in bm25_results:
                 r["score"] = r.get("bm25_score", 0.0) / max_score
 
-        # RRF fusion
-        fused = _reciprocal_rank_fusion([bm25_results, dense_results])
+        # RRF fusion (works with one or both result lists)
+        ranked_lists = [r for r in [bm25_results, dense_results] if r]
+        fused = _reciprocal_rank_fusion(ranked_lists) if ranked_lists else []
 
         # Parent chunk promotion: replace children with their parents
-        promoted = await self._promote_parents(fused[:self._config.rerank_top_k])
+        promoted = await self._promote_parents(fused[: self._config.rerank_top_k])
 
         # Cross-encoder reranking (if available)
         if self._reranker is not None:
@@ -153,9 +158,7 @@ class HybridRetriever:
 
         return result
 
-    async def _promote_parents(
-        self, results: list[dict[str, Any]]
-    ) -> list[dict[str, Any]]:
+    async def _promote_parents(self, results: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """
         Replace child chunks with their parent chunks for richer LLM context.
 
@@ -173,7 +176,7 @@ class HybridRetriever:
             parent_id = result.get("parent_id")
             chunk_id = result.get("chunk_id", "")
 
-            if parent_id and parent_id not in seen_parents:
+            if parent_id and parent_id not in seen_parents and self._vector_store is not None:
                 # Try to fetch the parent chunk
                 parent = await self._vector_store.get_by_id(parent_id)
                 if parent:

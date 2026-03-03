@@ -8,7 +8,6 @@ retrieval from a single collection (BGE-M3's hybrid output).
 
 from __future__ import annotations
 
-import asyncio
 import time
 import uuid
 from typing import Any
@@ -110,9 +109,7 @@ class QdrantVectorStore:
         points = []
         for i, chunk in enumerate(chunks):
             embedding = (
-                embeddings[i]
-                if embeddings
-                else chunk.metadata.get("embedding", [0.0] * _DENSE_DIM)
+                embeddings[i] if embeddings else chunk.metadata.get("embedding", [0.0] * _DENSE_DIM)
             )
             point = PointStruct(
                 id=str(uuid.uuid5(uuid.NAMESPACE_URL, chunk.id)),
@@ -160,8 +157,6 @@ class QdrantVectorStore:
         """
         if not self._available or self._client is None:
             return []
-
-        from qdrant_client.models import Filter  # type: ignore[import-untyped]
 
         results = await self._client.search(  # type: ignore[union-attr]
             collection_name=self._config.collection_name,
@@ -221,7 +216,6 @@ class QdrantVectorStore:
         """
         if not self._available or self._client is None:
             return
-        from qdrant_client.models import SetPayload  # type: ignore[import-untyped]
 
         point_ids = [str(uuid.uuid5(uuid.NAMESPACE_URL, cid)) for cid in chunk_ids]
         now = time.time()
@@ -246,7 +240,6 @@ class QdrantVectorStore:
         """
         if not self._available or self._client is None:
             return
-        from qdrant_client.models import SetPayload  # type: ignore[import-untyped]
 
         point_id = str(uuid.uuid5(uuid.NAMESPACE_URL, chunk_id))
         existing = await self.get_by_id(chunk_id)

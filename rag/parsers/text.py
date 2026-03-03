@@ -56,6 +56,7 @@ def _parse_yaml(p: Path) -> str:
     """Convert YAML to readable text."""
     try:
         import yaml
+
         data = yaml.safe_load(p.read_text(encoding="utf-8"))
         return json.dumps(data, indent=2, ensure_ascii=False)
     except Exception:
@@ -66,6 +67,7 @@ def _parse_pptx(p: Path) -> str:
     """Extract text from a PowerPoint file."""
     try:
         from pptx import Presentation  # type: ignore[import-untyped]
+
         prs = Presentation(str(p))
         texts = []
         for slide in prs.slides:

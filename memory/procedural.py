@@ -241,7 +241,8 @@ class ProceduralMemory:
         """
         query_lower = query.lower()
         return [
-            s for s in self._data["skill_library"]
+            s
+            for s in self._data["skill_library"]
             if query_lower in s["name"].lower() or query_lower in s["description"].lower()
         ]
 

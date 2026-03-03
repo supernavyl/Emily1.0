@@ -8,7 +8,7 @@ before using this store.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -130,7 +130,7 @@ CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type);
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 class KnowledgeStore:
@@ -170,7 +170,7 @@ class KnowledgeStore:
             await self._db.close()
             self._db = None
 
-    async def __aenter__(self) -> "KnowledgeStore":
+    async def __aenter__(self) -> KnowledgeStore:
         """Support async context manager usage."""
         await self.connect()
         return self
@@ -200,9 +200,7 @@ class KnowledgeStore:
         row = entity.to_db_row()
         cols = ", ".join(row.keys())
         placeholders = ", ".join(f":{k}" for k in row)
-        await db.execute(
-            f"INSERT OR REPLACE INTO entities ({cols}) VALUES ({placeholders})", row
-        )
+        await db.execute(f"INSERT OR REPLACE INTO entities ({cols}) VALUES ({placeholders})", row)
         await db.commit()
         log.debug("entity_upserted", entity_id=entity.id, name=entity.canonical_name)
 
@@ -247,9 +245,7 @@ class KnowledgeStore:
             )
             args = (entity_type, pattern, pattern, limit)
         else:
-            query = (
-                "SELECT * FROM entities WHERE canonical_name LIKE ? OR aliases LIKE ? LIMIT ?"
-            )
+            query = "SELECT * FROM entities WHERE canonical_name LIKE ? OR aliases LIKE ? LIMIT ?"
             args = (pattern, pattern, limit)
 
         async with db.execute(query, args) as cur:
@@ -283,9 +279,7 @@ class KnowledgeStore:
         row = person.to_db_row()
         cols = ", ".join(row.keys())
         placeholders = ", ".join(f":{k}" for k in row)
-        await db.execute(
-            f"INSERT OR REPLACE INTO people ({cols}) VALUES ({placeholders})", row
-        )
+        await db.execute(f"INSERT OR REPLACE INTO people ({cols}) VALUES ({placeholders})", row)
         await db.commit()
         log.debug("person_upserted", entity_id=person.entity_id, name=person.full_name)
 
@@ -357,9 +351,7 @@ class KnowledgeStore:
         upcoming = [(today + timedelta(days=i)).strftime("%m-%d") for i in range(7)]
 
         # important_dates is JSON: {"birthday": "MM-DD", ...}
-        async with db.execute(
-            "SELECT * FROM people WHERE important_dates != '{}'"
-        ) as cur:
+        async with db.execute("SELECT * FROM people WHERE important_dates != '{}'") as cur:
             rows = await cur.fetchall()
 
         results = []
@@ -416,10 +408,7 @@ class KnowledgeStore:
         elif direction == "incoming":
             query = "SELECT * FROM relationships WHERE to_entity_id = ?"
         else:
-            query = (
-                "SELECT * FROM relationships "
-                "WHERE from_entity_id = ? OR to_entity_id = ?"
-            )
+            query = "SELECT * FROM relationships WHERE from_entity_id = ? OR to_entity_id = ?"
             async with db.execute(query, (entity_id, entity_id)) as cur:
                 rows = await cur.fetchall()
                 return [RelationshipRecord.from_db_row(dict(r)) for r in rows]
@@ -454,9 +443,7 @@ class KnowledgeStore:
         row = fact.to_db_row()
         cols = ", ".join(row.keys())
         placeholders = ", ".join(f":{k}" for k in row)
-        await db.execute(
-            f"INSERT OR REPLACE INTO facts ({cols}) VALUES ({placeholders})", row
-        )
+        await db.execute(f"INSERT OR REPLACE INTO facts ({cols}) VALUES ({placeholders})", row)
         await db.commit()
         log.debug("fact_added", fact_id=fact.id, entity_id=fact.entity_id)
 
@@ -503,16 +490,12 @@ class KnowledgeStore:
             new_fact: The new FactRecord (should reference old_fact_id via contradicts_fact_id).
         """
         db = self._require_db()
-        await db.execute(
-            "UPDATE facts SET is_superseded = 1 WHERE id = ?", (old_fact_id,)
-        )
+        await db.execute("UPDATE facts SET is_superseded = 1 WHERE id = ?", (old_fact_id,))
         new_fact.contradicts_fact_id = old_fact_id
         row = new_fact.to_db_row()
         cols = ", ".join(row.keys())
         placeholders = ", ".join(f":{k}" for k in row)
-        await db.execute(
-            f"INSERT INTO facts ({cols}) VALUES ({placeholders})", row
-        )
+        await db.execute(f"INSERT INTO facts ({cols}) VALUES ({placeholders})", row)
         await db.commit()
         log.info("fact_superseded", old_id=old_fact_id, new_id=new_fact.id)
 
@@ -531,15 +514,11 @@ class KnowledgeStore:
         row = event.to_db_row()
         cols = ", ".join(row.keys())
         placeholders = ", ".join(f":{k}" for k in row)
-        await db.execute(
-            f"INSERT OR REPLACE INTO events ({cols}) VALUES ({placeholders})", row
-        )
+        await db.execute(f"INSERT OR REPLACE INTO events ({cols}) VALUES ({placeholders})", row)
         await db.commit()
         log.debug("event_upserted", event_id=event.id, title=event.title)
 
-    async def get_events_for_entity(
-        self, entity_id: str, limit: int = 20
-    ) -> list[EventRecord]:
+    async def get_events_for_entity(self, entity_id: str, limit: int = 20) -> list[EventRecord]:
         """
         Return events where the given entity appears in participant_ids.
 
@@ -552,8 +531,7 @@ class KnowledgeStore:
         """
         db = self._require_db()
         async with db.execute(
-            "SELECT * FROM events WHERE participant_ids LIKE ? "
-            "ORDER BY datetime DESC LIMIT ?",
+            "SELECT * FROM events WHERE participant_ids LIKE ? ORDER BY datetime DESC LIMIT ?",
             (f"%{entity_id}%", limit),
         ) as cur:
             rows = await cur.fetchall()

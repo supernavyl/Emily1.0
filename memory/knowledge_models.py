@@ -8,15 +8,14 @@ directly to the SQLite tables in data/knowledge.db.
 from __future__ import annotations
 
 import json
-import time
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _uuid() -> str:
@@ -55,7 +54,7 @@ class EntityRecord:
         }
 
     @classmethod
-    def from_db_row(cls, row: dict[str, Any]) -> "EntityRecord":
+    def from_db_row(cls, row: dict[str, Any]) -> EntityRecord:
         """Deserialize from SQLite row dict."""
         return cls(
             id=row["id"],
@@ -139,7 +138,7 @@ class PersonRecord:
         }
 
     @classmethod
-    def from_db_row(cls, row: dict[str, Any]) -> "PersonRecord":
+    def from_db_row(cls, row: dict[str, Any]) -> PersonRecord:
         """Deserialize from SQLite row dict."""
         return cls(
             entity_id=row["entity_id"],
@@ -210,7 +209,7 @@ class RelationshipRecord:
         }
 
     @classmethod
-    def from_db_row(cls, row: dict[str, Any]) -> "RelationshipRecord":
+    def from_db_row(cls, row: dict[str, Any]) -> RelationshipRecord:
         """Deserialize from SQLite row dict."""
         return cls(
             id=row["id"],
@@ -261,7 +260,7 @@ class FactRecord:
         }
 
     @classmethod
-    def from_db_row(cls, row: dict[str, Any]) -> "FactRecord":
+    def from_db_row(cls, row: dict[str, Any]) -> FactRecord:
         """Deserialize from SQLite row dict."""
         return cls(
             id=row["id"],
@@ -318,7 +317,7 @@ class EventRecord:
         }
 
     @classmethod
-    def from_db_row(cls, row: dict[str, Any]) -> "EventRecord":
+    def from_db_row(cls, row: dict[str, Any]) -> EventRecord:
         """Deserialize from SQLite row dict."""
         return cls(
             id=row["id"],

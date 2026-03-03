@@ -14,11 +14,10 @@ for cross-session semantic retrieval.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import time
 import uuid
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -86,7 +85,7 @@ class Episode:
         }
 
     @classmethod
-    def from_db_row(cls, row: dict[str, Any]) -> "Episode":
+    def from_db_row(cls, row: dict[str, Any]) -> Episode:
         """Deserialize from SQLite row."""
         return cls(
             id=row["id"],
@@ -168,9 +167,7 @@ class EpisodicMemory:
         if self._db is None:
             raise RuntimeError("EpisodicMemory not connected")
 
-        async with self._db.execute(
-            "SELECT * FROM episodes WHERE id = ?", (episode_id,)
-        ) as cursor:
+        async with self._db.execute("SELECT * FROM episodes WHERE id = ?", (episode_id,)) as cursor:
             row = await cursor.fetchone()
             MEMORY_READS_TOTAL.labels(tier="episodic").inc()
             if row:
@@ -235,6 +232,25 @@ class EpisodicMemory:
         path = transcripts_dir / f"{session_id}.txt"
         path.write_text(transcript, encoding="utf-8")
         return str(path)
+
+    async def get_unsummarized_episodes(self, limit: int = 20) -> list[Episode]:
+        """Return episodes whose summary is just a transcript prefix (unsummarized).
+
+        Args:
+            limit: Maximum number to return.
+
+        Returns:
+            List of unsummarized episodes, oldest first.
+        """
+        if self._db is None:
+            return []
+
+        async with self._db.execute(
+            "SELECT * FROM episodes WHERE summary LIKE '%...' ORDER BY timestamp ASC LIMIT ?",
+            (limit,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [Episode.from_db_row(dict(row)) for row in rows]
 
     async def count(self) -> int:
         """Return the total number of stored episodes."""

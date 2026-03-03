@@ -16,7 +16,7 @@ Strategy:
 from __future__ import annotations
 
 import re
-from typing import Any
+from datetime import UTC
 
 from extraction.entity_extractor import ExtractedEntity
 from memory.knowledge_models import EntityRecord
@@ -187,10 +187,12 @@ class Deduplicator:
 
         new_aliases = set(existing.aliases)
         for alias in incoming.aliases + [incoming.canonical_name]:
-            if _normalize(alias) != _normalize(existing.canonical_name):
-                if alias not in new_aliases:
-                    new_aliases.add(alias)
-                    changed = True
+            if (
+                _normalize(alias) != _normalize(existing.canonical_name)
+                and alias not in new_aliases
+            ):
+                new_aliases.add(alias)
+                changed = True
 
         if incoming.source_session_id and incoming.source_session_id not in existing.source_ids:
             existing.source_ids.append(incoming.source_session_id)
@@ -203,8 +205,9 @@ class Deduplicator:
 
         if changed:
             existing.aliases = sorted(new_aliases)
-            from datetime import datetime, timezone
-            existing.updated_at = datetime.now(timezone.utc).isoformat()
+            from datetime import datetime
+
+            existing.updated_at = datetime.now(UTC).isoformat()
             await self._store.upsert_entity(existing)
             log.debug("entity_merged", id=existing.id, name=existing.canonical_name)
 

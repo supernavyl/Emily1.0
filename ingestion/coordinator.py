@@ -152,8 +152,8 @@ class IngestionCoordinator:
             loop: Event loop to schedule async ingest calls into.
         """
         try:
-            from watchdog.observers import Observer
             from watchdog.events import FileSystemEventHandler
+            from watchdog.observers import Observer
 
             coordinator = self
 
@@ -219,9 +219,7 @@ class IngestionCoordinator:
                 home_location=contact.home_location,
                 work_location=contact.work_location,
                 notes=contact.notes,
-                important_dates=(
-                    {"birthday": contact.birthday} if contact.birthday else {}
-                ),
+                important_dates=({"birthday": contact.birthday} if contact.birthday else {}),
             )
             await self._store.upsert_person(person)
             combined_result.entities_created += 1

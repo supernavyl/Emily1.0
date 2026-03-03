@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import tempfile
 from pathlib import Path
 
@@ -20,6 +19,7 @@ def parse(path: str) -> str:
         Transcribed text.
     """
     import shutil
+
     if not shutil.which("ffmpeg"):
         return "[ffmpeg not found. Install ffmpeg to process video files.]"
 
@@ -28,6 +28,7 @@ def parse(path: str) -> str:
 
     try:
         import subprocess
+
         result = subprocess.run(
             ["ffmpeg", "-i", path, "-vn", "-ar", "16000", "-ac", "1", "-f", "wav", tmp_path, "-y"],
             capture_output=True,
@@ -37,6 +38,7 @@ def parse(path: str) -> str:
             return f"[ffmpeg extraction failed: {result.stderr.decode(errors='replace')[:200]}]"
 
         from rag.parsers.audio import parse as audio_parse
+
         return audio_parse(tmp_path)
     except subprocess.TimeoutExpired:
         return "[Video processing timed out]"

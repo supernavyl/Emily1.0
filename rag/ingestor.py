@@ -186,8 +186,9 @@ class DocumentIngestor:
         module_path = _PARSER_MAP[suffix]
         try:
             import importlib
+
             module = importlib.import_module(module_path)
-            parse_fn = getattr(module, "parse")
+            parse_fn = module.parse
             return await asyncio.to_thread(parse_fn, str(path))
         except (ImportError, AttributeError):
             # Fallback: read as plain text
