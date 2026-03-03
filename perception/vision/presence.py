@@ -10,27 +10,28 @@ Determines whether the user is at the computer based on:
 from __future__ import annotations
 
 import asyncio
-import subprocess
 import time
 from dataclasses import dataclass, field
-from enum import Enum, auto
+from enum import StrEnum
 
 from observability.logger import get_logger
 
 log = get_logger(__name__)
 
 
-class PresenceState(str, Enum):
+class PresenceState(StrEnum):
     """User presence states."""
-    PRESENT = "present"         # User is actively at the computer
-    IDLE = "idle"               # User is present but idle
-    AWAY = "away"               # User is not detected
-    UNKNOWN = "unknown"         # Cannot determine presence
+
+    PRESENT = "present"  # User is actively at the computer
+    IDLE = "idle"  # User is present but idle
+    AWAY = "away"  # User is not detected
+    UNKNOWN = "unknown"  # Cannot determine presence
 
 
 @dataclass
 class PresenceInfo:
     """Current presence state and supporting signals."""
+
     state: PresenceState = PresenceState.UNKNOWN
     face_detected: bool = False
     system_idle_s: float = 0.0
@@ -46,8 +47,8 @@ class PresenceDetector:
     Uses OpenCV Haar cascade for fast face detection on webcam frames.
     """
 
-    _IDLE_THRESHOLD_S = 120.0    # 2 minutes of system idle → away
-    _ACTIVE_THRESHOLD_S = 10.0   # 10s or less idle → active
+    _IDLE_THRESHOLD_S = 120.0  # 2 minutes of system idle → away
+    _ACTIVE_THRESHOLD_S = 10.0  # 10s or less idle → active
 
     def __init__(
         self,
@@ -67,6 +68,7 @@ class PresenceDetector:
         """Load the OpenCV face detector."""
         try:
             import cv2
+
             path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
             self._face_cascade = cv2.CascadeClassifier(path)
             self._cv2_available = True
@@ -88,6 +90,7 @@ class PresenceDetector:
             return False
         try:
             import cv2
+
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)  # type: ignore[arg-type]
             faces = self._face_cascade.detectMultiScale(  # type: ignore[union-attr]
                 gray, scaleFactor=1.1, minNeighbors=5, minSize=(48, 48)
@@ -117,7 +120,7 @@ class PresenceDetector:
                 if cmd[0] == "xprintidle":
                     idle_val /= 1000.0
                 return idle_val
-            except (FileNotFoundError, asyncio.TimeoutError, ValueError):
+            except (TimeoutError, FileNotFoundError, ValueError):
                 continue
         return 0.0
 

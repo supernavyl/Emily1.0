@@ -10,7 +10,6 @@ Provides async wrappers for common vision tasks:
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 
 from llm.client import ChatMessage, OllamaClient
@@ -70,7 +69,7 @@ class VisionAnalyzer:
         """
         return await self._query(
             image_b64,
-            "Extract all visible text from this image. Return only the text, preserving formatting."
+            "Extract all visible text from this image. Return only the text, preserving formatting.",
         )
 
     async def analyze_screen(self, screenshot_b64: str) -> dict[str, Any]:
@@ -89,10 +88,16 @@ class VisionAnalyzer:
         )
         response = await self._query(screenshot_b64, prompt)
         from llm.structured_output import extract_json
+
         parsed = extract_json(response)
         if parsed:
             return parsed
-        return {"summary": response, "active_app": "unknown", "content_type": "unknown", "text_content": ""}
+        return {
+            "summary": response,
+            "active_app": "unknown",
+            "content_type": "unknown",
+            "text_content": "",
+        }
 
     async def infer_emotion(self, face_image_b64: str) -> dict[str, float]:
         """
@@ -106,14 +111,18 @@ class VisionAnalyzer:
         """
         prompt = (
             "Look at the face in this image. What emotion does the person appear to show? "
-            "Respond with JSON: {\"primary_emotion\": \"...\", \"confidence\": 0.0-1.0, "
-            "\"secondary_emotions\": [\"...\"]}"
+            'Respond with JSON: {"primary_emotion": "...", "confidence": 0.0-1.0, '
+            '"secondary_emotions": ["..."]}'
         )
         response = await self._query(face_image_b64, prompt)
         from llm.structured_output import extract_json
+
         parsed = extract_json(response)
         if parsed:
-            return {"primary": parsed.get("primary_emotion", "neutral"), "confidence": parsed.get("confidence", 0.5)}
+            return {
+                "primary": parsed.get("primary_emotion", "neutral"),
+                "confidence": parsed.get("confidence", 0.5),
+            }
         return {"primary": "neutral", "confidence": 0.5}
 
     async def _query(self, image_b64: str, prompt: str) -> str:

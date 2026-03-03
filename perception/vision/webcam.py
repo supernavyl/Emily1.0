@@ -12,12 +12,14 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import io
+import contextlib
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from config import VisionConfig
 from observability.logger import get_logger
+
+if TYPE_CHECKING:
+    from config import VisionConfig
 
 log = get_logger(__name__)
 
@@ -80,7 +82,6 @@ class WebcamCapture:
             return None, {}
 
         def _read_frame() -> tuple[bool, Any]:
-            import cv2
             return self._cap.read()  # type: ignore[union-attr]
 
         try:
@@ -90,6 +91,7 @@ class WebcamCapture:
 
             # Convert frame to base64 JPEG
             import cv2
+
             _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
             img_b64 = base64.b64encode(buf.tobytes()).decode()
 
@@ -97,8 +99,10 @@ class WebcamCapture:
 
             # Run emotion detection periodically
             now = time.time()
-            if (self._config.emotion_detection
-                    and now - self._last_emotion_time >= self._EMOTION_INTERVAL_S):
+            if (
+                self._config.emotion_detection
+                and now - self._last_emotion_time >= self._EMOTION_INTERVAL_S
+            ):
                 emotions = await self._analyze_emotions(frame)
                 if emotions:
                     meta["emotions"] = emotions
@@ -145,10 +149,8 @@ class WebcamCapture:
     def release(self) -> None:
         """Release the webcam device."""
         if self._cap:
-            try:
+            with contextlib.suppress(Exception):
                 self._cap.release()  # type: ignore[union-attr]
-            except Exception:
-                pass
 
     @property
     def is_available(self) -> bool:

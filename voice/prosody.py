@@ -74,10 +74,41 @@ class ProsodyController:
         enthusiasm = state.get("enthusiasm", 0.6)
         warmth = state.get("warmth", 0.6)
 
+        # --- Base emotional mapping (continuous) ---
         speed = 0.88 + 0.12 * engagement + 0.06 * enthusiasm
         pitch = 1.0 + 0.05 * enthusiasm - 0.03 * concern + 0.02 * warmth
         energy = 0.9 + 0.15 * confidence + 0.08 * engagement
         pause_after_ms = 200
+        pause_before_extra = 0
+
+        # --- Emotional threshold modulations ---
+        # High enthusiasm (>0.7): speaking rate +10%, pitch variation +15%
+        if enthusiasm > 0.7:
+            boost = (enthusiasm - 0.7) / 0.3  # 0→1 over threshold range
+            speed *= 1.0 + 0.10 * boost
+            pitch *= 1.0 + 0.15 * boost
+
+        # Low confidence (<0.4): speaking rate -5%, longer pauses
+        if confidence < 0.4:
+            deficit = (0.4 - confidence) / 0.4  # 0→1 below threshold
+            speed *= 1.0 - 0.05 * deficit
+            pause_after_ms += int(150 * deficit)
+
+        # High concern (>0.6): lower pitch, slower pace
+        if concern > 0.6:
+            level = (concern - 0.6) / 0.4  # 0→1 over threshold
+            pitch *= 1.0 - 0.08 * level
+            speed *= 1.0 - 0.07 * level
+
+        # High engagement (>0.8): more dynamic intonation range
+        if engagement > 0.8:
+            dynamic = (engagement - 0.8) / 0.2  # 0→1
+            energy *= 1.0 + 0.10 * dynamic
+
+        # Thoughtful pauses when concern > 0.5
+        if concern > 0.5:
+            pause_before_extra = int(120 * (concern - 0.5) / 0.5)
+            pause_after_ms += int(100 * (concern - 0.5) / 0.5)
 
         stripped = text.strip()
         lower_text = stripped.lower()
@@ -130,11 +161,12 @@ class ProsodyController:
             energy *= 0.5
             speed *= 0.85
 
+        base_pause_before = 50 if self._sentence_index > 1 else 0
         return ProsodyParams(
             speed=round(speed, 3),
             pitch=round(pitch, 3),
             energy=round(energy, 3),
-            pause_before_ms=50 if self._sentence_index > 1 else 0,
+            pause_before_ms=base_pause_before + pause_before_extra,
             pause_after_ms=pause_after_ms,
         )
 

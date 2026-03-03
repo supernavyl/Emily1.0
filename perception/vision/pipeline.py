@@ -12,15 +12,17 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from config import VisionConfig
 from core.bus import PerceptionBus, Priority
 from observability.logger import get_logger
 from perception.vision.presence import PresenceDetector, PresenceState
 from perception.vision.screen_capture import ScreenCapture
 from perception.vision.vision_llm import VisionAnalyzer
 from perception.vision.webcam import WebcamCapture
+
+if TYPE_CHECKING:
+    from config import VisionConfig
 
 log = get_logger(__name__)
 
@@ -102,10 +104,14 @@ class VisionPipeline:
                 screenshot_b64 = await self._screen.capture_once()
                 if screenshot_b64:
                     analysis = await self._analyzer.analyze_screen(screenshot_b64)
-                    await self._publish("vision.screen_analysis", {
-                        "analysis": analysis,
-                        "timestamp": time.time(),
-                    }, Priority.BACKGROUND)
+                    await self._publish(
+                        "vision.screen_analysis",
+                        {
+                            "analysis": analysis,
+                            "timestamp": time.time(),
+                        },
+                        Priority.BACKGROUND,
+                    )
                     log.debug("screen_analysis_published", summary=analysis.get("summary", "")[:80])
                 await asyncio.sleep(self._config.screen_capture_interval_s)
             except asyncio.CancelledError:
@@ -126,13 +132,17 @@ class VisionPipeline:
 
                 if presence_info.state != self._last_presence_state:
                     self._last_presence_state = presence_info.state
-                    await self._publish("vision.presence_update", {
-                        "state": presence_info.state.value,
-                        "face_detected": presence_info.face_detected,
-                        "system_idle_s": presence_info.system_idle_s,
-                        "confidence": presence_info.confidence,
-                        "timestamp": presence_info.last_updated,
-                    }, Priority.ACTIVE)
+                    await self._publish(
+                        "vision.presence_update",
+                        {
+                            "state": presence_info.state.value,
+                            "face_detected": presence_info.face_detected,
+                            "system_idle_s": presence_info.system_idle_s,
+                            "confidence": presence_info.confidence,
+                            "timestamp": presence_info.last_updated,
+                        },
+                        Priority.ACTIVE,
+                    )
                     log.info("presence_state_changed", state=presence_info.state.value)
 
                 # Publish emotion signals if available
@@ -141,13 +151,17 @@ class VisionPipeline:
                     # Convert DeepFace dict to top emotion
                     top_emotion = max(emotions, key=lambda k: emotions[k], default="neutral")
                     top_conf = emotions.get(top_emotion, 0.5) / 100.0
-                    await self._publish("vision.emotion_update", {
-                        "primary_emotion": top_emotion,
-                        "confidence": top_conf,
-                        "all_emotions": emotions,
-                        "source": "deepface",
-                        "timestamp": time.time(),
-                    }, Priority.BACKGROUND)
+                    await self._publish(
+                        "vision.emotion_update",
+                        {
+                            "primary_emotion": top_emotion,
+                            "confidence": top_conf,
+                            "all_emotions": emotions,
+                            "source": "deepface",
+                            "timestamp": time.time(),
+                        },
+                        Priority.BACKGROUND,
+                    )
 
                 await asyncio.sleep(self._config.webcam_capture_interval_s)
             except asyncio.CancelledError:

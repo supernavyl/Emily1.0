@@ -71,18 +71,32 @@ class WakeWordDetector:
         If a custom model path is configured, loads that ONNX file.
         Otherwise uses the built-in "hey_emily" model if available,
         or falls back to a stub.
+
+        Uses ``inference_framework`` from config (default "onnx") to avoid
+        the tflite-runtime dependency, which has no Python 3.13 wheels.
         """
         try:
             from openwakeword.model import Model  # type: ignore[import-untyped]
 
+            framework = getattr(self.config, "inference_framework", "onnx")
+
             if self.config.custom_model_path:
                 self._model = await asyncio.to_thread(
-                    Model, wakeword_models=[self.config.custom_model_path]
+                    Model,
+                    wakeword_models=[self.config.custom_model_path],
+                    inference_framework=framework,
                 )
-                log.info("wake_word_custom_model_loaded", path=self.config.custom_model_path)
+                log.info(
+                    "wake_word_custom_model_loaded",
+                    path=self.config.custom_model_path,
+                    framework=framework,
+                )
             else:
-                self._model = await asyncio.to_thread(Model)
-                log.info("wake_word_default_model_loaded")
+                self._model = await asyncio.to_thread(
+                    Model,
+                    inference_framework=framework,
+                )
+                log.info("wake_word_default_model_loaded", framework=framework)
             self._use_oww = True
         except ImportError:
             log.warning("openwakeword_not_installed", fallback="stub_detector")

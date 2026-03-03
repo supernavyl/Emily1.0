@@ -11,7 +11,7 @@ The FusionRouter runs all producers concurrently and forwards their output.
 from __future__ import annotations
 
 import asyncio
-from typing import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Callable
 
 from core.bus import PerceptionBus, Priority
 from observability.logger import get_logger

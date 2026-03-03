@@ -9,12 +9,17 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
 import io
 import time
-from typing import Any, AsyncIterator
+from typing import TYPE_CHECKING
 
-from config import VisionConfig
 from observability.logger import get_logger
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
+    from config import VisionConfig
 
 log = get_logger(__name__)
 
@@ -76,6 +81,7 @@ class ScreenCapture:
 
         def _capture() -> bytes:
             from PIL import Image  # type: ignore[import-untyped]
+
             monitor = self._sct.monitors[1]  # type: ignore[union-attr]
             screenshot = self._sct.grab(monitor)  # type: ignore[union-attr]
             img = Image.frombytes("RGB", screenshot.size, screenshot.bgra, "raw", "BGRX")
@@ -115,7 +121,5 @@ class ScreenCapture:
     def close(self) -> None:
         """Release screen capture resources."""
         if self._sct:
-            try:
+            with contextlib.suppress(Exception):
                 self._sct.close()  # type: ignore[union-attr]
-            except Exception:
-                pass
