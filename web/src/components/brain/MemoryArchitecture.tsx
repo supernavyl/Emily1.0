@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { API_RAW } from '../../lib/env'
 import {
   BookOpen, Globe, Wrench, Cpu, Radio,
   Search, ChevronDown, Brain, Sparkles,
@@ -380,8 +381,8 @@ export function MemoryArchitecture() {
     try {
       const offset = pageNum * PAGE_SIZE
       const [epRes, wRes] = await Promise.all([
-        fetch(`/api/memory/episodic?n=${PAGE_SIZE}&offset=${offset}`),
-        fetch('/api/memory/working'),
+        fetch(`${API_RAW}/memory/episodic?n=${PAGE_SIZE}&offset=${offset}`),
+        fetch(`${API_RAW}/memory/working`),
       ])
 
       if (epRes.ok) {
@@ -398,8 +399,8 @@ export function MemoryArchitecture() {
 
       // Optional: semantic and procedural (may 404 if not implemented)
       const [semRes, procRes] = await Promise.allSettled([
-        fetch('/api/memory/semantic?n=50'),
-        fetch('/api/memory/procedural'),
+        fetch(`${API_RAW}/memory/semantic?n=50`),
+        fetch(`${API_RAW}/memory/procedural`),
       ])
       if (semRes.status === 'fulfilled' && semRes.value.ok) {
         const d = await semRes.value.json()

@@ -9,7 +9,7 @@
   --color-accent-hover: #9b8cf9;
   --color-text-primary: #f0f0f5;
   --color-text-secondary: #8888aa;
-  --color-text-muted: #555570;
+  --color-text-muted: #7a7a9a;
   --color-user-bubble: #1a1a2e;
   --color-emily-bubble: #111118;
   --color-thinking-bg: #0d1520;
@@ -26,23 +26,25 @@
   --color-phase-concluding: #22c55e;
   --color-phase-uncertain: #eab308;
 
-  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
 }
 
 @font-face {
-  font-family: 'Inter';
-  src: local('Inter');
+  font-family: "Inter";
+  src: local("Inter");
   font-display: swap;
 }
 
 @font-face {
-  font-family: 'JetBrains Mono';
-  src: local('JetBrains Mono');
+  font-family: "JetBrains Mono";
+  src: local("JetBrains Mono");
   font-display: swap;
 }
 
-html, body, #root {
+html,
+body,
+#root {
   height: 100%;
   margin: 0;
   padding: 0;
@@ -79,13 +81,25 @@ body {
 }
 
 @keyframes fade-in {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes slide-in-from-top {
-  from { opacity: 0; transform: translateY(-16px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(-16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .animate-in {
@@ -128,59 +142,101 @@ mark {
 
 /* Brain dashboard animations */
 @keyframes pulse-ring {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(124, 106, 247, 0.4); }
-  50% { box-shadow: 0 0 0 12px rgba(124, 106, 247, 0); }
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(124, 106, 247, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 12px rgba(124, 106, 247, 0);
+  }
 }
 .animate-pulse-ring {
   animation: pulse-ring 2s ease-in-out infinite;
 }
 
 @keyframes glow-node {
-  0%, 100% { filter: drop-shadow(0 0 4px rgba(124, 106, 247, 0.3)); }
-  50% { filter: drop-shadow(0 0 14px rgba(124, 106, 247, 0.8)); }
+  0%,
+  100% {
+    filter: drop-shadow(0 0 4px rgba(124, 106, 247, 0.3));
+  }
+  50% {
+    filter: drop-shadow(0 0 14px rgba(124, 106, 247, 0.8));
+  }
 }
 .animate-glow-node {
   animation: glow-node 2s ease-in-out infinite;
 }
 
 @keyframes wave-bar {
-  0%, 100% { transform: scaleY(0.2); }
-  50% { transform: scaleY(1); }
+  0%,
+  100% {
+    transform: scaleY(0.2);
+  }
+  50% {
+    transform: scaleY(1);
+  }
 }
 
 @keyframes heartbeat {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.15); }
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.15);
+  }
 }
 .animate-heartbeat {
   animation: heartbeat 1.5s ease-in-out infinite;
 }
 
 @keyframes scale-in {
-  from { opacity: 0; transform: scale(0.97); }
-  to { opacity: 1; transform: scale(1); }
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 .animate-scale-in {
   animation: scale-in 0.15s ease-out;
 }
 
 @keyframes draw-line {
-  from { stroke-dashoffset: 1000; }
-  to { stroke-dashoffset: 0; }
+  from {
+    stroke-dashoffset: 1000;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
 }
 
 @keyframes orbit {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 .animate-orbit {
   animation: orbit 8s linear infinite;
 }
 
 @keyframes data-flow {
-  0% { opacity: 0; transform: translateY(0); }
-  50% { opacity: 1; }
-  100% { opacity: 0; transform: translateY(-20px); }
+  0% {
+    opacity: 0;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
 }
 .animate-data-flow {
   animation: data-flow 2s ease-in-out infinite;
@@ -188,43 +244,395 @@ mark {
 
 /* Memory Chronicle animations */
 @keyframes memory-card-in {
-  from { opacity: 0; transform: translateY(28px) scale(0.98); }
-  to   { opacity: 1; transform: translateY(0)   scale(1);    }
+  from {
+    opacity: 0;
+    transform: translateY(28px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 .animate-memory-card {
   animation: memory-card-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 @keyframes log-row-in {
-  from { opacity: 0; transform: translateX(16px); }
-  to   { opacity: 1; transform: translateX(0);    }
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 .animate-log-row {
   animation: log-row-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 @keyframes live-pulse {
-  0%, 100% { opacity: 1; transform: scale(1);    }
-  50%       { opacity: 0.4; transform: scale(0.8); }
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(0.8);
+  }
 }
 .animate-live-pulse {
   animation: live-pulse 1.2s ease-in-out infinite;
 }
 
 @keyframes shimmer {
-  0%   { background-position: -200% center; }
-  100% { background-position:  200% center; }
+  0% {
+    background-position: -200% center;
+  }
+  100% {
+    background-position: 200% center;
+  }
 }
 .animate-shimmer {
-  background: linear-gradient(90deg, transparent 0%, rgba(124,106,247,0.15) 50%, transparent 100%);
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(124, 106, 247, 0.15) 50%,
+    transparent 100%
+  );
   background-size: 200% 100%;
   animation: shimmer 2s linear infinite;
 }
 
 @keyframes film-scroll {
-  0%   { background-position: 0   0; }
-  100% { background-position: 0 40px; }
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 0 40px;
+  }
 }
 .animate-film-scroll {
   animation: film-scroll 0.8s linear infinite;
+}
+
+/* ── Onboarding cosmos ────────────────────────────────────── */
+
+@keyframes twinkle {
+  0%,
+  100% {
+    opacity: var(--star-o, 0.5);
+  }
+  50% {
+    opacity: calc(var(--star-o, 0.5) * 0.12);
+  }
+}
+
+@keyframes nebula-drift {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    transform: translate(40px, -25px) scale(1.08);
+  }
+  66% {
+    transform: translate(-30px, 20px) scale(0.93);
+  }
+}
+
+@keyframes cosmic-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow:
+      0 0 30px rgba(124, 106, 247, 0.25),
+      0 0 60px rgba(124, 106, 247, 0.08);
+  }
+  50% {
+    transform: scale(1.06);
+    box-shadow:
+      0 0 50px rgba(124, 106, 247, 0.5),
+      0 0 100px rgba(124, 106, 247, 0.18);
+  }
+}
+
+@keyframes cosmic-speak {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow:
+      0 0 40px rgba(124, 106, 247, 0.5),
+      0 0 80px rgba(124, 106, 247, 0.2);
+  }
+  25% {
+    transform: scale(1.1);
+    box-shadow:
+      0 0 60px rgba(124, 106, 247, 0.7),
+      0 0 120px rgba(124, 106, 247, 0.3);
+  }
+  75% {
+    transform: scale(1.04);
+    box-shadow:
+      0 0 35px rgba(124, 106, 247, 0.4),
+      0 0 70px rgba(124, 106, 247, 0.15);
+  }
+}
+
+@keyframes ring-rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ── Onboarding: Emily's Awakening ──────────────────────── */
+
+@keyframes spark-appear {
+  0% { opacity: 0; transform: scale(0); }
+  50% { opacity: 1; transform: scale(1.5); }
+  100% { opacity: 0.8; transform: scale(1); }
+}
+
+@keyframes orb-materialize {
+  0% { opacity: 0; transform: scale(0.3); filter: blur(8px); }
+  60% { opacity: 0.8; transform: scale(1.05); filter: blur(1px); }
+  100% { opacity: 1; transform: scale(1); filter: blur(0px); }
+}
+
+@keyframes float-up-fade {
+  0% { opacity: 1; transform: translateY(0) scale(1); }
+  40% { opacity: 1; transform: translateY(-20px) scale(1.15); }
+  100% { opacity: 0; transform: translateY(-60px) scale(1.3); }
+}
+
+@keyframes star-ignite {
+  0% { opacity: 0; transform: scale(0); filter: drop-shadow(0 0 0 rgba(124, 106, 247, 0)); }
+  50% { opacity: 1; transform: scale(1.4); filter: drop-shadow(0 0 12px rgba(124, 106, 247, 0.8)); }
+  100% { opacity: 1; transform: scale(1); filter: drop-shadow(0 0 6px rgba(124, 106, 247, 0.4)); }
+}
+
+@keyframes star-line-draw {
+  from { stroke-dashoffset: 100; }
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes aurora-ring {
+  0%,
+  100% {
+    box-shadow: 0 0 40px rgba(124, 106, 247, 0.3), 0 0 80px rgba(99, 102, 241, 0.15),
+      0 0 120px rgba(168, 85, 247, 0.08);
+  }
+  33% {
+    box-shadow: 0 0 50px rgba(99, 102, 241, 0.4), 0 0 100px rgba(124, 106, 247, 0.2),
+      0 0 140px rgba(59, 130, 246, 0.1);
+  }
+  66% {
+    box-shadow: 0 0 45px rgba(168, 85, 247, 0.35), 0 0 90px rgba(124, 106, 247, 0.18),
+      0 0 130px rgba(99, 102, 241, 0.09);
+  }
+}
+
+@keyframes phase-cross-fade-out {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(-8px); }
+}
+
+@keyframes phase-cross-fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes glow-pulse {
+  0%,
+  100% { opacity: var(--glow-base, 0.08); }
+  50% { opacity: calc(var(--glow-base, 0.08) * 2.5); }
+}
+
+@keyframes ripple-out {
+  0% { transform: scale(1); opacity: 0.6; }
+  100% { transform: scale(2.5); opacity: 0; }
+}
+
+@keyframes shield-pulse {
+  0%,
+  100% { opacity: 0.3; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(1.08); }
+}
+
+.animate-spark { animation: spark-appear 0.8s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.animate-orb-materialize { animation: orb-materialize 1.2s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.animate-float-up { animation: float-up-fade 2s ease-out forwards; }
+.animate-star-ignite { animation: star-ignite 0.6s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.animate-aurora { animation: aurora-ring 4s ease-in-out infinite; }
+.animate-phase-out { animation: phase-cross-fade-out 0.3s ease-out forwards; }
+.animate-phase-in { animation: phase-cross-fade-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.animate-glow-pulse { animation: glow-pulse 4s ease-in-out infinite; }
+.animate-ripple { animation: ripple-out 0.8s ease-out forwards; }
+.animate-shield-pulse { animation: shield-pulse 2s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-spark,
+  .animate-orb-materialize,
+  .animate-float-up,
+  .animate-star-ignite,
+  .animate-aurora,
+  .animate-phase-out,
+  .animate-phase-in,
+  .animate-glow-pulse,
+  .animate-ripple,
+  .animate-shield-pulse,
+  .animate-mode-card,
+  .animate-mode-overlay,
+  .animate-mode-glow-border {
+    animation: none !important;
+  }
+}
+
+/* ── Mode selector ─────────────────────────────── */
+
+.input-mode-border:focus {
+  border-color: var(--color-mode-accent, var(--color-accent));
+  box-shadow: 0 0 0 1px var(--color-mode-accent, var(--color-accent)),
+    0 0 20px color-mix(in srgb, var(--color-mode-glow, var(--color-accent)) 30%, transparent);
+  outline: none;
+}
+
+@keyframes mode-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.animate-mode-card {
+  animation: mode-card-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes mode-overlay-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.animate-mode-overlay {
+  animation: mode-overlay-in 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes mode-glow-border {
+  0%, 100% {
+    box-shadow: 0 0 8px var(--color-mode-glow, rgba(124, 106, 247, 0.3));
+  }
+  50% {
+    box-shadow: 0 0 20px var(--color-mode-glow, rgba(124, 106, 247, 0.5));
+  }
+}
+.animate-mode-glow-border {
+  animation: mode-glow-border 3s ease-in-out infinite;
+}
+
+/* ── End Awakening ──────────────────────────────────────── */
+
+@keyframes fade-up-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-up {
+  animation: fade-up-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* ── Vision HUD ─────────────────────────────────── */
+
+@keyframes scan-line {
+  0% {
+    top: 0%;
+    opacity: 0.5;
+  }
+  100% {
+    top: 100%;
+    opacity: 0;
+  }
+}
+
+@keyframes bracket-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 0.85;
+  }
+}
+
+@keyframes hud-flicker {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  92% {
+    opacity: 1;
+  }
+  93% {
+    opacity: 0.4;
+  }
+  94% {
+    opacity: 1;
+  }
+  96% {
+    opacity: 0.6;
+  }
+  97% {
+    opacity: 1;
+  }
+}
+
+@keyframes data-scroll {
+  0% {
+    transform: translateY(0);
+  }
+  100% {
+    transform: translateY(-100%);
+  }
+}
+
+@keyframes radar-sweep {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-scan-line {
+  animation: scan-line 3s linear infinite;
+}
+
+.animate-bracket-pulse {
+  animation: bracket-pulse 2s ease-in-out infinite;
+}
+
+.animate-hud-flicker {
+  animation: hud-flicker 6s linear infinite;
+}
+
+.animate-radar-sweep {
+  animation: radar-sweep 4s linear infinite;
 }

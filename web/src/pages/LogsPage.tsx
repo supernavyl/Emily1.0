@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { API_RAW } from '../lib/env'
 import {
   Search, Trash2, Download, RefreshCw, Shield,
   Zap, AlertTriangle, Bug, Info, ChevronRight,
@@ -323,7 +324,7 @@ export function LogsPage() {
 
   const fetchLogs = useCallback(async () => {
     try {
-      const res = await fetch('/api/logs/recent?n=500')
+      const res = await fetch(`${API_RAW}/logs/recent?n=500`)
       if (!res.ok) return
       const data = await res.json()
       const newLogs: LogEntry[] = Array.isArray(data) ? data : data.logs || []
