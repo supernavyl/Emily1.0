@@ -57,10 +57,12 @@ async def _get_all_points(
         )
         batch, next_offset = result
         for pt in batch:
-            points.append({
-                "id": pt.id,
-                "payload": pt.payload,
-            })
+            points.append(
+                {
+                    "id": pt.id,
+                    "payload": pt.payload,
+                }
+            )
         if next_offset is None:
             break
         offset = next_offset
@@ -112,8 +114,7 @@ async def run(
 
         points = await _get_all_points(client, coll_name)
         texts = [
-            p["payload"].get("content", "") or p["payload"].get("description", "")
-            for p in points
+            p["payload"].get("content", "") or p["payload"].get("description", "") for p in points
         ]
         non_empty = sum(1 for t in texts if t.strip())
 
@@ -123,7 +124,7 @@ async def run(
             continue
 
         if not non_empty:
-            print(f"    -> no text content to re-embed, recreating empty collection")
+            print("    -> no text content to re-embed, recreating empty collection")
             await client.delete_collection(coll_name)
             await client.create_collection(
                 collection_name=coll_name,
@@ -146,7 +147,7 @@ async def run(
         )
 
         new_points = []
-        for pt, vec in zip(points, vectors):
+        for pt, vec in zip(points, vectors, strict=False):
             new_points.append(
                 PointStruct(
                     id=pt["id"],

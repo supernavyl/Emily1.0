@@ -1,0 +1,16 @@
+---
+description: Rules for voice and audio
+globs: "{voice,perception/audio,conversation}/**/*.py"
+alwaysApply: true
+---
+
+# Voice & Audio Rules
+
+- STT: Faster-Whisper large-v3-turbo (CUDA float16), latency < 300ms
+- TTS: Kokoro (primary/fast), CSM (quality), XTTS v2 (cloning), latency first audio < 200ms
+- VAD: Silero VAD v5 with adaptive noise floor
+- Wake word: openWakeWord with custom ONNX model ("Hey Emily")
+- End-to-end voice response target: < 2 seconds
+- All audio processing is async
+- Support for interruption handling and backchannel responses
+- Owner voice verification via `users/owner_identity.py`

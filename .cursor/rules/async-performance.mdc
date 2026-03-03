@@ -1,0 +1,62 @@
+---
+description: Async patterns, concurrency, and performance rules for Emily's Python codebase
+globs: ["**/*.py", "!**/test_*.py", "!**/*_test.py", "!**/conftest.py"]
+alwaysApply: false
+---
+
+# Emily Async & Performance Rules
+
+## Core Async Rules
+- Never do blocking I/O in an async function — use `await asyncio.to_thread(sync_fn)` for file I/O, CPU-heavy work, or sync libraries
+- All route handlers, agent methods, bus callbacks, and provider streams must be `async def`
+- Use `async for` when consuming async iterators (provider streams, DB cursors)
+- Use `async with` for httpx clients, DB connections, and ZeroMQ sockets
+
+## Concurrency Patterns
+- `asyncio.gather(*coros)` for independent parallel tasks (e.g., fetching from multiple providers)
+- `asyncio.TaskGroup` (Python 3.11+) for structured concurrency with proper error propagation
+- `asyncio.Queue` for producer-consumer patterns (perception bus, agent bus)
+- `asyncio.Event` for signaling between tasks (interrupt flags, shutdown signals)
+- `asyncio.Semaphore` to limit concurrent access to constrained resources (VRAM, API rate limits)
+
+## Event Loop Safety
+- Never call `asyncio.run()` inside an already-running loop — use `asyncio.create_task()` or `loop.run_in_executor()`
+- Never use `time.sleep()` in async code — use `await asyncio.sleep()`
+- ZeroMQ must use `zmq.asyncio.Context` — never sync `zmq.Context` in async code
+- Avoid `loop.run_until_complete()` in async contexts — it's for sync entry points only
+
+## HTTP Clients
+- Reuse `httpx.AsyncClient` instances (one per provider) — never create per-request
+- Set explicit `httpx.Timeout(total, connect=)` — default infinite timeout is a production hazard
+- Use `async with client.stream("POST", url, json=body) as response:` for SSE consumption
+- Close clients in shutdown/cleanup — unclosed clients leak file descriptors
+
+## Database
+- Use `aiosqlite` for all SQLite operations — never `sqlite3` directly in async code
+- Pool connections where possible; single-connection SQLite should serialize via an asyncio lock
+- Use `asyncio.to_thread` for heavy query result processing
+
+## Caching
+- `functools.lru_cache` / `@cache` for pure functions with hashable args (model lookups, regex compilation)
+- Provider instances cached in module-level dicts with lazy construction
+- Consider TTL caches (`cachetools.TTLCache`) for external data that expires
+
+## Memory Efficiency
+- Use async generators (`async def stream() -> AsyncIterator[Chunk]`) for streaming — never buffer entire responses
+- Use `collections.deque(maxlen=N)` for bounded buffers (sensory buffer, log ring)
+- Release large objects (model tensors, audio buffers) explicitly when done — don't wait for GC
+
+## VRAM Management
+- Check VRAM headroom before loading models — `torch.cuda.mem_get_info()` or `nvidia-smi`
+- Unload idle models to free VRAM for active ones — the model router manages this
+- Use float16/bfloat16 inference where possible to halve VRAM usage
+- Pin frequently-used small models (nano, embedding) and swap larger ones
+
+## Latency Budget Targets
+- Wake word detection: < 50ms
+- VAD per chunk: < 1ms
+- STT (Faster-Whisper): < 300ms
+- LLM first token (fast model): < 1s
+- LLM first token (nano model): < 100ms
+- TTS first audio byte: < 200ms
+- End-to-end voice response: < 2s

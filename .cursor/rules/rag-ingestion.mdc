@@ -1,0 +1,420 @@
+---
+description: Rules for Emily's RAG pipeline (document ingestion, chunking, embedding, hybrid retrieval)
+globs: ["rag/**/*.py", "memory/semantic/**/*.py", "ingestion/**/*.py", "extraction/**/*.py"]
+alwaysApply: false
+---
+
+# Emily RAG & Ingestion Rules
+
+## RAG Architecture Overview
+Emily's RAG system uses a hybrid retrieval approach:
+1. **Document ingestion** — parse and chunk documents
+2. **Embedding** — generate dense vectors with BGE-M3
+3. **Indexing** — store in Qdrant (dense) + BM25 (sparse)
+4. **Retrieval** — hybrid search (BM25 + dense + reranking + graph expansion)
+5. **Knowledge graph** — extract entities and relations, store in networkx
+
+## Document Ingestion (`rag/ingestor.py`)
+Supported formats:
+- **Text**: .txt, .md, .rst
+- **PDF**: .pdf (via pypdf or pdfplumber)
+- **Office**: .docx, .odt (via python-docx, odfpy)
+- **eBook**: .epub (via ebooklib)
+- **Code**: .py, .js, .ts, .java, .cpp, .go, etc.
+- **Audio**: .mp3, .wav, .m4a (transcribed via Faster-Whisper)
+- **Video**: .mp4, .mkv, .avi (audio extracted, then transcribed)
+
+Ingestion pipeline:
+1. Detect file type from extension and magic bytes
+2. Route to appropriate parser in `rag/parsers/`
+3. Extract text content and metadata
+4. Chunk text with parent/child strategy
+5. Generate embeddings for each chunk
+6. Store in Qdrant + BM25 index
+7. Extract entities and relations for knowledge graph
+
+### File Watcher (`rag/watcher.py`)
+- Monitors `knowledge/` directory with watchdog
+- Auto-ingests new files on creation
+- Re-ingests modified files (detects changes via hash)
+- Deletes embeddings when files are removed
+- Debounce: wait 2 seconds after file write before ingesting (avoid partial writes)
+
+## Chunking Strategy (`rag/chunker.py`)
+Parent/child chunking for better context:
+- **Parent chunks**: 2048 tokens — large context for retrieval
+- **Child chunks**: 256 tokens — precise matching
+- Chunk boundaries respect semantic units (paragraphs, sentences, code blocks)
+- Overlap: 128 tokens between parent chunks to avoid context loss
+
+Chunking algorithm:
+1. Split on double newlines (paragraphs)
+2. If paragraph > 2048 tokens, split on sentences
+3. If sentence > 256 tokens, split on token boundaries
+4. Create parent-child relationships: each parent has 4-8 child chunks
+5. Store both in Qdrant with `parent_id` metadata
+
+### Code Chunking
+Code has special chunking rules:
+- Respect function/class boundaries (use AST parsing)
+- Include function signature in every chunk containing function body
+- Preserve indentation and syntax
+- Add language metadata for syntax highlighting
+
+## Embedding Generation (`memory/semantic/knowledge_vectors.py`)
+Model: **BGE-M3** (BAAI/bge-m3) — multilingual, high quality
+- Dimension: 1024
+- Max sequence length: 8192 tokens
+- Batch size: 32 (GPU) or 8 (CPU)
+- Precision: float32 (accuracy) or float16 (speed)
+
+Embedding pipeline:
+```python
+from memory.semantic.knowledge_vectors import embed_texts
+
+texts = ["chunk 1", "chunk 2", ...]
+embeddings = await embed_texts(texts, batch_size=32)
+# Returns: List[np.ndarray] of shape (1024,)
+```
+
+Embedding cache:
+- Cache embeddings in Qdrant with text hash as key
+- Avoid re-embedding identical text
+- Cache hit rate tracked in metrics
+
+## Vector Store (`memory/semantic/vector_store.py`)
+Qdrant collections:
+- `emily_memory` — episodic memory (conversations)
+- `emily_knowledge` — ingested documents
+- `emily_procedural` — skills and self-model
+
+Collection schema:
+```python
+{
+  "id": "uuid",
+  "vector": [0.1, 0.2, ...],  # 1024-dim
+  "payload": {
+    "text": "chunk content",
+    "source": "file path or conversation_id",
+    "timestamp": 1234567890.123,
+    "parent_id": "uuid",  # for child chunks
+    "metadata": {}  # format-specific metadata
+  }
+}
+```
+
+Vector search:
+```python
+from memory.semantic.vector_store import VectorStore
+
+results = await VectorStore.search(
+    collection="emily_knowledge",
+    query_vector=query_embedding,
+    limit=10,
+    score_threshold=0.7
+)
+```
+
+## BM25 Sparse Search (`memory/semantic/bm25.py`)
+BM25 for keyword-based retrieval:
+- Tokenization: spaCy with lemmatization
+- Parameters: k1=1.5, b=0.75 (standard BM25 defaults)
+- Index stored in memory (rebuilt on startup from Qdrant)
+- Update index incrementally on new document ingestion
+
+BM25 search:
+```python
+from memory.semantic.bm25 import BM25Index
+
+results = await BM25Index.search(
+    query="keyword search",
+    limit=10
+)
+# Returns: List[(doc_id, score)]
+```
+
+## Hybrid Retrieval (`memory/semantic/retriever.py`)
+Combines BM25 + dense vectors + reranking + graph expansion:
+
+1. **BM25 retrieval** — get top 50 keyword matches
+2. **Dense retrieval** — get top 50 semantic matches
+3. **Merge** — combine results, deduplicate by doc_id
+4. **Rerank** — use BGE-reranker-v2-m3 cross-encoder to score query-document pairs
+5. **Graph expansion** — find related entities in knowledge graph, retrieve their documents
+6. **Final ranking** — return top K after reranking
+
+Retrieval interface:
+```python
+from memory.semantic.retriever import HybridRetriever
+
+results = await HybridRetriever.retrieve(
+    query="What is Emily's memory architecture?",
+    top_k=5,
+    use_graph_expansion=True
+)
+# Returns: List[RetrievalResult] with text, score, source, metadata
+```
+
+## Reranking (`memory/semantic/reranker.py`)
+Model: **BGE-reranker-v2-m3** — cross-encoder for accurate relevance scoring
+- Input: (query, document) pairs
+- Output: relevance score 0.0-1.0
+- Batch size: 16 pairs
+- Use GPU if available (10x faster than CPU)
+
+Reranking pattern:
+```python
+from memory.semantic.reranker import rerank
+
+candidates = [doc1, doc2, doc3, ...]
+reranked = await rerank(
+    query="user query",
+    documents=candidates,
+    top_k=5
+)
+# Returns: Top 5 documents sorted by relevance
+```
+
+## Knowledge Graph (`memory/semantic/graph_store.py`)
+networkx graph for entity relationships:
+- **Nodes**: entities (people, places, concepts, events)
+- **Edges**: relationships (works_at, located_in, related_to, etc.)
+- **Attributes**: entity_type, confidence, source, timestamp
+
+Graph operations:
+```python
+from memory.semantic.graph_store import KnowledgeGraph
+
+# Add entity
+await KnowledgeGraph.add_entity(
+    entity_id="person_123",
+    entity_type="person",
+    label="John Doe",
+    attributes={"occupation": "engineer"}
+)
+
+# Add relationship
+await KnowledgeGraph.add_relation(
+    source="person_123",
+    target="company_456",
+    relation_type="works_at",
+    confidence=0.9
+)
+
+# Query neighbors
+neighbors = await KnowledgeGraph.get_neighbors(
+    entity_id="person_123",
+    relation_type="works_at"
+)
+```
+
+Graph expansion in retrieval:
+1. Extract entities from query (NER)
+2. Find matching entities in graph
+3. Get 1-hop or 2-hop neighbors
+4. Retrieve documents mentioning those entities
+5. Add to retrieval results
+
+## Entity Extraction (`extraction/entity_extractor.py`)
+Extract entities from text for knowledge graph:
+- Use spaCy NER (en_core_web_trf) for high accuracy
+- Entity types: PERSON, ORG, GPE, DATE, EVENT, PRODUCT, etc.
+- Confidence threshold: 0.7 (discard low-confidence entities)
+- Deduplication: merge entities with same label (fuzzy matching)
+
+Entity extraction pattern:
+```python
+from extraction.entity_extractor import extract_entities
+
+text = "John Doe works at Acme Corp in San Francisco."
+entities = await extract_entities(text)
+# Returns: [
+#   {"text": "John Doe", "type": "PERSON", "confidence": 0.95},
+#   {"text": "Acme Corp", "type": "ORG", "confidence": 0.92},
+#   {"text": "San Francisco", "type": "GPE", "confidence": 0.98}
+# ]
+```
+
+## Relation Extraction (`extraction/relation_extractor.py`)
+Extract relationships between entities:
+- Use dependency parsing (spaCy) to find subject-verb-object triples
+- Pattern matching for common relations (works_at, located_in, founded_by, etc.)
+- LLM-based extraction for complex relations (use smart model tier)
+
+Relation extraction pattern:
+```python
+from extraction.relation_extractor import extract_relations
+
+text = "John Doe works at Acme Corp in San Francisco."
+relations = await extract_relations(text, entities)
+# Returns: [
+#   {"source": "John Doe", "target": "Acme Corp", "type": "works_at", "confidence": 0.9},
+#   {"source": "Acme Corp", "target": "San Francisco", "type": "located_in", "confidence": 0.85}
+# ]
+```
+
+## Deduplication (`extraction/deduplicator.py`)
+Merge duplicate entities and relations:
+- Fuzzy string matching (Levenshtein distance) for entity labels
+- Threshold: 0.85 similarity → merge
+- Merge strategy: keep higher-confidence entity, aggregate attributes
+- Update graph edges to point to canonical entity
+
+Deduplication runs:
+- After each ingestion (incremental)
+- Nightly batch job (full graph deduplication)
+
+## Structured Data Ingestion (`ingestion/coordinator.py`)
+Ingest structured data (vCard, iCal, JSON) directly into knowledge graph:
+- **vCard** → Person entities with contact info
+- **iCal** → Event entities with date, location, attendees
+- **Conversation exports** → Episode entities with participants, topics
+- **PDF metadata** → Document entities with author, title, date
+
+Parsers in `ingestion/parsers/`:
+- `vcard.py` — parse vCard 3.0/4.0
+- `ical.py` — parse iCalendar (RFC 5545)
+- `conversation.py` — parse conversation JSON exports
+- `pdf.py` — extract PDF metadata
+
+## RAG Quality Feedback (`self_improvement/rag_feedback.py`)
+Track RAG retrieval quality:
+- User feedback: thumbs up/down on retrieved documents
+- Implicit feedback: which documents were used in LLM response
+- Metrics: precision@k, recall@k, MRR (Mean Reciprocal Rank)
+- A/B testing: compare BM25 vs. dense vs. hybrid retrieval
+
+Feedback loop:
+1. Log retrieval results and user feedback
+2. Analyze which retrieval strategy performed best
+3. Adjust retrieval weights (BM25 vs. dense)
+4. Retrain reranker on user feedback data (future work)
+
+## Document Metadata
+Every ingested document has metadata:
+```python
+{
+  "source": "knowledge/docs/architecture.md",
+  "title": "Emily Architecture",
+  "author": "User",
+  "created": 1234567890.123,
+  "modified": 1234567890.123,
+  "format": "markdown",
+  "language": "en",
+  "size_bytes": 12345,
+  "chunk_count": 42,
+  "embedding_model": "bge-m3",
+  "ingestion_timestamp": 1234567890.123
+}
+```
+
+Metadata stored in Qdrant payload and used for filtering.
+
+## Retrieval Filters
+Filter retrieval by metadata:
+```python
+results = await HybridRetriever.retrieve(
+    query="memory architecture",
+    top_k=5,
+    filters={
+        "format": "markdown",
+        "language": "en",
+        "created_after": 1234567890.0
+    }
+)
+```
+
+Common filters:
+- `format` — file format (pdf, markdown, code, etc.)
+- `language` — document language (en, es, fr, etc.)
+- `created_after` / `created_before` — date range
+- `author` — document author
+- `source` — file path or conversation_id
+
+## Chunking Edge Cases
+- **Tables**: preserve table structure, chunk by rows if large
+- **Code**: respect function/class boundaries, include context
+- **Lists**: keep list items together, don't split mid-item
+- **Quotes**: keep quoted text together
+- **Math**: keep equations together (LaTeX, MathML)
+
+## Performance Optimization
+- **Batch embedding**: embed 32 chunks at once (GPU) for 10x speedup
+- **Async I/O**: parallel file reading and parsing
+- **Incremental indexing**: only re-index changed documents
+- **Lazy loading**: load BM25 index and graph on first use
+- **Caching**: cache embeddings, reranker scores, graph queries
+
+## Error Handling
+- **Parse errors**: log error, skip document, continue ingestion
+- **Embedding errors**: retry with smaller batch size, fallback to CPU
+- **Qdrant errors**: retry with exponential backoff, queue for later
+- **Graph errors**: log error, continue without graph expansion
+- Never crash ingestion pipeline on single document failure
+
+## Testing RAG Pipeline
+- Unit tests: test each parser with sample files
+- Integration tests: full ingestion → retrieval pipeline
+- Quality tests: measure retrieval accuracy on known queries
+- Performance tests: ingest 1000 documents, measure throughput
+- Use fixtures for sample documents, not real user data
+
+## RAG Metrics (Prometheus)
+- `rag_documents_ingested_total` — total documents ingested
+- `rag_chunks_created_total` — total chunks created
+- `rag_embeddings_generated_total` — total embeddings generated
+- `rag_retrieval_latency_seconds` — retrieval latency histogram
+- `rag_retrieval_results_count` — number of results per query
+- `rag_bm25_score` — BM25 score distribution
+- `rag_dense_score` — dense vector score distribution
+- `rag_rerank_score` — reranker score distribution
+
+## Common Patterns
+
+### Pattern: Ingest a document
+```python
+from rag.ingestor import DocumentIngestor
+
+result = await DocumentIngestor.ingest(
+    file_path="knowledge/docs/architecture.md",
+    metadata={"author": "User", "category": "technical"}
+)
+# Returns: IngestionResult with chunk_count, embedding_count, entities_extracted
+```
+
+### Pattern: Retrieve relevant context
+```python
+from memory.semantic.retriever import HybridRetriever
+
+context = await HybridRetriever.retrieve(
+    query="How does Emily's memory work?",
+    top_k=3,
+    use_graph_expansion=True
+)
+# Returns: List[RetrievalResult] with text, score, source
+```
+
+### Pattern: Extract knowledge from text
+```python
+from extraction.pipeline import ExtractionPipeline
+
+knowledge = await ExtractionPipeline.extract(
+    text="John Doe founded Acme Corp in 2020.",
+    extract_entities=True,
+    extract_relations=True
+)
+# Returns: entities, relations, stored in knowledge graph
+```
+
+## Knowledge Directory Structure
+```
+knowledge/
+  docs/           # Documentation (md, pdf, docx)
+  code/           # Code repositories
+  papers/         # Research papers (pdf)
+  conversations/  # Exported conversations (json)
+  media/          # Audio/video transcripts
+  personal/       # Personal notes, journals
+```
+
+Auto-ingestion watches all subdirectories. Add `.emilyignore` file to exclude paths.

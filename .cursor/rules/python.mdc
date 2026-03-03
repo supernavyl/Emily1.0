@@ -1,0 +1,20 @@
+---
+description: Rules for ALL Python files in Emily project
+globs: "**/*.py"
+alwaysApply: true
+---
+
+# Python Code Rules
+
+- Python 3.12+ with strict typing
+- ALL functions must have: type hints on every param and return, Google-style docstring, at least one unit test
+- async-first: all I/O functions are async. Use `asyncio.to_thread()` for blocking libraries
+- Never use `requests` or `urllib` — use `httpx` (async)
+- Never use bare `except:` — always catch specific exceptions
+- Import order: stdlib → third-party → local (absolute from project root)
+- snake_case for functions/variables, PascalCase for classes, SCREAMING_SNAKE_CASE for constants
+- Config access: `from config import get_settings; settings = get_settings()`
+- Memory access: always through `MemoryManager` — never access tiers directly
+- Prompts: all prompt strings ONLY in `llm/prompt_builder.py`
+- Tools: must have `execute()` and `dry_run()` methods
+- Agents: must register in `agents/registry.py`

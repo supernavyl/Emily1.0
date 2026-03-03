@@ -1,0 +1,318 @@
+---
+description: Rules for Emily's security and privacy systems (PII scrubbing, encryption, audit logging, sandboxing)
+globs: ["security/**/*.py", "plugins/sandbox.py"]
+alwaysApply: false
+---
+
+# Emily Security & Privacy Rules
+
+## Core Security Principles
+1. **Privacy-first design** — all user data stays local, never uploaded to cloud
+2. **Encryption at rest** — sensitive data encrypted with age before disk writes
+3. **PII scrubbing** — detect and redact PII before any disk write
+4. **Audit logging** — append-only tamper-evident log of security-sensitive operations
+5. **Sandboxing** — untrusted code runs in bubblewrap with no network, restricted paths
+6. **Consent gates** — user approval required for destructive or sensitive operations
+7. **Dead man switch** — auto-wipe if device leaves home network > 30 days
+
+## Security Manager (`security/manager.py`)
+Central coordinator for all security subsystems:
+- Initializes encryption, PII scrubber, audit log, vault, dead man switch
+- Enforces security policies across the system
+- Handles security alerts and incidents
+- Never bypass SecurityManager — all security operations go through it
+
+## PII Detection & Scrubbing (`security/pii_scrubber.py`)
+**CRITICAL**: PII scrubber MUST run before ANY disk write of user data.
+
+Detected PII types:
+- Names (via NER — Named Entity Recognition)
+- Email addresses (regex)
+- Phone numbers (regex + libphonenumber)
+- Addresses (NER + regex)
+- SSN, credit card numbers (regex with Luhn check)
+- Dates of birth (regex)
+- IP addresses (regex)
+- URLs with query params (may contain tokens)
+
+Scrubbing modes:
+- `REDACT` — replace with `[REDACTED_<TYPE>]` (e.g., `[REDACTED_EMAIL]`)
+- `HASH` — replace with SHA256 hash (deterministic, preserves uniqueness)
+- `TOKENIZE` — replace with reversible token (stored in vault)
+- `KEEP` — no scrubbing (requires explicit user consent)
+
+Default mode: `REDACT` for all PII types.
+
+### Usage Pattern
+```python
+from security.pii_scrubber import PIIScrubber
+
+# Before storing to memory
+text = "My email is john@example.com and I live at 123 Main St"
+scrubbed = await PIIScrubber.scrub(text, mode="REDACT")
+# Result: "My email is [REDACTED_EMAIL] and I live at [REDACTED_ADDRESS]"
+await MemoryManager.store_episode(scrubbed)
+```
+
+### NER Model
+- Use spaCy `en_core_web_trf` (transformer-based) for high accuracy
+- Load model lazily on first use to avoid startup delay
+- Cache NER results for repeated text (LRU cache, max 1000 entries)
+
+## Encryption at Rest (`security/encryption.py`)
+All sensitive data encrypted with **age** (modern, simple, secure):
+- Encryption key derived from user passphrase + hardware ID (TPM if available)
+- Key stored in system keyring (libsecret on Linux)
+- Encrypted files have `.age` extension
+- Never store plaintext sensitive data on disk
+
+Encrypted data types:
+- Episodic memory episodes (conversations)
+- User profiles and preferences
+- Vault secrets (API keys, passwords, TOTP seeds)
+- Voice cloning reference audio
+- Calendar events with sensitive content
+
+### Encryption Pattern
+```python
+from security.encryption import encrypt_file, decrypt_file
+
+# Encrypt before write
+plaintext = b"sensitive data"
+encrypted = await encrypt_file(plaintext, key_id="user_master_key")
+await write_to_disk(encrypted)
+
+# Decrypt on read
+encrypted = await read_from_disk()
+plaintext = await decrypt_file(encrypted, key_id="user_master_key")
+```
+
+### Key Rotation
+- User master key rotated every 90 days (configurable)
+- Old keys retained for decryption of historical data
+- Re-encryption of all data on key rotation (background task, P4 priority)
+
+## Audit Logging (`security/audit_log.py`)
+Append-only tamper-evident log of security-sensitive operations:
+- Tool executions (especially file writes, shell commands, network requests)
+- Memory writes (what data was stored, when, by whom)
+- Encryption key usage
+- Vault access (secret reads/writes)
+- User consent decisions
+- Security policy changes
+- Failed authentication attempts
+
+Log format: JSON Lines (one JSON object per line)
+```json
+{"timestamp": "2024-02-24T03:13:00Z", "event": "tool_execution", "tool": "shell", "command": "ls -la", "user_approved": true, "result": "success"}
+```
+
+Log integrity: Each entry includes HMAC-SHA256 of previous entry (blockchain-like chaining).
+
+### Audit Log Usage
+```python
+from security.audit_log import AuditLog
+
+await AuditLog.record(
+    event="tool_execution",
+    tool="file_write",
+    path="/home/user/document.txt",
+    user_approved=True,
+    result="success"
+)
+```
+
+Audit log stored at `data/audit.log` (encrypted with age).
+
+## Consent System (`security/consent.py`)
+User approval required for:
+- File writes outside Emily's data directory
+- Shell command execution
+- Network requests to new domains
+- Loading generated tools (from ToolBuilderAgent)
+- Voice cloning with new reference audio
+- Sharing data with external services
+- Changing security policies
+
+Consent modes:
+- `ALWAYS_ASK` — prompt user every time (default)
+- `REMEMBER_SESSION` — remember decision for current session
+- `REMEMBER_FOREVER` — remember decision permanently (stored in vault)
+- `DENY` — always deny without asking
+
+### Consent Pattern
+```python
+from security.consent import ConsentManager
+
+# Request consent
+approved = await ConsentManager.request(
+    action="file_write",
+    details={"path": "/home/user/document.txt", "size_bytes": 1024},
+    risk_level="medium"
+)
+
+if approved:
+    await write_file(path, content)
+    await AuditLog.record(event="file_write", user_approved=True)
+else:
+    await AuditLog.record(event="file_write", user_approved=False)
+    return ToolResult.fail("User denied consent")
+```
+
+## Tool Sandboxing (`plugins/sandbox.py`)
+Untrusted code (generated tools, user scripts) runs in **bubblewrap** sandbox:
+- No network access (unshare network namespace)
+- Filesystem: read-only except for allowlisted paths
+- No access to /home, /root, /etc (except Emily's data dir)
+- Process limits: max 10 processes, 1 GB RAM, 30s CPU time
+- No access to GPU, audio devices, webcam
+
+Allowlisted paths (read-write):
+- `/tmp/emily_sandbox/` — temporary workspace
+- `data/sandbox_output/` — persistent output directory
+
+### Sandbox Usage
+```python
+from plugins.sandbox import Sandbox
+
+# Execute untrusted code
+result = await Sandbox.execute(
+    code=user_code,
+    language="python",
+    allowed_paths=["/tmp/emily_sandbox"],
+    timeout_seconds=30,
+    max_memory_mb=1024
+)
+
+if result.success:
+    output = result.stdout
+else:
+    error = result.stderr
+```
+
+Sandbox violations (network access attempts, path escapes) are logged as security incidents.
+
+## Secrets Vault (`security/vault/`)
+Secure storage for API keys, passwords, TOTP seeds:
+- Encrypted with age using vault-specific key
+- Key stored in system keyring
+- Secrets never logged or stored in episodic memory
+- Access control: only specific agents can read specific secrets
+
+Vault structure:
+```
+data/vault/
+  secrets.age          # Encrypted JSON of all secrets
+  crypto.py            # Encryption/decryption logic
+  manager.py           # Vault access interface
+  totp.py              # TOTP generation
+  health_checker.py    # Vault integrity checks
+```
+
+### Vault Usage
+```python
+from security.vault.manager import VaultManager
+
+# Store secret
+await VaultManager.store("openai_api_key", "sk-...")
+
+# Retrieve secret
+api_key = await VaultManager.retrieve("openai_api_key")
+
+# Generate TOTP
+totp_code = await VaultManager.generate_totp("github_2fa")
+```
+
+Vault access is audit-logged. Failed decryption attempts trigger security alerts.
+
+## Dead Man Switch (`security/dead_man_switch.py`)
+Auto-wipe if device leaves home network for extended period:
+- Check network location every 6 hours
+- If not on home network for > 30 days (configurable), trigger wipe
+- Wipe: securely delete all encrypted data, vault, episodic memory
+- Uses `shred -vfz -n 3` for secure deletion
+- Sends final encrypted backup to user's email before wipe (if configured)
+
+Disable dead man switch: set `DEAD_MAN_SWITCH_ENABLED=false` in config.
+
+## Security Incidents
+Security incident types:
+- `SANDBOX_VIOLATION` — code attempted to escape sandbox
+- `PII_LEAK` — PII detected in outbound network request
+- `VAULT_BREACH_ATTEMPT` — failed vault decryption (wrong key)
+- `UNAUTHORIZED_ACCESS` — agent attempted to access restricted resource
+- `ENCRYPTION_FAILURE` — failed to encrypt sensitive data
+- `AUDIT_LOG_TAMPERING` — audit log integrity check failed
+
+Incident response:
+1. Log incident with full context
+2. Alert user (desktop notification + audio alert)
+3. Halt offending operation
+4. Quarantine affected data
+5. Trigger P0 emergency task for investigation
+
+## Network Security
+- All external HTTP requests go through `httpx.AsyncClient` with TLS verification
+- Certificate pinning for critical services (LLM providers, update server)
+- No requests to IP addresses (only domains) — prevents SSRF
+- User-Agent header: `Emily/1.0 (Local AI; +https://github.com/user/emily)`
+- Respect robots.txt for web scraping
+- Rate limiting: max 10 req/s per domain
+
+## Secure Deletion
+When deleting sensitive data:
+- Use `shred -vfz -n 3` for files (3-pass overwrite)
+- Use `cryptsetup luksErase` for encrypted volumes
+- Zero out memory buffers after use (especially for keys, passwords)
+- Never rely on `os.remove()` or `unlink()` for sensitive files
+
+## Security Testing
+- Penetration testing: attempt sandbox escapes, path traversals
+- Fuzzing: invalid inputs to PII scrubber, encryption, vault
+- Audit log integrity: verify HMAC chain, detect tampering
+- Consent bypass attempts: try to execute without approval
+- Encryption key extraction: verify keyring security
+
+## Threat Model
+See `THREAT_MODEL.md` for full threat analysis. Key threats:
+1. **Local privilege escalation** — attacker gains root on user's machine
+2. **Physical access** — attacker steals device
+3. **Malicious tools** — ToolBuilderAgent creates backdoor
+4. **Memory extraction** — attacker dumps RAM to steal keys
+5. **Network eavesdropping** — attacker intercepts LLM API calls (mitigated by TLS)
+
+Mitigations in place for all threats. See threat model for details.
+
+## Compliance & Privacy
+- **GDPR**: User has right to export, delete all data (via `data/export/` and secure deletion)
+- **CCPA**: California residents have same rights
+- **HIPAA**: Do NOT use Emily for protected health information (not HIPAA-compliant)
+- **Data retention**: Episodic memory retained indefinitely unless user deletes
+- **Third-party sharing**: NEVER — all data stays local
+
+## Security Configuration (`config.yaml`)
+```yaml
+security:
+  pii_scrubbing:
+    enabled: true
+    mode: REDACT  # REDACT, HASH, TOKENIZE, KEEP
+  encryption:
+    enabled: true
+    algorithm: age
+    key_rotation_days: 90
+  audit_log:
+    enabled: true
+    path: data/audit.log
+  sandbox:
+    enabled: true
+    network_access: false
+    max_memory_mb: 1024
+    timeout_seconds: 30
+  consent:
+    default_mode: ALWAYS_ASK
+  dead_man_switch:
+    enabled: true
+    days_threshold: 30
+```
+
+Never disable security features in production. Only disable for testing in isolated environments.

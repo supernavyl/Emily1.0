@@ -1,0 +1,18 @@
+---
+description: Rules for security module
+globs: "security/**/*.py"
+alwaysApply: true
+---
+
+# Security Module Rules
+
+⚠️ ALL changes to this module require EXPLICIT USER APPROVAL before implementation.
+
+- Encryption at rest via `pyrage` (age format)
+- PII scrubbing via NER scan before disk writes
+- Tool sandboxing via bubblewrap (no network, path allowlist)
+- Tamper-evident append-only audit log
+- Dead man's switch (auto-wipe if device leaves home network > 30 days)
+- Vault for secrets with argon2 key derivation
+- Zero-egress by default (LAN-only)
+- Never commit secrets, `.env`, or encryption keys

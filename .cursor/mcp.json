@@ -5,43 +5,6 @@
       "args": ["-y", "@upstash/context7-mcp@latest"],
       "description": "Live library documentation from 10,000+ packages"
     },
-    "filesystem": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@modelcontextprotocol/server-filesystem",
-        "/home/supernovyl/Emily1.0",
-        "/home/supernovyl/Emily1.0/data",
-        "/home/supernovyl/Emily1.0/knowledge"
-      ],
-      "description": "File read/write operations in Emily workspace"
-    },
-    "github": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-github"],
-      "env": {
-        "GITHUB_TOKEN": "${GITHUB_TOKEN}"
-      },
-      "description": "GitHub repository operations"
-    },
-    "brave-search": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-brave-search"],
-      "env": {
-        "BRAVE_API_KEY": "${BRAVE_API_KEY}"
-      },
-      "description": "Web search via Brave"
-    },
-    "memory": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-memory"],
-      "description": "Persistent knowledge graph for cross-session context"
-    },
-    "sequential-thinking": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"],
-      "description": "Complex multi-step reasoning and planning"
-    },
     "sqlite": {
       "command": "npx",
       "args": [
@@ -100,11 +63,6 @@
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-time"],
       "description": "Timezone and temporal operations"
-    },
-    "playwright": {
-      "command": "npx",
-      "args": ["-y", "@playwright/mcp@latest"],
-      "description": "Browser automation and testing"
     }
   }
 }

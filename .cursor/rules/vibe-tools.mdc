@@ -1,0 +1,57 @@
+---
+description: vibe-tools CLI for advanced agent capabilities (web search, repo analysis, browser automation, planning)
+globs: ["*", "**/*"]
+alwaysApply: true
+---
+
+# vibe-tools
+
+vibe-tools is a CLI tool installed on this machine. Use it for advanced tasks.
+
+## Key Commands
+
+**Repository Analysis (uses Gemini):**
+`vibe-tools repo "<question>" [--subdir=<path>] [--from-github=<user/repo>]`
+
+**Web Search (uses Perplexity):**
+`vibe-tools web "<question>"` — ask natural language questions, not keyword searches
+
+**Implementation Planning (multi-model):**
+`vibe-tools plan "<task description>"` — identifies relevant files, generates detailed plan
+
+**Documentation Generation:**
+`vibe-tools doc [--output=<file>]`
+
+**Browser Automation (Stagehand):**
+`vibe-tools browser open "<url>" [--html] [--screenshot=<file>]`
+`vibe-tools browser act "<action>" --url=<url>`
+`vibe-tools browser extract "<what>" --url=<url>`
+
+**GitHub:**
+`vibe-tools github pr [number]` — get PRs
+`vibe-tools github issue [number]` — get issues
+
+**YouTube Analysis:**
+`vibe-tools youtube "<url>" [--type=summary|transcript|plan]`
+
+**MCP Server Tools:**
+`vibe-tools mcp search "<query>"` — find MCP servers
+`vibe-tools mcp run "<query>"` — execute MCP tools
+
+## Important Rules
+
+- For specific URLs, always use `--with-doc=<url>` instead of `web` command
+- `web` uses natural language questions — never keyword-style queries
+- `repo` is best for codebase-specific questions, reviews, and debugging
+- `plan` is best for implementation planning tasks
+- Browser commands are stateless unless using `--connect-to`
+- API keys are loaded from `~/.vibe-tools/.env`
+
+## Common Options
+
+- `--provider=<name>` — openai, anthropic, perplexity, gemini, openrouter, xai, groq
+- `--model=<name>` — override default model
+- `--max-tokens=<n>` — control response length
+- `--save-to=<file>` — save output to file
+- `--with-doc=<url>` — include URL content as context (can repeat)
+- `--debug` — show detailed logs

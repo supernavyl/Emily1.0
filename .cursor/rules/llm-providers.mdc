@@ -1,0 +1,75 @@
+---
+description: LLM provider development rules for Emily's multi-provider streaming architecture
+globs: ["emily_chat/models/**/*.py", "llm/**/*.py"]
+alwaysApply: false
+---
+
+# Emily LLM Provider Rules
+
+## Provider Hierarchy
+- All providers implement `BaseProvider` (`emily_chat/models/providers/base.py`)
+- OpenAI-compatible providers extend `OpenAICompatibleProvider` (`_openai_compat.py`) — only override what differs
+- Each provider lives in its own file: `emily_chat/models/providers/<name>.py`
+
+## Required Interface
+- `async def stream(messages, system_prompt, settings, model_spec) -> AsyncIterator[StreamChunk]` — the core streaming method
+- `async def validate_key(api_key) -> bool` — verify API key validity
+- `async def close()` — release httpx client resources
+
+## StreamChunk Protocol
+- Every chunk must be one of: `thinking`, `text`, `usage`, `stop`, `error`
+- Text chunks: `StreamChunk(type=ChunkType.TEXT, content="...", tokens=1)`
+- Thinking chunks: `StreamChunk(type=ChunkType.THINKING, content="...", tokens=1)`
+- Usage chunks: metadata dict with `prompt_tokens`, `completion_tokens`, `reasoning_tokens`
+- Error chunks: `StreamChunk(type=ChunkType.ERROR, content="error message")` — never raise exceptions mid-stream
+- Stop chunk: `StreamChunk(type=ChunkType.STOP)` — signals clean stream end
+
+## SSE Parsing (`_parse_sse_line`)
+- Lines not starting with `data:` are ignored (comments, event names, empty)
+- `data: [DONE]` -> `StreamChunk(type=STOP)`
+- Malformed JSON -> log warning and skip, never crash the stream
+- Extract `delta.content` for text, `delta.reasoning_content` for thinking
+- Extract `usage` from the final SSE chunk (includes `completion_tokens_details.reasoning_tokens`)
+
+## Think Tag Extraction
+- Models that embed reasoning in `<think>...</think>` tags (DeepSeek R1, Qwen3, GLM, Kimi) use `ThinkTagExtractor`
+- Override `_uses_think_tags(model_id) -> bool` to enable per-model
+- The extractor is a stateful buffer that handles tags split across chunk boundaries
+- Always call `extractor.flush()` at stream end to emit any remaining buffered content
+
+## httpx Client Management
+- One `httpx.AsyncClient` per provider instance, created in `__init__`
+- Set explicit timeouts: `httpx.Timeout(120.0, connect=10.0)` — LLM generations can be slow
+- Set `Authorization: Bearer <key>` in default headers
+- Provider instances are cached in `_PROVIDERS` / `_cache` dicts — lazy construction on first use
+
+## Model Registry
+- Every model Emily can use is a `ModelSpec` in `EMILY_MODEL_REGISTRY` (`registry.py`)
+- `ModelSpec` is `@dataclass(frozen=True)` — immutable after creation
+- Fields: `display`, `provider`, `model_id`, `context`, `thinking`, `vision`, `input_usd`, `output_usd`, `speed`, `tier`, `best_for`, `notes`
+- Dynamic models (Ollama auto-discovery, OpenRouter custom) use `register_dynamic_model(key, spec)`
+
+## Cost Tracking
+- Call `estimate_cost(model_spec, tokens_in, tokens_out, tokens_thinking)` after every generation
+- Pricing is per-million tokens in `ModelSpec.input_usd` / `output_usd`
+- Free models have `input_usd=0.0, output_usd=0.0`
+
+## Provider Factory
+- `get_provider(model_spec)` returns a cached provider instance
+- API keys read from environment variables (e.g., `OPENAI_API_KEY`, `OPENROUTER_API_KEY`)
+- `ProviderUnavailableError` raised when key is missing — handled gracefully by the auto-router
+
+## Auto-Router
+- `EmilyAutoRouter.route(request)` selects the best available model
+- Decision tree: context size -> multimodal -> thinking -> code -> creative -> language -> speed -> cost -> balanced
+- Only considers models whose provider has a configured API key (`_has_api_key()`)
+- Free OpenRouter models serve as last-resort fallbacks in every chain
+
+## Adding a New Provider
+1. Create `emily_chat/models/providers/<name>.py` extending `OpenAICompatibleProvider` (or `BaseProvider` for non-OpenAI APIs)
+2. Add the env var to `_ENV_MAP` in `provider_factory.py`
+3. Add the provider branch to `_build_provider()` in `provider_factory.py`
+4. Add the dotted path to `_PROVIDER_CLASSES` in `streaming_engine.py`
+5. Add `ModelSpec` entries to `EMILY_MODEL_REGISTRY` in `registry.py`
+6. Add the category to `_MODEL_CATEGORIES` in `emily_chat/ui/top_bar.py`
+7. Add free models to auto-router fallback chains in `auto_router.py`

@@ -1,0 +1,896 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cursor — Solo Founder AI/API Edition</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
+
+  :root {
+    --bg: #0a0a0a;
+    --s1: #111111;
+    --s2: #1a1a1a;
+    --border: #222222;
+    --border2: #2e2e2e;
+    --text: #e8e8e8;
+    --muted: #666666;
+    --dim: #444444;
+    --orange: #ff6b2b;
+    --orange-dim: rgba(255,107,43,0.12);
+    --orange-border: rgba(255,107,43,0.3);
+    --green: #22c55e;
+    --green-dim: rgba(34,197,94,0.08);
+    --red: #ef4444;
+    --red-dim: rgba(239,68,68,0.08);
+    --yellow: #eab308;
+    --yellow-dim: rgba(234,179,8,0.08);
+    --blue: #3b82f6;
+    --blue-dim: rgba(59,130,246,0.08);
+    --purple: #a855f7;
+    --purple-dim: rgba(168,85,247,0.08);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-weight: 300;
+    line-height: 1.6;
+  }
+
+  /* Subtle scanline texture */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.03) 2px,
+      rgba(0,0,0,0.03) 4px
+    );
+    pointer-events: none;
+    z-index: 999;
+  }
+
+  .wrap { max-width: 960px; margin: 0 auto; padding: 0 32px; }
+
+  /* ── HEADER ── */
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 80px 0 64px;
+  }
+
+  .eyebrow {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--orange);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .eyebrow::before {
+    content: '';
+    display: inline-block;
+    width: 24px;
+    height: 1px;
+    background: var(--orange);
+  }
+
+  h1 {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: clamp(28px, 5vw, 52px);
+    font-weight: 600;
+    line-height: 1.1;
+    letter-spacing: -1.5px;
+    margin-bottom: 20px;
+  }
+
+  .accent { color: var(--orange); }
+
+  .subtitle {
+    color: var(--muted);
+    font-size: 15px;
+    max-width: 520px;
+    line-height: 1.7;
+    margin-bottom: 40px;
+  }
+
+  .profile-tags {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .ptag {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    padding: 5px 12px;
+    border-radius: 3px;
+    letter-spacing: 0.5px;
+  }
+  .ptag-o { background: var(--orange-dim); color: var(--orange); border: 1px solid var(--orange-border); }
+  .ptag-g { background: var(--green-dim); color: var(--green); border: 1px solid rgba(34,197,94,0.25); }
+  .ptag-b { background: var(--blue-dim); color: var(--blue); border: 1px solid rgba(59,130,246,0.25); }
+
+  /* ── SECTION ── */
+  section { padding: 56px 0; border-bottom: 1px solid var(--border); }
+
+  .section-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: var(--dim);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-bottom: 28px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .section-label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  h2 {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 20px;
+    font-weight: 600;
+    margin-bottom: 6px;
+    letter-spacing: -0.5px;
+  }
+
+  h3 {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 12px;
+    letter-spacing: 0.3px;
+  }
+
+  p { color: var(--muted); font-size: 14px; line-height: 1.75; }
+
+  /* ── GRID ── */
+  .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 1px; background: var(--border); border: 1px solid var(--border); }
+  .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1px; background: var(--border); border: 1px solid var(--border); }
+
+  .cell {
+    background: var(--bg);
+    padding: 28px;
+    transition: background 0.15s;
+  }
+
+  .cell:hover { background: var(--s1); }
+
+  /* ── SKILL CARDS ── */
+  .skill-tag {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: 2px;
+    display: inline-block;
+    margin-bottom: 14px;
+  }
+  .st-orange { background: var(--orange-dim); color: var(--orange); }
+  .st-green  { background: var(--green-dim);  color: var(--green); }
+  .st-blue   { background: var(--blue-dim);   color: var(--blue); }
+  .st-purple { background: var(--purple-dim); color: var(--purple); }
+  .st-red    { background: var(--red-dim);    color: var(--red); }
+  .st-yellow { background: var(--yellow-dim); color: var(--yellow); }
+
+  .skill-steps {
+    margin-top: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .skill-step {
+    display: flex;
+    gap: 10px;
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+
+  .step-n {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: var(--dim);
+    min-width: 16px;
+    padding-top: 2px;
+  }
+
+  /* ── CODE BLOCKS ── */
+  .code {
+    background: var(--s1);
+    border: 1px solid var(--border2);
+    border-radius: 4px;
+    padding: 16px 20px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: #a3c78f;
+    margin-top: 14px;
+    overflow-x: auto;
+    line-height: 1.8;
+  }
+
+  .code .c { color: var(--dim); }
+  .code .k { color: #c792ea; }
+  .code .s { color: #c3e88d; }
+  .code .n { color: #82aaff; }
+  .code .d { color: var(--dim); font-style: italic; }
+
+  /* ── PATTERN BLOCKS ── */
+  .pattern {
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    margin-bottom: 24px;
+    overflow: hidden;
+  }
+
+  .pattern-header {
+    background: var(--s1);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .pattern-name {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .pattern-badge {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 1.5px;
+    color: var(--orange);
+    text-transform: uppercase;
+  }
+
+  .pattern-body {
+    padding: 20px;
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.75;
+  }
+
+  /* ── FORBIDDEN ── */
+  .forbidden-group { margin-bottom: 28px; }
+
+  .forbidden-title {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--red);
+    letter-spacing: 1.5px;
+    margin-bottom: 12px;
+    text-transform: uppercase;
+  }
+
+  .forbidden-items {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .forbidden-item {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    font-size: 13px;
+    color: var(--muted);
+    font-family: 'IBM Plex Mono', monospace;
+    line-height: 1.5;
+  }
+
+  .forbidden-item::before {
+    content: '✗';
+    color: var(--red);
+    font-size: 11px;
+    flex-shrink: 0;
+  }
+
+  /* ── SETUP STEPS ── */
+  .steps { display: flex; flex-direction: column; }
+
+  .step {
+    display: grid;
+    grid-template-columns: 48px 1fr;
+    gap: 0;
+    position: relative;
+  }
+
+  .step:not(:last-child) .step-left::after {
+    content: '';
+    position: absolute;
+    left: 23px;
+    top: 48px;
+    bottom: 0;
+    width: 1px;
+    background: var(--border);
+  }
+
+  .step-left {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-top: 16px;
+    position: relative;
+  }
+
+  .step-circle {
+    width: 32px;
+    height: 32px;
+    border: 1px solid var(--border2);
+    border-radius: 50%;
+    background: var(--s1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--orange);
+    flex-shrink: 0;
+    z-index: 1;
+  }
+
+  .step-right {
+    padding: 14px 0 36px 20px;
+  }
+
+  .step-title {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: var(--text);
+  }
+
+  .step-desc {
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.7;
+  }
+
+  /* ── MCP TABLE ── */
+  .mcp-table { width: 100%; border-collapse: collapse; }
+
+  .mcp-table th {
+    text-align: left;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: var(--dim);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    font-weight: 400;
+  }
+
+  .mcp-table td {
+    padding: 14px 16px;
+    font-size: 13px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+
+  .mcp-table tr:last-child td { border-bottom: none; }
+  .mcp-table tr:hover td { background: var(--s1); }
+
+  .mcp-name {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--text);
+    white-space: nowrap;
+  }
+
+  .mcp-desc { color: var(--muted); line-height: 1.5; }
+
+  .priority {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 2px;
+    white-space: nowrap;
+  }
+  .p-core { background: var(--orange-dim); color: var(--orange); }
+  .p-high { background: var(--green-dim); color: var(--green); }
+  .p-add  { background: var(--s2); color: var(--dim); border: 1px solid var(--border); }
+
+  /* ── CHECKLIST ── */
+  .checklist { display: flex; flex-direction: column; gap: 10px; }
+  .cl-item { display: flex; align-items: flex-start; gap: 12px; font-size: 13px; color: var(--muted); }
+  .cl-box {
+    width: 16px; height: 16px;
+    border: 1px solid var(--border2);
+    border-radius: 2px;
+    flex-shrink: 0;
+    margin-top: 2px;
+    cursor: pointer;
+    transition: all 0.15s;
+    background: var(--s1);
+    position: relative;
+  }
+  .cl-box:hover { border-color: var(--orange); }
+  .cl-box.done { background: var(--orange); border-color: var(--orange); }
+  .cl-box.done::after {
+    content: '✓';
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    color: var(--bg);
+    font-weight: 700;
+  }
+
+  /* ── PROMPT BOX ── */
+  .prompt-box {
+    background: var(--s1);
+    border: 1px solid var(--border2);
+    border-left: 3px solid var(--orange);
+    border-radius: 4px;
+    padding: 28px;
+    position: relative;
+  }
+
+  .prompt-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: var(--orange);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 16px;
+  }
+
+  .prompt-text {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    color: #b0b0b0;
+    line-height: 1.8;
+    white-space: pre-wrap;
+  }
+
+  /* ── CALLOUT ── */
+  .callout {
+    border: 1px solid var(--border2);
+    border-left: 3px solid var(--yellow);
+    background: var(--yellow-dim);
+    border-radius: 4px;
+    padding: 16px 20px;
+    font-size: 13px;
+    color: #b0a060;
+    line-height: 1.7;
+    margin: 20px 0;
+  }
+
+  .callout strong { color: var(--yellow); font-weight: 500; }
+
+  /* ── DIVIDER ── */
+  .divider { height: 1px; background: var(--border); margin: 0; }
+
+  /* ── FOOTER ── */
+  footer {
+    padding: 48px 0;
+    text-align: center;
+  }
+
+  .footer-mono {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: -1px;
+    margin-bottom: 8px;
+  }
+
+  .footer-sub { font-size: 13px; color: var(--dim); }
+
+  .files-row {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-top: 28px;
+  }
+
+  .file-pill {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    padding: 6px 14px;
+    border: 1px solid var(--border2);
+    border-radius: 3px;
+    color: var(--muted);
+    background: var(--s1);
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+<!-- HEADER -->
+<header>
+  <div class="eyebrow">CURSOR SETUP — TUNED FOR YOUR PROFILE</div>
+  <h1>Solo Founder<br><span class="accent">AI/API Edition</span></h1>
+  <p class="subtitle">
+    Every file in this package was written specifically for how you work —
+    building AI/LLM products and APIs, alone, where code quality is your safety net.
+  </p>
+  <div class="profile-tags">
+    <span class="ptag ptag-o">AI / LLM Products</span>
+    <span class="ptag ptag-g">APIs / Backend</span>
+    <span class="ptag ptag-b">Solo Founder</span>
+  </div>
+</header>
+
+<!-- WHY THIS IS DIFFERENT -->
+<section>
+  <div class="section-label">01 — What changed vs the generic setup</div>
+
+  <div class="grid-2">
+    <div class="cell">
+      <div class="skill-tag st-red">Removed</div>
+      <h3>Stripped out irrelevance</h3>
+      <div class="skill-steps">
+        <div class="skill-step"><span class="step-n">—</span> React / Next.js / Tailwind patterns</div>
+        <div class="skill-step"><span class="step-n">—</span> Kafka, Kubernetes, Terraform</div>
+        <div class="skill-step"><span class="step-n">—</span> Mobile / Framer Motion / animations</div>
+        <div class="skill-step"><span class="step-n">—</span> Go, Rust, gRPC (not your stack)</div>
+        <div class="skill-step"><span class="step-n">—</span> Generic team / PR review workflows</div>
+        <div class="skill-step"><span class="step-n">—</span> 6 MCP servers you'd never use</div>
+      </div>
+    </div>
+    <div class="cell">
+      <div class="skill-tag st-green">Added / Deepened</div>
+      <h3>Built what you actually need</h3>
+      <div class="skill-steps">
+        <div class="skill-step"><span class="step-n">+</span> 9 complete LLM patterns with real code</div>
+        <div class="skill-step"><span class="step-n">+</span> Solo founder cost tracking (avoid $1k bills)</div>
+        <div class="skill-step"><span class="step-n">+</span> FastAPI + Pydantic v2 patterns throughout</div>
+        <div class="skill-step"><span class="step-n">+</span> pgvector hybrid search with SQL to copy</div>
+        <div class="skill-step"><span class="step-n">+</span> Agent loop architecture with hard caps</div>
+        <div class="skill-step"><span class="step-n">+</span> AI-specific forbidden patterns (prompt injection, etc)</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- THE 9 LLM PATTERNS -->
+<section>
+  <div class="section-label">02 — LLM Patterns baked into the AI</div>
+  <p style="margin-bottom: 32px;">These 9 patterns live in .cursorrules. The AI follows them automatically on every LLM feature — no prompting required.</p>
+
+  <div class="pattern">
+    <div class="pattern-header">
+      <span class="pattern-name">PATTERN 1 — Always Stream</span>
+      <span class="pattern-badge">Default behavior</span>
+    </div>
+    <div class="pattern-body">
+      Every completion endpoint uses SSE streaming by default. The AI generates <code>StreamingResponse</code> (FastAPI) or streamed <code>fetch</code> (TS) automatically. Non-streaming only for background jobs.
+    </div>
+  </div>
+
+  <div class="pattern">
+    <div class="pattern-header">
+      <span class="pattern-name">PATTERN 2 — Structured Output, Never Parse Prose</span>
+      <span class="pattern-badge">Highest impact</span>
+    </div>
+    <div class="pattern-body">
+      The AI uses <code>response_format=PydanticModel</code> (OpenAI) or <code>tool_use</code> (Anthropic) for ALL extraction. It will actively refuse to write regex-based LLM output parsing and explain why.
+    </div>
+  </div>
+
+  <div class="pattern">
+    <div class="pattern-header">
+      <span class="pattern-name">PATTERN 3 — Prompt Management as Code</span>
+      <span class="pattern-badge">Quality multiplier</span>
+    </div>
+    <div class="pattern-body">
+      Prompts live in <code>src/prompts/</code> as versioned constants (<code>TASK_SYSTEM_V2</code>). No inline f-string soup. Breaking changes get a new version suffix. Old versions kept until traffic migrates.
+    </div>
+  </div>
+
+  <div class="pattern">
+    <div class="pattern-header">
+      <span class="pattern-name">PATTERN 4 — Retry + Fallback Chain</span>
+      <span class="pattern-badge">Reliability</span>
+    </div>
+    <div class="pattern-body">
+      Every LLM call wrapped with <code>tenacity</code> exponential backoff. Model chain defined once: <code>gpt-4o → gpt-4o-mini → claude-3-haiku</code>. Falls back automatically on rate limits or errors.
+    </div>
+  </div>
+
+  <div class="pattern">
+    <div class="pattern-header">
+      <span class="pattern-name">PATTERN 5 — Cost Tracking (Non-Optional)</span>
+      <span class="pattern-badge">Survival skill</span>
+    </div>
+    <div class="pattern-body">
+      Every LLM call records model, input/output tokens, cost_usd, latency_ms to <code>llm_calls</code> table. Cost constants defined per model. Daily cron alerts you when monthly spend crosses threshold.
+      <br><br>
+      <strong style="color: var(--text); font-weight: 500;">This has saved solo founders from $1,000+ surprise API bills.</strong>
+    </div>
+  </div>
+
+  <div class="pattern">
+    <div class="pattern-header">
+      <span class="pattern-name">PATTERN 6 — RAG Pipeline Architecture</span>
+      <span class="pattern-badge">Core skill</span>
+    </div>
+    <div class="pattern-body">
+      Full RAG spec baked in: semantic chunking (300–800 tokens, 10–15% overlap), pgvector hybrid search SQL (copy-paste ready), retrieve top-20 → rerank to top-5, citations always returned. pgvector + PostgreSQL full-text via RRF — no separate infra needed.
+    </div>
+  </div>
+
+  <div class="pattern">
+    <div class="pattern-header">
+      <span class="pattern-name">PATTERN 7 — Agent Loops with Hard Caps</span>
+      <span class="pattern-badge">Safety</span>
+    </div>
+    <div class="pattern-body">
+      Every agent loop gets <code>MAX_AGENT_ITERATIONS = 10</code> hard cap. Parallel tool execution via <code>asyncio.gather</code>. Structured <code>AgentResult</code> returned — never raises from inside the loop. Every iteration logged with cost.
+    </div>
+  </div>
+
+  <div class="pattern">
+    <div class="pattern-header">
+      <span class="pattern-name">PATTERN 8 — Langfuse Observability from Day One</span>
+      <span class="pattern-badge">Debug power</span>
+    </div>
+    <div class="pattern-body">
+      <code>@observe()</code> decorator on every LLM-calling function. Traces latency, tokens, cost, user_id automatically. Free tier is generous. Review weekly — it directly improves product quality.
+    </div>
+  </div>
+
+  <div class="pattern">
+    <div class="pattern-header">
+      <span class="pattern-name">PATTERN 9 — Rate Limiting on Every LLM Endpoint</span>
+      <span class="pattern-badge">Protection</span>
+    </div>
+    <div class="pattern-body">
+      <code>20/minute · 100/hour · 500/day</code> per user on all LLM endpoints. Redis-backed. Plan-aware (paid tiers get higher limits). Returns <code>Retry-After</code> header on 429. Generated automatically with every new LLM route.
+    </div>
+  </div>
+</section>
+
+<!-- AGENT SKILLS -->
+<section>
+  <div class="section-label">03 — Agent Skills (AI-specific)</div>
+
+  <div class="grid-3">
+    <div class="cell">
+      <div class="skill-tag st-orange">New Skill</div>
+      <h3>LLM DEBUGGER</h3>
+      <p>Systematic diagnosis: isolate prompt → identify failure mode (hallucination / format / retrieval gap) → fix at the right layer. Adds case to eval set.</p>
+    </div>
+    <div class="cell">
+      <div class="skill-tag st-orange">New Skill</div>
+      <h3>RAG DEBUGGER</h3>
+      <p>Inspect retrieved chunks, check embedding model consistency, test semantic vs keyword vs hybrid independently, verify chunk quality and index population.</p>
+    </div>
+    <div class="cell">
+      <div class="skill-tag st-orange">New Skill</div>
+      <h3>COST OPTIMIZER</h3>
+      <p>Audit llm_calls table, identify top spenders by feature/user, reduce input tokens, add caching, route cheaper models for tasks that don't need GPT-4o.</p>
+    </div>
+    <div class="cell">
+      <div class="skill-tag st-blue">Deepened</div>
+      <h3>API DESIGNER</h3>
+      <p>Schema-first (Pydantic models before handlers), FastAPI dependency injection patterns, Stripe webhook idempotency, RFC 7807 error format.</p>
+    </div>
+    <div class="cell">
+      <div class="skill-tag st-red">Deepened</div>
+      <h3>SECURITY SCANNER</h3>
+      <p>Now includes: LLM prompt injection detection, Stripe webhook signature verification, missing auth on routes, input validation at every boundary.</p>
+    </div>
+    <div class="cell">
+      <div class="skill-tag st-green">Deepened</div>
+      <h3>DATABASE OPTIMIZER</h3>
+      <p>pgvector-aware: HNSW vs IVFFlat index choice, hybrid search tuning, pg_trgm for text search, N+1 in SQLAlchemy async patterns.</p>
+    </div>
+  </div>
+</section>
+
+<!-- FORBIDDEN (AI-specific) -->
+<section>
+  <div class="section-label">04 — Hard stops — AI refuses to write this code</div>
+
+  <div class="grid-2">
+    <div class="cell">
+      <div class="forbidden-group">
+        <div class="forbidden-title">In LLM Code</div>
+        <div class="forbidden-items">
+          <div class="forbidden-item">Parsing LLM output with regex or string splits</div>
+          <div class="forbidden-item">Infinite agent loops (no MAX_ITERATIONS cap)</div>
+          <div class="forbidden-item">User input directly into system prompt content</div>
+          <div class="forbidden-item">LLM calls inside a loop without cost check</div>
+          <div class="forbidden-item">Ignoring token count on completions</div>
+          <div class="forbidden-item">Embedding model mismatch: ingest vs query</div>
+          <div class="forbidden-item">Storing embeddings without source metadata</div>
+        </div>
+      </div>
+    </div>
+    <div class="cell">
+      <div class="forbidden-group">
+        <div class="forbidden-title">In API / General Code</div>
+        <div class="forbidden-items">
+          <div class="forbidden-item">Stripe webhooks without signature verification</div>
+          <div class="forbidden-item">DB calls directly in route handlers</div>
+          <div class="forbidden-item">Unauthenticated endpoints (without explicit note)</div>
+          <div class="forbidden-item">SELECT * in production queries</div>
+          <div class="forbidden-item">Bare except: in Python</div>
+          <div class="forbidden-item">any type in TypeScript</div>
+          <div class="forbidden-item">Hardcoded secrets or API keys anywhere</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- MCP SERVERS -->
+<section>
+  <div class="section-label">05 — MCP Servers (trimmed to what you'll actually use)</div>
+
+  <table class="mcp-table">
+    <thead>
+      <tr>
+        <th>Server</th>
+        <th>Why it matters for your setup</th>
+        <th>Priority</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="mcp-name">Filesystem</td>
+        <td class="mcp-desc">Agent reads/writes project files autonomously during multi-step tasks</td>
+        <td><span class="priority p-core">Core</span></td>
+      </tr>
+      <tr>
+        <td class="mcp-name">PostgreSQL</td>
+        <td class="mcp-desc">Query your DB from chat — inspect schemas, debug RAG data, validate queries before committing</td>
+        <td><span class="priority p-core">Core</span></td>
+      </tr>
+      <tr>
+        <td class="mcp-name">Brave Search</td>
+        <td class="mcp-desc">Real-time docs for OpenAI/Anthropic API changes — no more outdated knowledge cutoff errors</td>
+        <td><span class="priority p-core">Core</span></td>
+      </tr>
+      <tr>
+        <td class="mcp-name">Memory</td>
+        <td class="mcp-desc">Remembers your architectural decisions, prompt versions, and preferences across all sessions</td>
+        <td><span class="priority p-core">Core</span></td>
+      </tr>
+      <tr>
+        <td class="mcp-name">Sentry</td>
+        <td class="mcp-desc">Pull production errors with stack traces and fix them without leaving Cursor — huge solo DX win</td>
+        <td><span class="priority p-high">High</span></td>
+      </tr>
+      <tr>
+        <td class="mcp-name">GitHub</td>
+        <td class="mcp-desc">Create PRs, read your own issues, manage branches — solo doesn't mean no process</td>
+        <td><span class="priority p-high">High</span></td>
+      </tr>
+      <tr>
+        <td class="mcp-name">Sequential Thinking</td>
+        <td class="mcp-desc">Forces step-by-step reasoning for complex LLM pipeline and agent architecture decisions</td>
+        <td><span class="priority p-high">High</span></td>
+      </tr>
+      <tr>
+        <td class="mcp-name">Railway</td>
+        <td class="mcp-desc">Deploy, manage env vars, check logs without leaving Cursor</td>
+        <td><span class="priority p-add">Add</span></td>
+      </tr>
+      <tr>
+        <td class="mcp-name">Stripe</td>
+        <td class="mcp-desc">Inspect live customers and subscriptions while debugging billing issues</td>
+        <td><span class="priority p-add">Add</span></td>
+      </tr>
+      <tr>
+        <td class="mcp-name">Puppeteer</td>
+        <td class="mcp-desc">Scrape data sources for RAG ingestion; test your app's UI during development</td>
+        <td><span class="priority p-add">Add</span></td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- MASTER PROMPT -->
+<section>
+  <div class="section-label">06 — Master Agent Prompt</div>
+  <p style="margin-bottom: 24px;">Paste this at the start of any complex Composer Agent session. Fills in [task] with what you want done.</p>
+
+  <div class="prompt-box">
+    <div class="prompt-label">Cmd+I → Agent → Paste this</div>
+    <div class="prompt-text">You are my senior engineer on an AI/LLM product. Read @AI.md first — understand the stack, the DB schema, and the existing patterns before touching anything.
+
+Task: [DESCRIBE HERE]
+
+Approach:
+1. Explore — read the relevant files, map the data flow
+2. Plan — 3 bullet points max, tell me your approach before coding
+3. Execute — implement fully, follow .cursorrules standards
+4. Self-review — check every async path, every LLM call, every type
+5. Report — files changed + one "watch out"
+
+LLM-specific rules (non-negotiable):
+- Structured output for any extraction (response_format or tool_use)
+- Stream unless this is a background job
+- Track tokens/cost on every completion
+- Rate limit any new LLM endpoint
+- Prompts go in src/prompts/, not inline
+
+Go. Pause only if you hit a genuine architectural ambiguity or destructive action.</div>
+  </div>
+</section>
+
+<!-- SETUP CHECKLIST -->
+<section>
+  <div class="section-label">07 — Setup checklist</div>
+
+  <div class="grid-2">
+    <div class="cell">
+      <h3 style="margin-bottom: 20px;">Files to place</h3>
+      <div class="checklist">
+        <div class="cl-item"><div class="cl-box" onclick="this.classList.toggle('done')"></div><span>.cursorrules → every project root</span></div>
+        <div class="cl-item"><div class="cl-box" onclick="this.classList.toggle('done')"></div><span>AI.md → fill in your stack + schema</span></div>
+        <div class="cl-item"><div class="cl-box" onclick="this.classList.toggle('done')"></div><span>.cursor/mcp.json → project root</span></div>
+        <div class="cl-item"><div class="cl-box" onclick="this.classList.toggle('done')"></div><span>Create src/prompts/ directory</span></div>
+        <div class="cl-item"><div class="cl-box" onclick="this.classList.toggle('done')"></div><span>Create llm_calls table in DB</span></div>
+        <div class="cl-item"><div class="cl-box" onclick="this.classList.toggle('done')"></div><span>Add Langfuse keys to .env</span></div>
+      </div>
+    </div>
+    <div class="cell">
+      <h3 style="margin-bottom: 20px;">First week priorities</h3>
+      <div class="checklist">
+        <div class="cl-item"><div class="cl-box" onclick="this.classList.toggle('done')"></div><span>Enable Memory MCP — start building your project graph</span></div>
+        <div class="cl-item"><div class="cl-box" onclick="this.classList.toggle('done')"></div><span>Connect Sentry — essential for solo debugging</span></div>
+        <div class="cl-item"><div class="cl-box" onclick="this.classList.toggle('done')"></div><span>Set up Langfuse — trace your first LLM call</span></div>
+        <div class="cl-item"><div class="cl-box" onclick="this.classList.toggle('done')"></div><span>Write cost alert cron — before you have real users</span></div>
+        <div class="cl-item"><div class="cl-box" onclick="this.classList.toggle('done')"></div><span>Move any inline prompts to src/prompts/</span></div>
+        <div class="cl-item"><div class="cl-box" onclick="this.classList.toggle('done')"></div><span>Verify Stripe webhook signature check exists</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+</div>
+
+<!-- FOOTER -->
+<footer>
+  <div class="wrap">
+    <div class="footer-mono"><span class="accent">cursor</span> × solo founder × AI/API</div>
+    <div class="footer-sub" style="margin-top: 6px;">4 files. Drop them in. Ship better.</div>
+    <div class="files-row">
+      <span class="file-pill">.cursorrules</span>
+      <span class="file-pill">AI.md</span>
+      <span class="file-pill">.cursor/mcp.json</span>
+      <span class="file-pill">this guide</span>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

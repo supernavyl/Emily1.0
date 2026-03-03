@@ -1,0 +1,187 @@
+╔══════════════════════════════════════════════════════════════════════════╗
+║                                                                          ║
+║              🌍 EMILY'S MODELS & MULTILINGUAL SUPPORT 🤖                 ║
+║                                                                          ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+✅ YES! Emily is HIGHLY MULTILINGUAL
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  QUICK ANSWER                                                           ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+  📝 Text Chat:     119 LANGUAGES (Qwen3 models)
+  🎤 Voice Input:   99 LANGUAGES (Whisper STT)
+  👁️ Vision/OCR:    MULTILINGUAL (MiniCPM-V)
+  🔊 Voice Output:  English + 13 languages (XTTS v2)
+
+╭──────────────────────────────────────────────────────────────────────╮
+│  🤖 AI MODELS EMILY USES                                             │
+╰──────────────────────────────────────────────────────────────────────╯
+
+  📝 TEXT GENERATION (119 languages each)
+     • Qwen3-4B         → Fast routing, voice (3 GB)
+     • Qwen3-14B        → Standard conversation (10 GB)
+     • QwQ-32B          → Complex reasoning, math (20 GB)
+
+  👁️ VISION
+     • MiniCPM-V 2.6    → Screen + webcam understanding (8 GB)
+
+  🔍 SEARCH & RETRIEVAL (multilingual)
+     • BGE-M3           → Document embeddings (2 GB)
+     • BGE-reranker     → Search ranking (1 GB)
+
+  🎤 SPEECH-TO-TEXT (99 languages)
+     • Faster-Whisper   → Voice recognition (1.5 GB)
+
+  🔊 TEXT-TO-SPEECH
+     • Kokoro           → Fast English voice (<50ms)
+     • XTTS v2          → 13 languages, voice cloning (200ms)
+
+╭──────────────────────────────────────────────────────────────────────╮
+│  🌍 SUPPORTED LANGUAGES                                              │
+╰──────────────────────────────────────────────────────────────────────╯
+
+  TIER 1 (Best Performance):
+    English, Chinese, Spanish, French, German, Russian
+    Japanese, Korean, Arabic, Portuguese
+
+  TIER 2 (Strong Support):
+    Italian, Dutch, Polish, Turkish, Hindi, Swedish
+    Norwegian, Danish, Finnish, Czech, Ukrainian
+    + 80+ more
+
+  TOTAL: 119 languages for text, 99 for speech
+
+  Major Language Families:
+    ✓ Indo-European (Romance, Germanic, Slavic, Indo-Aryan)
+    ✓ Sino-Tibetan (Chinese, Tibetan, Burmese)
+    ✓ Afro-Asiatic (Arabic, Hebrew, Amharic)
+    ✓ Japonic, Koreanic, Turkic, Austronesian
+    ✓ And many more!
+
+╭──────────────────────────────────────────────────────────────────────╮
+│  💬 EXAMPLE CONVERSATIONS                                            │
+╰──────────────────────────────────────────────────────────────────────╯
+
+  Spanish:
+    You:   "¿Cómo estás, Emily?"
+    Emily: "¡Muy bien! ¿En qué puedo ayudarte?"
+
+  French:
+    You:   "Peux-tu m'aider?"
+    Emily: "Bien sûr! Comment puis-je vous aider?"
+
+  Chinese:
+    You:   "你好，Emily"
+    Emily: "你好！我能帮你什么？"
+
+  Japanese:
+    You:   "エミリー、助けて"
+    Emily: "もちろん！何が必要ですか？"
+
+  German:
+    You:   "Kannst du mir helfen?"
+    Emily: "Natürlich! Wie kann ich dir helfen?"
+
+╭──────────────────────────────────────────────────────────────────────╮
+│  ⚙️ HOW TO USE                                                       │
+╰──────────────────────────────────────────────────────────────────────╯
+
+  AUTOMATIC LANGUAGE DETECTION:
+    • Just type or speak in your language
+    • Emily automatically detects and responds in that language
+    • No configuration needed!
+
+  CONFIGURE STT LANGUAGE (optional):
+    Edit config.yaml:
+
+    stt:
+      language: "es"    # Spanish
+      language: "fr"    # French
+      language: "de"    # German
+      language: null    # Auto-detect (recommended)
+
+  START EMILY:
+    ./scripts/start-emily.sh gui
+
+╭──────────────────────────────────────────────────────────────────────╮
+│  🎯 KEY FEATURES                                                     │
+╰──────────────────────────────────────────────────────────────────────╯
+
+  ✅ Native multilingual understanding (not translation)
+  ✅ Code-mixing support (switch languages mid-conversation)
+  ✅ Multilingual document processing (RAG)
+  ✅ Cross-lingual search (query in one language, find in another)
+  ✅ 100% local (no cloud translation)
+  ✅ Automatic language detection
+  ✅ Same quality across all supported languages
+
+╭──────────────────────────────────────────────────────────────────────╮
+│  📚 DOCUMENTATION                                                    │
+╰──────────────────────────────────────────────────────────────────────╯
+
+  📄 Full Guide:  MODELS_AND_LANGUAGES.md
+
+     Includes:
+     • Complete model architecture
+     • All 119 supported languages
+     • Performance by language
+     • Configuration examples
+     • Technical details
+
+  📄 Quick Ref:   README.md (Operations Guide section)
+
+╭──────────────────────────────────────────────────────────────────────╮
+│  🔧 TECHNICAL SPECS                                                  │
+╰──────────────────────────────────────────────────────────────────────╯
+
+  WHY QWEN3 FOR MULTILINGUAL:
+    • Trained on 36 TRILLION tokens
+    • 128K context window (14B/32B models)
+    • Native multilingual tokenization
+    • Better non-English performance than Western models
+    • Strong code-mixing support
+
+  BACKEND:
+    • TabbyAPI (ExLlamaV2) for text generation
+    • Ollama for vision and embeddings
+    • All running locally on your hardware
+    • Zero cloud dependency
+
+  VRAM USAGE:
+    • Qwen3-14B:  ~10 GB  (most conversations)
+    • QwQ-32B:    ~20 GB  (complex reasoning)
+    • MiniCPM-V:  ~8 GB   (vision, on-demand)
+
+╭──────────────────────────────────────────────────────────────────────╮
+│  ✨ USE CASES                                                        │
+╰──────────────────────────────────────────────────────────────────────╯
+
+  1. International users → Use Emily in your native language
+  2. Language learning → Practice conversation in 119 languages
+  3. Translation → Get help translating between languages
+  4. Multilingual documents → Process files in any language
+  5. Global development → Code and chat in your language
+
+╭──────────────────────────────────────────────────────────────────────╮
+│  🚀 GET STARTED                                                      │
+╰──────────────────────────────────────────────────────────────────────╯
+
+  1. Read full guide:
+     cat MODELS_AND_LANGUAGES.md
+
+  2. Start Emily:
+     ./scripts/start-emily.sh gui
+
+  3. Chat in your language:
+     Just type in any of 119 languages!
+
+  4. Voice in your language:
+     Speak in any of 99 languages!
+
+╔══════════════════════════════════════════════════════════════════════════╗
+║  Emily speaks your language! 🌍                                          ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+For complete details, see: MODELS_AND_LANGUAGES.md

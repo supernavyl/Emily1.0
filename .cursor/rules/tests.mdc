@@ -1,0 +1,17 @@
+---
+description: Rules for test files
+globs: "tests/**/*.py"
+alwaysApply: true
+---
+
+# Test Rules
+
+- Framework: pytest + pytest-asyncio (auto mode)
+- Tests mirror source structure: `tests/unit/test_<module>.py`
+- HTTP mocking: `respx`
+- Time control: `time-machine`
+- Mark slow tests with `@pytest.mark.integration`
+- Every function in source needs at least one unit test
+- Use `@pytest.fixture` for setup/teardown
+- Async tests: `async def test_...()` with auto mode
+- Test naming: `test_<function_name>_<scenario>`

@@ -1,0 +1,156 @@
+---
+description: Rules for Emily's voice pipeline (wake word, VAD, STT, TTS, prosody, conversation)
+globs: ["perception/audio/**/*.py", "voice/**/*.py", "conversation/**/*.py"]
+alwaysApply: false
+---
+
+# Emily Voice Pipeline Rules
+
+## Audio Processing Chain
+Emily's voice pipeline is a multi-stage real-time system:
+1. **Wake Word Detection** (openWakeWord) — always-on ONNX model listening for "Hey Emily"
+2. **Voice Activity Detection** (Silero VAD v5) — adaptive noise floor, chunk-based processing
+3. **Speech-to-Text** (Faster-Whisper large-v3-turbo) — CUDA float16, word-level timestamps
+4. **Text-to-Speech** (CSM → Kokoro → XTTS v2) — tiered by quality/latency needs
+5. **Prosody & Breath** — natural speech synthesis with emotional modulation
+
+## Wake Word (`perception/audio/wake_word.py`)
+- Use openWakeWord with custom ONNX model for "Hey Emily"
+- Process audio in 80ms chunks (1280 samples @ 16kHz)
+- Threshold tuning: balance false positives vs. responsiveness
+- Never block the audio stream — wake word runs in parallel with VAD
+
+## Voice Activity Detection (`perception/audio/vad.py`)
+- Silero VAD v5 is the canonical VAD — never use webrtcvad or other alternatives
+- Adaptive noise floor learning — track background noise and adjust threshold
+- Chunk size: 512 samples (32ms @ 16kHz) for low latency
+- State machine: SILENCE → SPEECH → SILENCE with hysteresis to avoid chatter
+- Return speech segments with start/end timestamps for STT
+
+## Speech-to-Text (`perception/audio/stt.py`, `streaming_stt.py`)
+- Faster-Whisper large-v3-turbo is the primary STT model
+- Always use CUDA with float16 precision — CPU inference is too slow
+- Enable word-level timestamps and confidence scores
+- Streaming STT: buffer audio until VAD detects silence, then transcribe
+- Handle multilingual input if `detect_language=True` in settings
+- Log low-confidence transcriptions (< 0.7) for quality monitoring
+
+## Text-to-Speech Tier Selection (`voice/tts.py`)
+Emily uses a 3-tier TTS system based on latency requirements:
+- **Tier 1: CSM (Conversational Speech Model)** — ultra-low latency (< 100ms first audio), robotic quality
+- **Tier 2: Kokoro** — balanced latency/quality (< 200ms first audio), natural prosody
+- **Tier 3: XTTS v2** — high quality, voice cloning (< 500ms first audio), expressive
+
+Selection logic:
+- Backchannel responses ("mhm", "right") → CSM
+- Normal conversation → Kokoro
+- Emotional/expressive speech → XTTS v2
+- User can override via settings
+
+## Prosody Planning (`voice/prosody_planner.py`)
+- Prosody parameters: pitch, rate, volume, emphasis
+- Computed from `EmotionalState` (engagement, confidence, concern, enthusiasm)
+- High engagement → faster rate, higher pitch variance
+- Low confidence → slower rate, softer volume
+- Concern → lower pitch, slower rate
+- Enthusiasm → higher pitch, faster rate, more emphasis
+
+## Breath Injection (`voice/breath_injector.py`)
+- Insert natural breaths at clause boundaries (commas, periods, long pauses)
+- Breath audio samples stored in `assets/breaths/`
+- Frequency: every 8-12 words for natural rhythm
+- Never inject breaths mid-word or in short utterances (< 5 words)
+
+## Filler Words (`voice/filler_engine.py`)
+- Inject "um", "hmm", "uh" during thinking or uncertainty
+- Triggered by low LLM confidence or long generation pauses
+- Filler audio samples stored in `assets/fillers/`
+- Frequency: max 1 filler per 20 words to avoid sounding hesitant
+
+## Voice Cloning (`voice/voice_clone.py`)
+- XTTS v2 supports voice cloning from 6+ seconds of reference audio
+- Reference audio stored in `assets/voice_profiles/<profile_name>/`
+- Clone quality depends on reference audio clarity and speaker consistency
+- Never clone voices without explicit user consent
+
+## Output Streaming (`voice/output_stream.py`)
+- Stream audio chunks to output device as they're generated (don't buffer entire response)
+- Support interruption — user can interrupt Emily mid-sentence
+- Interruption detection: VAD on input stream while TTS is active
+- On interrupt: stop TTS immediately, clear buffer, switch to listening mode
+
+## Conversation State Machine (`conversation/fsm.py`)
+States: IDLE → LISTENING → PROCESSING → SPEAKING → IDLE
+- **IDLE**: Wake word detection active, VAD monitoring
+- **LISTENING**: User is speaking, VAD active, buffering audio
+- **PROCESSING**: STT → LLM → TTS pipeline running
+- **SPEAKING**: Emily is speaking, interrupt detection active
+- Transitions triggered by VAD events, wake word, LLM completion, TTS completion
+
+## Turn-Taking (`conversation/turn_detector.py`)
+- Detect when user wants to speak vs. natural pause
+- Use VAD silence duration + prosody cues (rising intonation = question, expect response)
+- Short silence (< 500ms) → Emily continues
+- Long silence (> 1.5s) → turn passes to user
+- Backchannel responses don't count as full turns
+
+## Backchannel Responses (`conversation/backchannel.py`)
+- "mhm", "right", "I see", "okay" — minimal acknowledgment without taking turn
+- Triggered during long user utterances to show active listening
+- Frequency: every 5-8 seconds during continuous user speech
+- Audio samples stored in `assets/backchannels/`
+- Never interrupt user mid-word — wait for natural pause
+
+## Interruption Handling (`conversation/interrupt_handler.py`)
+- User can interrupt Emily at any time
+- Detection: VAD triggers on input stream while TTS is active
+- Response: immediately stop TTS, clear buffer, switch to LISTENING state
+- Log interruptions for conversation flow analysis
+- Don't penalize interruptions — they're natural in conversation
+
+## Latency Budgets (from `timing/latency_budget.py`)
+- Wake word detection: < 50ms per chunk
+- VAD per chunk: < 1ms
+- STT (Faster-Whisper): < 300ms for typical utterance
+- TTS first audio byte: < 200ms (Kokoro), < 100ms (CSM)
+- End-to-end voice response: < 2s (wake word → first TTS audio)
+
+## Audio Device Management (`perception/audio/capture.py`)
+- Use PyAudio for cross-platform audio I/O
+- Default: 16kHz sample rate, 16-bit PCM, mono
+- Buffer size: 1024 frames (64ms @ 16kHz) — balance latency vs. stability
+- Handle device disconnection gracefully — log error, attempt reconnect
+- Never crash on audio device errors — degrade to text-only mode
+
+## Acoustic Echo Cancellation (`perception/audio/aec.py`)
+- AEC prevents Emily from hearing her own TTS output
+- Use speex or webrtc AEC library
+- Reference signal: TTS output audio
+- Processed signal: microphone input
+- Critical for full-duplex conversation without feedback loops
+
+## Noise Suppression (`perception/audio/noise_suppress.py`)
+- RNNoise or similar ML-based noise suppression
+- Apply before VAD and STT for better accuracy
+- Preserve speech frequencies, attenuate background noise
+- Adaptive: learn noise profile over time
+
+## Emotion Detection (`perception/audio/emotion_detector.py`)
+- Detect user emotion from speech prosody (pitch, rate, energy)
+- Use pre-trained model (e.g., Wav2Vec2 fine-tuned on emotion)
+- Output: valence (positive/negative), arousal (calm/excited)
+- Feed into `EmotionalState` for conversation adaptation
+
+## Speaker Identification (`perception/audio/speaker_engine.py`)
+- Identify which user is speaking (multi-user households)
+- Use speaker embeddings (e.g., resemblyzer, pyannote)
+- Enroll users with 30+ seconds of speech samples
+- Store embeddings in `users/profiles/<user_id>/speaker_embedding.npy`
+- Privacy: embeddings stay local, never uploaded
+
+## Testing Voice Pipeline
+- Unit tests: mock audio streams with pre-recorded samples
+- Integration tests: full pipeline with synthetic audio
+- Latency tests: measure each stage with `timing/metrics.py`
+- Quality tests: WER (Word Error Rate) for STT, MOS (Mean Opinion Score) for TTS
+- Never test with real microphone in CI — use fixtures

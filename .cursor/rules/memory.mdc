@@ -1,0 +1,16 @@
+---
+description: Rules for memory system
+globs: "memory/**/*.py"
+alwaysApply: true
+---
+
+# Memory System Rules
+
+- All memory access goes through `MemoryManager` in `memory/manager.py`
+- Never access individual tiers directly from agents
+- Schema changes require a migration script in `scripts/migrations/NNN_description.py`
+- Use `aiosqlite` for all SQLite operations (no sync sqlite3)
+- Every interaction (user/assistant turn) is immediately persisted to `data/interactions.db`
+- Qdrant operations use the async client
+- 5 tiers: Sensory Buffer → Working → Episodic → Semantic → Procedural
+- Working memory is token-budgeted and priority-queued

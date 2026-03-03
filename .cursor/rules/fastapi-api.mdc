@@ -1,0 +1,48 @@
+---
+description: FastAPI API layer best practices for Emily's web API and streaming endpoints
+globs: ["api/**/*.py"]
+alwaysApply: false
+---
+
+# Emily FastAPI API Rules
+
+## Request / Response
+- Pydantic v2 `BaseModel` for every request and response schema — no raw dicts on the wire
+- Use `Field(...)` with descriptions for auto-generated OpenAPI docs
+- Return type annotations on all route handlers
+
+## Routing
+- One `APIRouter` per resource domain with `prefix` and `tags`
+- Route files in `api/routes/` — import and `app.include_router()` in `api/app.py`
+- Consistent naming: `POST /api/v1/chat/stream`, `GET /api/v1/models`
+
+## Lifecycle
+- Use lifespan context managers (`@asynccontextmanager` + `app = FastAPI(lifespan=...)`)
+- Never use deprecated `@app.on_event("startup")` / `@app.on_event("shutdown")`
+- Clean up httpx clients, DB connections, and provider caches in lifespan shutdown
+
+## SSE Streaming
+- Return `StreamingResponse(generate(), media_type="text/event-stream")` with `Cache-Control: no-cache` and `X-Accel-Buffering: no`
+- Use Emily's `_sse_event(event, data)` helper: `f"event: {event}\ndata: {json.dumps(data)}\n\n"`
+- Always emit a final `event: done` so the client knows the stream ended cleanly
+- For OpenAI-compatible SSE, include `stream_options: {"include_usage": True}` in the request body
+
+## Error Handling
+- Raise `HTTPException` with structured `detail` (string or dict) — never return raw 500s
+- Wrap generator bodies in `try/except` and yield an `event: error` SSE before returning
+- Log exceptions with `log.exception(...)` via structlog — never `print()`
+
+## Middleware & Security
+- CORS configured in `api/app.py` — explicit `allow_origins`, never `["*"]` in production
+- Auth via `EMILY_API_SECRET` env var checked in middleware — not in each route
+- Rate limiting middleware for public-facing endpoints
+
+## Performance
+- All route handlers must be `async def` — use `asyncio.to_thread` for any sync library call
+- Use FastAPI `BackgroundTasks` for fire-and-forget work (DB writes after response)
+- Lazy-import heavy modules inside route handlers to avoid slowing app startup
+
+## Database
+- Access the shared `ConversationDatabase` via `get_chat_db()` — never construct directly in routes
+- All DB calls are async (`aiosqlite`) — never call sync SQLite from async routes
+- Wrap multi-step DB operations in a transaction

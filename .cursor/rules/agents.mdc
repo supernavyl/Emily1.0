@@ -1,0 +1,15 @@
+---
+description: Rules for agent implementations
+globs: "agents/**/*.py"
+alwaysApply: true
+---
+
+# Agent Rules
+
+- All agents inherit from `BaseAgent` in `agents/base.py`
+- Every agent must have `name` (str) and `description` (str) class attributes
+- Implement `async def handle(self, message: Message) -> None`
+- After implementation, register in `agents/registry.py`
+- Use `self._bus` for inter-agent messaging, `self._fleet` for LLM, `self._memory` for memory
+- Log significant events with `self._log`
+- Never do blocking I/O — all methods are async

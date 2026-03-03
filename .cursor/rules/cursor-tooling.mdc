@@ -1,0 +1,11 @@
+---
+description: Cursor setup and tooling optimization guidance
+alwaysApply: true
+---
+
+# Cursor Tooling Standards
+
+- Keep `.cursor/mcp.json` descriptions practical and task-oriented.
+- Add narrowly scoped skills in `.cursor/skills/` for repeatable workflows.
+- Avoid redundant guidance if it already exists in `AGENTS.md` or `.cursorrules`.
+- Prefer reliable toolchains: Python + Ruff + Pylance + pytest.

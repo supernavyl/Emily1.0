@@ -1,0 +1,16 @@
+---
+description: Rules for LLM orchestration
+globs: "llm/**/*.py"
+alwaysApply: true
+---
+
+# LLM Rules
+
+- ALL prompt strings live in `llm/prompt_builder.py` ONLY — the single source of truth
+- If self-improvement modifies a prompt, archive old version in `prompts/archive/`
+- Model routing via `llm/router.py` — score complexity → pick tier (nano/fast/smart/vision)
+- Latency budgets: nano < 100ms, fast < 1s, smart < 15s first token
+- ReAct++ loop: THOUGHT → PLAN → ACTION → OBSERVATION → CRITIQUE → REVISE → RESPOND
+- CriticAgent scores: accuracy, completeness, safety, helpfulness
+- Streaming via `llm/streaming.py` — sentence-level chunks for TTS
+- TabbyAPI (ExLlamaV2) is primary backend; Ollama for vision + embedding

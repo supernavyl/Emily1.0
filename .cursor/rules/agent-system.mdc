@@ -1,0 +1,279 @@
+---
+description: Rules for Emily's multi-agent cognitive architecture (BaseAgent, AgentBus, scheduling)
+globs: ["agents/**/*.py", "core/**/*.py"]
+alwaysApply: false
+---
+
+# Emily Agent System Rules
+
+## BaseAgent Contract (`agents/base.py`)
+Every agent MUST inherit from `BaseAgent` and implement:
+- `name: str` — unique agent identifier (e.g., "ConversationAgent", "PlannerAgent")
+- `priority: int` — default priority tier (P0-P4) for tasks spawned by this agent
+- `async initialize()` — setup method called once on agent registration
+- `async process(task: Task) -> TaskResult` — main task processing method
+- `async shutdown()` — cleanup method called on system shutdown
+
+Optional overrides:
+- `async can_handle(task: Task) -> bool` — return True if agent can process this task type
+- `async estimate_cost(task: Task) -> float` — estimate computational cost (for routing decisions)
+- `max_concurrent_tasks: int` — limit parallel task execution (default: 1)
+
+## Agent Registration (`agents/registry.py`)
+- All agents register on startup via `AgentRegistry.register(agent_instance)`
+- Registry maintains a dict of `{agent_name: agent_instance}`
+- Use `AgentRegistry.get(name)` to retrieve agent instances
+- Use `AgentRegistry.list_agents()` to get all registered agents
+- Never instantiate agents directly in other modules — always go through the registry
+
+## Primary vs. On-Demand Agents
+**Primary agents** (always running):
+- `ConversationAgent` — real-time dialogue, persona management
+- `PlannerAgent` — task decomposition, sub-agent delegation
+- `MemoryAgent` — all memory tier reads/writes, importance scoring
+- `ReflectionAgent` — idle-time insights, self-model updates
+
+**On-demand agents** (spawned as needed):
+- `ResearchAgent` — deep-dive RAG + reasoning chains
+- `CodeAgent` — sandboxed code writing/debugging
+- `SummaryAgent` — document and conversation condensation
+- `CriticAgent` — output scoring, silent retry triggers
+- `ToolBuilderAgent` — runtime tool creation
+- `MonitorAgent` — system resource monitoring
+
+Primary agents are initialized in `core/bootstrap.py`. On-demand agents are spawned by `PlannerAgent` or `BrainHub`.
+
+## AgentBus Messaging (`core/bus.py`)
+Inter-agent communication uses structured JSON envelopes:
+```python
+{
+  "sender": "PlannerAgent",
+  "recipient": "CodeAgent",  # or "*" for broadcast
+  "task_id": "uuid",
+  "type": "task_delegation",  # or "status_update", "result", "error"
+  "payload": {},
+  "priority": 2,  # P0-P4
+  "deadline_ms": 5000,  # optional timeout
+  "timestamp": 1234567890.123
+}
+```
+
+Message types:
+- `task_delegation` — assign a task to another agent
+- `status_update` — report progress on a task
+- `result` — return task completion result
+- `error` — report task failure
+- `broadcast` — announce system-wide event
+
+## Sending Messages
+```python
+from core.bus import AgentBus
+
+# Send to specific agent
+await AgentBus.send(
+    sender=self.name,
+    recipient="MemoryAgent",
+    type="task_delegation",
+    payload={"action": "store_episode", "data": episode},
+    priority=2
+)
+
+# Broadcast to all agents
+await AgentBus.broadcast(
+    sender=self.name,
+    type="status_update",
+    payload={"state": "processing"}
+)
+```
+
+## Receiving Messages
+Agents subscribe to messages in their `initialize()` method:
+```python
+async def initialize(self):
+    AgentBus.subscribe(self.name, self._handle_message)
+
+async def _handle_message(self, message: dict):
+    if message["type"] == "task_delegation":
+        task = Task.from_dict(message["payload"])
+        result = await self.process(task)
+        await AgentBus.send(
+            sender=self.name,
+            recipient=message["sender"],
+            type="result",
+            payload=result.to_dict()
+        )
+```
+
+## Priority Scheduler (`core/scheduler.py`)
+Tasks are queued by priority tier:
+- **P0 Emergency** — system failures, security alerts (immediate execution)
+- **P1 Critical** — user-facing interactions, voice responses (< 1s latency)
+- **P2 High** — background tasks that affect UX (< 5s latency)
+- **P3 Normal** — non-urgent processing (< 30s latency)
+- **P4 Idle** — memory consolidation, self-improvement (run when idle)
+
+Concurrency limits per tier:
+- P0: unlimited (preempts lower priorities)
+- P1: 4 concurrent tasks
+- P2: 8 concurrent tasks
+- P3: 16 concurrent tasks
+- P4: 2 concurrent tasks (only when no P0-P3 tasks)
+
+## Task Lifecycle
+1. **Creation** — task created with priority, deadline, payload
+2. **Queued** — added to priority queue in scheduler
+3. **Assigned** — scheduler assigns to appropriate agent
+4. **Processing** — agent executes task
+5. **Completed** — result returned via AgentBus
+6. **Logged** — task metadata stored in episodic memory
+
+## Task Delegation Pattern
+`PlannerAgent` decomposes complex tasks into subtasks:
+```python
+async def process(self, task: Task) -> TaskResult:
+    # Decompose task
+    subtasks = await self._decompose(task)
+    
+    # Delegate to specialized agents
+    results = []
+    for subtask in subtasks:
+        agent_name = self._select_agent(subtask)
+        await AgentBus.send(
+            sender=self.name,
+            recipient=agent_name,
+            type="task_delegation",
+            payload=subtask.to_dict(),
+            priority=task.priority
+        )
+        # Wait for result or timeout
+        result = await self._wait_for_result(subtask.id, timeout=subtask.deadline_ms)
+        results.append(result)
+    
+    # Synthesize results
+    return self._synthesize(results)
+```
+
+## BrainHub Coordination (`core/brain_hub.py`)
+`BrainHub` is the central cognitive coordinator:
+- Routes incoming perception events to appropriate agents
+- Manages agent lifecycle (spawn, monitor, shutdown)
+- Enforces priority and concurrency limits
+- Handles agent failures and retries
+- Maintains system-wide FSM state
+
+Never bypass BrainHub — all agent interactions should go through it or AgentBus.
+
+## Finite State Machine (`core/fsm.py`)
+System-wide state machine tracks Emily's operational mode:
+- `BOOTING` — system initialization
+- `IDLE` — waiting for wake word or input
+- `LISTENING` — user is speaking
+- `THINKING` — processing user input
+- `RESPONDING` — generating and speaking response
+- `BUSY` — background task in progress
+- `ERROR` — recoverable error state
+- `SHUTDOWN` — graceful shutdown in progress
+
+State transitions are logged and broadcast via AgentBus. Agents can query current state via `FSM.get_state()`.
+
+## Error Handling in Agents
+- Never let exceptions escape `process()` — catch and return `TaskResult.fail(error)`
+- Log all errors with `log.exception(...)` via structlog
+- For transient errors (network, VRAM), return `TaskResult.retry(reason)` to trigger automatic retry
+- For permanent errors (invalid input), return `TaskResult.fail(reason)` immediately
+- Critical errors (security violations) should raise `CriticalError` to trigger P0 alert
+
+## Agent Performance Monitoring
+- Every task execution is timed and logged
+- Metrics exported to Prometheus: `agent_task_duration_seconds`, `agent_task_count`, `agent_error_count`
+- Slow tasks (> 2x expected duration) trigger warnings
+- Failed tasks increment error counter and may trigger agent restart
+- Performance data feeds into self-improvement engine
+
+## Agent Shutdown
+Graceful shutdown sequence:
+1. BrainHub broadcasts `shutdown` message
+2. Agents finish in-progress tasks (with timeout)
+3. Agents call their `shutdown()` method
+4. AgentBus closes all connections
+5. Scheduler drains queues
+6. System exits
+
+Never use `sys.exit()` or `os._exit()` in agent code — return control to BrainHub.
+
+## Testing Agents
+- Unit tests: mock AgentBus and other agents
+- Integration tests: full agent interaction via real AgentBus
+- Use `pytest-asyncio` for async test methods
+- Mock LLM calls with fixed responses
+- Test error handling: network failures, timeouts, invalid input
+- Test concurrency: multiple tasks to same agent
+- Test priority: P0 preempts P3, etc.
+
+## Common Patterns
+
+### Pattern: Agent calls LLM
+```python
+from llm.fleet import LLMFleet
+
+async def process(self, task: Task) -> TaskResult:
+    prompt = self._build_prompt(task)
+    response = await LLMFleet.generate(
+        prompt=prompt,
+        tier="fast",  # or "smart", "nano"
+        max_tokens=500
+    )
+    return TaskResult.ok(response)
+```
+
+### Pattern: Agent stores memory
+```python
+from memory.manager import MemoryManager
+
+async def process(self, task: Task) -> TaskResult:
+    episode = self._create_episode(task)
+    await MemoryManager.store_episode(episode)
+    return TaskResult.ok("stored")
+```
+
+### Pattern: Agent uses tool
+```python
+from plugins.registry import ToolRegistry
+
+async def process(self, task: Task) -> TaskResult:
+    tool = ToolRegistry.get("web_search")
+    result = await tool.execute({"query": task.payload["query"]})
+    return TaskResult.ok(result.output)
+```
+
+### Pattern: Agent spawns sub-agent
+```python
+async def process(self, task: Task) -> TaskResult:
+    # Spawn CodeAgent for code generation subtask
+    await AgentBus.send(
+        sender=self.name,
+        recipient="CodeAgent",
+        type="task_delegation",
+        payload={"code_task": task.payload["code_spec"]},
+        priority=task.priority
+    )
+    result = await self._wait_for_result(task.id, timeout=10000)
+    return result
+```
+
+## Agent Naming Conventions
+- Agent class names: `<Purpose>Agent` (e.g., `ConversationAgent`, `ResearchAgent`)
+- Agent instance names: same as class name (singleton pattern)
+- File names: snake_case matching agent purpose (e.g., `conversation.py`, `research.py`)
+- One agent class per file
+
+## Agent Responsibilities
+Each agent has a single, well-defined responsibility:
+- **ConversationAgent**: dialogue flow, persona, turn-taking (NOT LLM calls — delegates to LLMFleet)
+- **PlannerAgent**: task decomposition, delegation (NOT execution — delegates to specialists)
+- **MemoryAgent**: memory tier access (NOT retrieval logic — delegates to HybridRetriever)
+- **ReflectionAgent**: insight generation, self-model updates (NOT memory storage — delegates to MemoryAgent)
+- **ResearchAgent**: deep research (NOT web search — uses web_search tool)
+- **CodeAgent**: code generation, debugging (NOT execution — uses sandboxed executor)
+
+Avoid "god agents" that do everything. Keep responsibilities narrow and delegate freely.

@@ -1,0 +1,18 @@
+---
+description: Rules for Tauri desktop app
+globs: "web/**/*.{tsx,ts,css,html}"
+alwaysApply: true
+---
+
+# Tauri Desktop App Rules
+
+- React + TypeScript + Tailwind CSS
+- Dark theme with purple accent (#7c6af7)
+- CSS variables defined in `web/src/index.css`
+- All select/input elements must use themed styling (hover:border-accent, focus ring, etc.)
+- Components in `web/src/components/`; pages in `web/src/pages/`
+- State management via Zustand stores in `web/src/stores/`
+- API client in `web/src/api/`
+- Use lucide-react for icons
+- Font: Inter (sans), JetBrains Mono (mono)
+- Mobile-responsive with breakpoints at 768px and 1200px
