@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QEvent, QPoint, QRect, QSize, Qt
-from PySide6.QtGui import QCursor, QMouseEvent, QShortcut, QKeySequence
+from PySide6.QtGui import QCursor, QKeySequence, QMouseEvent, QShortcut
 from PySide6.QtWidgets import (
     QMainWindow,
     QSplitter,

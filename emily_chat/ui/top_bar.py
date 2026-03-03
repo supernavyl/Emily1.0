@@ -35,8 +35,12 @@ _MODEL_CATEGORIES: list[tuple[str, list[str]]] = [
         "\U0001f9e0 EMILY (LOCAL BRAIN)",
         [
             "emily-fast",
-            "emily-think",
+            "emily-smart",
+            "emily-reasoning",
+            "emily-deep-think",
+            "emily-code",
             "emily-nano",
+            "emily-voice-fast",
             "emily-vision",
         ],
     ),

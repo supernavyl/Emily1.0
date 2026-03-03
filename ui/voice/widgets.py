@@ -1,8 +1,6 @@
-"""
-Voice Dashboard widgets — PySide6 panels mirroring the web voice dashboard.
+"""Each widget receives a ``data: dict`` snapshot from VoiceEnginePoller.
 
-Each widget receives a ``data: dict`` snapshot from VoiceEnginePoller
-and renders the relevant section.  Dark theme matches the web UI palette.
+Renders the relevant section. Dark theme matches the web UI palette.
 """
 
 from __future__ import annotations
@@ -11,18 +9,16 @@ import math
 import time
 from typing import Any
 
-from PySide6.QtCore import QRectF, Qt, QTimer, Slot
+from PySide6.QtCore import QRectF, Qt, QTimer, Signal, Slot
 from PySide6.QtGui import (
     QBrush,
     QColor,
     QFont,
-    QLinearGradient,
     QPainter,
     QPainterPath,
     QPen,
     QRadialGradient,
 )
-from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QFrame,
@@ -81,8 +77,7 @@ def _card_frame(title: str = "") -> tuple[QFrame, QVBoxLayout]:
     """Create a dark card frame with optional title label."""
     frame = QFrame()
     frame.setStyleSheet(
-        f"QFrame {{ background: {BG_CARD}; border: 1px solid {BORDER}; "
-        f"border-radius: 10px; }}"
+        f"QFrame {{ background: {BG_CARD}; border: 1px solid {BORDER}; border-radius: 10px; }}"
     )
     layout = QVBoxLayout(frame)
     layout.setContentsMargins(16, 12, 16, 12)
@@ -91,8 +86,7 @@ def _card_frame(title: str = "") -> tuple[QFrame, QVBoxLayout]:
         lbl = QLabel(title.upper())
         lbl.setFont(_TITLE_FONT)
         lbl.setStyleSheet(
-            f"color: {TEXT_SECONDARY}; font-size: 10px; "
-            f"letter-spacing: 1.2px; border: none;"
+            f"color: {TEXT_SECONDARY}; font-size: 10px; letter-spacing: 1.2px; border: none;"
         )
         layout.addWidget(lbl)
     return frame, layout
@@ -101,9 +95,7 @@ def _card_frame(title: str = "") -> tuple[QFrame, QVBoxLayout]:
 def _value_label(text: str = "", color: str = TEXT_PRIMARY, size: int = 22) -> QLabel:
     """Big value label used in status cards."""
     lbl = QLabel(text)
-    lbl.setStyleSheet(
-        f"color: {color}; font-size: {size}px; font-weight: bold; border: none;"
-    )
+    lbl.setStyleSheet(f"color: {color}; font-size: {size}px; font-weight: bold; border: none;")
     return lbl
 
 
@@ -117,6 +109,7 @@ def _detail_label(text: str = "", color: str = TEXT_SECONDARY) -> QLabel:
 # ========================================================================
 # HeroWidget — state orb, FSM label, mode, duration, buttons
 # ========================================================================
+
 
 class HeroWidget(QWidget):
     """Large hero card showing the current voice engine state."""
@@ -174,9 +167,7 @@ class HeroWidget(QWidget):
         mode = "Full-Duplex Engine" if data.get("engine_available") else "Not Available"
         status = "Active" if running else "Stopped"
         status_color = GREEN if running else RED
-        self._mode_label.setText(
-            f'{mode} <span style="color:{status_color}">• {status}</span>'
-        )
+        self._mode_label.setText(f'{mode} <span style="color:{status_color}">• {status}</span>')
 
         dur = data.get("state_duration_s", 0.0)
         self._duration_label.setText(f"State duration: {dur:.1f}s")
@@ -223,6 +214,7 @@ class _StateOrb(QWidget):
 # ========================================================================
 # StatusCardsWidget — TTS, STT, Wake Word, Speakers
 # ========================================================================
+
 
 class StatusCardsWidget(QWidget):
     """Four status cards in a horizontal row."""
@@ -293,6 +285,7 @@ class StatusCardsWidget(QWidget):
 # AudioLevelsWidget — waveform canvas + SNR badge
 # ========================================================================
 
+
 class AudioLevelsWidget(QWidget):
     """Real-time mic level meter with dB scale, SNR badge, and mic test."""
 
@@ -336,9 +329,7 @@ class AudioLevelsWidget(QWidget):
         header.addWidget(self._mic_test_btn)
 
         self._mic_test_status = QLabel("")
-        self._mic_test_status.setStyleSheet(
-            f"color: {TEXT_MUTED}; font-size: 10px; border: none;"
-        )
+        self._mic_test_status.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 10px; border: none;")
         header.addWidget(self._mic_test_status)
         layout.addLayout(header)
 
@@ -364,10 +355,7 @@ class AudioLevelsWidget(QWidget):
         mic_level = data.get("mic_level", 0.0)
         self._canvas.push_sample(min(mic_level * 5.0, 1.0))
 
-        if mic_level > 0:
-            db = 20 * math.log10(max(mic_level, 1e-10))
-        else:
-            db = -80.0
+        db = 20 * math.log10(max(mic_level, 1e-10)) if mic_level > 0 else -80.0
 
         db_clamped = max(-60.0, min(0.0, db))
         pct = int((db_clamped + 60.0) / 60.0 * 100)
@@ -466,6 +454,7 @@ class _WaveformCanvas(QWidget):
 # TranscriptWidget — live conversation transcript
 # ========================================================================
 
+
 class TranscriptWidget(QWidget):
     """Scrolling live transcript with user/emily entries."""
 
@@ -501,9 +490,7 @@ class TranscriptWidget(QWidget):
         self._entry_count = 0
 
         self._empty_label = QLabel("Waiting for voice activity...")
-        self._empty_label.setStyleSheet(
-            f"color: {TEXT_MUTED}; font-size: 12px; border: none;"
-        )
+        self._empty_label.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 12px; border: none;")
         self._empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self._empty_label)
 
@@ -544,6 +531,7 @@ class TranscriptWidget(QWidget):
 # ========================================================================
 # PipelineWidget — module status chips
 # ========================================================================
+
 
 class PipelineWidget(QWidget):
     """Grid of pipeline module status chips."""
@@ -620,6 +608,7 @@ class PipelineWidget(QWidget):
 # EmotionWidget — primary emotion + progress bars
 # ========================================================================
 
+
 class EmotionWidget(QWidget):
     """Displays detected user emotion with dimension bars."""
 
@@ -668,9 +657,7 @@ class EmotionWidget(QWidget):
             return
 
         primary = emotion.get("primary")
-        self._primary.setText(
-            str(primary.value if hasattr(primary, "value") else primary or "--")
-        )
+        self._primary.setText(str(primary.value if hasattr(primary, "value") else primary or "--"))
         self._primary.setStyleSheet(
             f"color: {ACCENT_LIGHT}; font-size: 18px; font-weight: bold; border: none;"
         )
@@ -680,14 +667,13 @@ class EmotionWidget(QWidget):
         self._bars["valence"].setValue(int(emotion.get("valence", 0) * 100))
         self._bars["arousal"].setValue(int(emotion.get("arousal", 0) * 100))
         self._bars["engagement"].setValue(int(emotion.get("engagement", 0) * 100))
-        self._bars["cognitive_load"].setValue(
-            int(emotion.get("cognitive_load", 0) * 100)
-        )
+        self._bars["cognitive_load"].setValue(int(emotion.get("cognitive_load", 0) * 100))
 
 
 # ========================================================================
 # TurnDetectionWidget — action, score, confidence breakdown
 # ========================================================================
+
 
 class TurnDetectionWidget(QWidget):
     """Shows the latest turn detection signal and breakdown."""
@@ -740,6 +726,7 @@ class TurnDetectionWidget(QWidget):
 # ========================================================================
 # RhythmWidget — user/emily rhythm + entrainment gauge
 # ========================================================================
+
 
 class RhythmWidget(QWidget):
     """Rhythm synchronization display with an entrainment ring gauge."""
@@ -827,6 +814,7 @@ class _EntrainmentGauge(QWidget):
 # SessionStatsWidget — sidebar stats
 # ========================================================================
 
+
 class SessionStatsWidget(QWidget):
     """Session statistics panel for the sidebar."""
 
@@ -873,6 +861,7 @@ class SessionStatsWidget(QWidget):
 # ========================================================================
 # SpeakersWidget — active speakers list
 # ========================================================================
+
 
 class SpeakersWidget(QWidget):
     """Active speakers panel for the sidebar."""
@@ -937,6 +926,7 @@ class SpeakersWidget(QWidget):
 # SystemWidget — CPU / RAM / VRAM
 # ========================================================================
 
+
 class SystemWidget(QWidget):
     """System resource monitoring for the sidebar."""
 
@@ -990,8 +980,8 @@ class SystemWidget(QWidget):
             mem = psutil.virtual_memory()
             self._cpu_label.setText(f"CPU: {cpu:.0f}%")
             self._cpu_bar.setValue(int(cpu))
-            ram_used = mem.used / (1024 ** 3)
-            ram_total = mem.total / (1024 ** 3)
+            ram_used = mem.used / (1024**3)
+            ram_total = mem.total / (1024**3)
             self._ram_label.setText(f"RAM: {ram_used:.1f} / {ram_total:.1f} GB")
             self._ram_bar.setValue(int(mem.percent))
         except ImportError:
@@ -1003,8 +993,8 @@ class SystemWidget(QWidget):
             pynvml.nvmlInit()
             handle = pynvml.nvmlDeviceGetHandleByIndex(0)
             info = pynvml.nvmlDeviceGetMemoryInfo(handle)
-            used_mb = info.used / (1024 ** 2)
-            total_mb = info.total / (1024 ** 2)
+            used_mb = info.used / (1024**2)
+            total_mb = info.total / (1024**2)
             pct = int(used_mb / total_mb * 100) if total_mb > 0 else 0
             self._vram_label.setText(f"VRAM: {used_mb:.0f} / {total_mb:.0f} MB")
             self._vram_bar.setValue(pct)
@@ -1053,18 +1043,14 @@ class DeviceSelectorWidget(QWidget):
         layout.addWidget(mic_label)
         self._input_combo = QComboBox()
         self._input_combo.setStyleSheet(_COMBO_STYLE)
-        self._input_combo.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
-        )
+        self._input_combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         layout.addWidget(self._input_combo)
 
         spk_label = _detail_label("Speaker")
         layout.addWidget(spk_label)
         self._output_combo = QComboBox()
         self._output_combo.setStyleSheet(_COMBO_STYLE)
-        self._output_combo.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
-        )
+        self._output_combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         layout.addWidget(self._output_combo)
 
         btn_row = QHBoxLayout()
@@ -1154,6 +1140,7 @@ class DeviceSelectorWidget(QWidget):
 # ========================================================================
 # VoiceDebugWidget — full STT, TTS, and conversation log
 # ========================================================================
+
 
 class VoiceDebugWidget(QWidget):
     """Tabbed debug panel showing STT events, TTS events, and full conversation."""
@@ -1263,6 +1250,7 @@ class VoiceDebugWidget(QWidget):
         mic_db = data.get("mic_level", 0.0)
         if mic_db > 0:
             import math as _math
+
             db_val = 20 * _math.log10(max(mic_db, 1e-10))
         else:
             db_val = -80.0
@@ -1270,14 +1258,14 @@ class VoiceDebugWidget(QWidget):
         if partial.strip():
             self._partial_label.setText(
                 f'<span style="color:{TEXT_MUTED}">FSM: {fsm_state} | '
-                f'Mic: {db_val:.0f}dB</span>  '
+                f"Mic: {db_val:.0f}dB</span>  "
                 f'<span style="color:{YELLOW}">STT hearing:</span> '
                 f'<span style="color:{TEXT_PRIMARY}">{partial}</span>'
             )
         else:
             self._partial_label.setText(
                 f'<span style="color:{TEXT_MUTED}">FSM: {fsm_state} | '
-                f'Mic: {db_val:.0f}dB | STT: (silence)</span>'
+                f"Mic: {db_val:.0f}dB | STT: (silence)</span>"
             )
 
     @Slot(dict)

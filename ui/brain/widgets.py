@@ -10,16 +10,14 @@ from __future__ import annotations
 import datetime
 from typing import Any
 
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QColor, QFont, QTextCursor
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont, QTextCursor
 from PySide6.QtWidgets import (
     QCheckBox,
     QFrame,
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QScrollArea,
-    QSizePolicy,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -213,7 +211,9 @@ class ReActWidget(QWidget):
         elif kind == "thought":
             self._text.append(f"[{ts}] THOUGHT: {data.get('thought', '')[:200]}")
         elif kind == "action":
-            self._text.append(f"[{ts}] ACTION: {data.get('tool', '')}({data.get('input', '')[:100]})")
+            self._text.append(
+                f"[{ts}] ACTION: {data.get('tool', '')}({data.get('input', '')[:100]})"
+            )
         elif kind == "observation":
             self._text.append(f"[{ts}] OBSERVE: {data.get('observation', '')[:200]}")
         elif kind == "final_answer":
@@ -358,7 +358,9 @@ class MetricsWidget(QWidget):
             name_lbl.setStyleSheet("color: #6c7086; font-size: 11px; border: none;")
             name_lbl.setFixedWidth(60)
             val_lbl = QLabel("--")
-            val_lbl.setStyleSheet("color: #fab387; font-size: 11px; font-weight: bold; border: none;")
+            val_lbl.setStyleSheet(
+                "color: #fab387; font-size: 11px; font-weight: bold; border: none;"
+            )
             self._labels[name] = val_lbl
             row.addWidget(name_lbl)
             row.addWidget(val_lbl)

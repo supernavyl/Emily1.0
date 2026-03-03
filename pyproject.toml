@@ -47,9 +47,8 @@ dependencies = [
     "scipy>=1.13.0",
     # Audio / Voice
     "faster-whisper>=1.0.3",
-    "sounddevice>=0.5.0",
     # Text processing
-    "tiktoken>=0.7.0",
+    "tiktoken>=0.8.0",
     "langdetect>=1.0.9",
     # File parsing
     "pymupdf>=1.24.5",
@@ -78,8 +77,12 @@ dependencies = [
     "edge-tts>=7.2.7",
     "kokoro>=0.9.4",
     "transformers>=5.2.0",
-    "en-core-web-sm",
     "sounddevice>=0.5.5",
+    # LLM caching
+    "diskcache>=5.6.0",
+    # PII detection (Presidio handles spaCy internally)
+    "presidio-analyzer>=2.2.0",
+    "presidio-anonymizer>=2.2.0",
 ]
 
 [project.optional-dependencies]
@@ -90,15 +93,24 @@ gpu-cuda = [
     "transformers>=4.52.1",
     "kokoro>=0.3.4",
     "silero-vad>=5.1.2",
-    # openwakeword: install manually on Python <=3.11 (needs tflite-runtime, no 3.13 wheels)
+    # Wake word: openwakeword uses ONNX framework (inference_framework="onnx" in config)
+    # On Python 3.13+: pip install --no-deps openwakeword && pip install onnxruntime
+    "onnxruntime>=1.17.0",
+    "openwakeword>=0.6.0",
     "sentence-transformers>=3.1.0",
+    "rerankers>=0.5.0",
     "FlagEmbedding>=1.2.11",
     "mss>=9.0.2",
     "opencv-python>=4.10.0",
     "llama-cpp-python>=0.3.0",
     "sounddevice>=0.5.0",
     "spacy>=3.7.0",
+    "deepfilternet>=0.5",
 ]
+# llm-guard: install manually if needed (pip install llm-guard) — conflicts with
+# transformers>=5.x in base deps. The security/llm_guard.py module has graceful fallback.
+# chatterbox-tts: install manually (pip install chatterbox-tts) — pins transformers==4.46.3,
+# conflicts with base deps. voice_engine/providers/tts/chatterbox_tts.py has lazy import.
 # Vision/emotion (deepface): install manually if needed — pulls tensorflow, no Py3.14 wheels yet
 # Coqui TTS / XTTS and singing (MusicGen, RVC): install manually if needed — they pull
 # networkx<3 or torchaudio<2.1.2 and conflict with base/gpu-cuda. Use a separate venv.
@@ -106,8 +118,10 @@ cpu-only = [
     "faster-whisper>=1.0.3",
     "kokoro>=0.3.4",
     "silero-vad>=5.1.2",
-    # openwakeword: install manually on Python <=3.11 (needs tflite-runtime, no 3.13 wheels)
+    "onnxruntime>=1.17.0",
+    "openwakeword>=0.6.0",
     "sentence-transformers>=3.1.0",
+    "rerankers>=0.5.0",
     "FlagEmbedding>=1.2.11",
     "mss>=9.0.2",
     "opencv-python>=4.10.0",
@@ -119,7 +133,9 @@ dev = [
     "pytest-asyncio>=0.23.7",
     "pytest-cov>=5.0.0",
     "mypy>=1.10.0",
+    "basedpyright>=1.20.0",
     "ruff>=0.4.9",
+    "pre-commit>=4.0",
     "hypothesis>=6.103.1",
     "respx>=0.21.1",
     "time-machine>=2.14.1",
@@ -167,7 +183,15 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "W", "F", "I", "B", "C4", "UP", "SIM", "TC"]
-ignore = ["E501"]
+ignore = [
+    "E501",   # line length (handled by formatter)
+    "TC001",  # type-checking imports (app)
+    "TC003",  # type-checking imports (stdlib)
+    "E402",   # module-level imports not at top
+    "SIM105", # contextlib.suppress
+    "B008",   # function call in default arg (FastAPI Depends pattern)
+    "B904",   # raise from (refactor later)
+]  # Deferred: re-enable and fix in follow-up sprint
 
 [tool.ruff.lint.isort]
 known-first-party = ["emily"]
@@ -200,4 +224,3 @@ source = [
 omit = ["tests/*", "scripts/*", "ui/web/*"]
 
 [tool.uv.sources]
-en-core-web-sm = { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl" }

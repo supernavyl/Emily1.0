@@ -8,8 +8,9 @@ comes from the active QSS theme -- zero hardcoded colours here.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from PySide6.QtCore import QPoint, Qt
-from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -17,6 +18,9 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QWidget,
 )
+
+if TYPE_CHECKING:
+    from PySide6.QtGui import QMouseEvent
 
 
 class CustomTitleBar(QWidget):

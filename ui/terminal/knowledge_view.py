@@ -23,12 +23,10 @@ Usage (as a Textual widget to embed in the main TUI):
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
 from typing import Any
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Container, Horizontal, Vertical
 from textual.screen import Screen
 from textual.widgets import (
     DataTable,
@@ -114,13 +112,15 @@ class FactsTab(TabPane):
                 facts = await store.get_facts_for_entity(entity.id)
                 for fact in facts[:5]:  # max 5 per entity to avoid overflow
                     conf_bar = "█" * int(fact.confidence * 10)
-                    rows.append((
-                        entity.canonical_name,
-                        fact.fact_type,
-                        fact.fact_text[:80] + ("…" if len(fact.fact_text) > 80 else ""),
-                        f"{conf_bar} {fact.confidence:.2f}",
-                        fact.timestamp[:10] if fact.timestamp else "—",
-                    ))
+                    rows.append(
+                        (
+                            entity.canonical_name,
+                            fact.fact_type,
+                            fact.fact_text[:80] + ("…" if len(fact.fact_text) > 80 else ""),
+                            f"{conf_bar} {fact.confidence:.2f}",
+                            fact.timestamp[:10] if fact.timestamp else "—",
+                        )
+                    )
 
             rows.sort(key=lambda r: r[3], reverse=True)
             for row in rows[:50]:
@@ -240,7 +240,12 @@ class AlertsTab(TabPane):
 
         try:
             alerts = await proactive.run_all_checks()
-            severity_colors = {"critical": "red", "high": "yellow", "medium": "blue", "info": "green"}
+            severity_colors = {
+                "critical": "red",
+                "high": "yellow",
+                "medium": "blue",
+                "info": "green",
+            }
             for alert in alerts:
                 color = severity_colors.get(alert.severity, "white")
                 table.add_row(
@@ -250,7 +255,9 @@ class AlertsTab(TabPane):
                     alert.message[:80],
                 )
             if not alerts:
-                table.add_row("[green]INFO[/green]", "status", "All clear", "No alerts at this time")
+                table.add_row(
+                    "[green]INFO[/green]", "status", "All clear", "No alerts at this time"
+                )
         except Exception as exc:
             log.error("alerts_tab_load_error", error=str(exc))
 

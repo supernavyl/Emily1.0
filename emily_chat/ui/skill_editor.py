@@ -6,9 +6,6 @@ persist to ``~/.emily-chat/custom_skills.json``.
 
 from __future__ import annotations
 
-from dataclasses import asdict
-from typing import Any
-
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -98,7 +95,9 @@ class SkillEditorDialog(QDialog):
         form.addRow("Description:", self._desc_edit)
 
         self._prompt_edit = QTextEdit()
-        self._prompt_edit.setPlaceholderText("System prompt addition (injected before the conversation)")
+        self._prompt_edit.setPlaceholderText(
+            "System prompt addition (injected before the conversation)"
+        )
         self._prompt_edit.setMaximumHeight(120)
         form.addRow("System Prompt:", self._prompt_edit)
 
@@ -107,9 +106,7 @@ class SkillEditorDialog(QDialog):
         self._temp_slider.setRange(0, 100)
         self._temp_slider.setValue(50)
         self._temp_label = QLabel("0.50")
-        self._temp_slider.valueChanged.connect(
-            lambda v: self._temp_label.setText(f"{v / 100:.2f}")
-        )
+        self._temp_slider.valueChanged.connect(lambda v: self._temp_label.setText(f"{v / 100:.2f}"))
         temp_row.addWidget(self._temp_slider)
         temp_row.addWidget(self._temp_label)
         form.addRow("Temperature:", temp_row)

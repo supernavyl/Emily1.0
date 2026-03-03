@@ -10,13 +10,16 @@ diff-view colouring.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import shutil
 import sys
 from typing import Any
 
-from PySide6.QtCore import QTimer, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QPainter, QTextCharFormat
+from pygments.lexers import guess_lexer
+from pygments.util import ClassNotFound
+from PySide6.QtCore import QTimer, Signal
+from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
@@ -28,10 +31,6 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from pygments import highlight as pygments_highlight
-from pygments.formatters import HtmlFormatter
-from pygments.lexers import get_lexer_by_name, guess_lexer
-from pygments.util import ClassNotFound
 
 logger = logging.getLogger(__name__)
 
@@ -87,9 +86,7 @@ def is_diff(code: str, lang: str) -> bool:
     if lang in ("diff", "patch"):
         return True
     lines = code.lstrip().split("\n", 3)
-    if len(lines) >= 2 and lines[0].startswith("---") and lines[1].startswith("+++"):
-        return True
-    return False
+    return bool(len(lines) >= 2 and lines[0].startswith("---") and lines[1].startswith("+++"))
 
 
 async def run_python_sandbox(code: str) -> dict[str, Any]:
@@ -119,10 +116,8 @@ async def run_python_sandbox(code: str) -> dict[str, Any]:
             stderr=asyncio.subprocess.PIPE,
         )
         try:
-            stdout, stderr = await asyncio.wait_for(
-                proc.communicate(), timeout=_RUN_TIMEOUT
-            )
-        except asyncio.TimeoutError:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=_RUN_TIMEOUT)
+        except TimeoutError:
             proc.kill()
             await proc.wait()
             return {
@@ -206,9 +201,7 @@ class CodeBlockWidget(QFrame):
         n_lines = count_lines(code)
         if n_lines > _COLLAPSE_THRESHOLD:
             self._expand_btn = QPushButton(
-                f"\u25bc Show all ({n_lines} lines)"
-                if not self._expanded
-                else "\u25b2 Collapse"
+                f"\u25bc Show all ({n_lines} lines)" if not self._expanded else "\u25b2 Collapse"
             )
             self._expand_btn.setObjectName("codeBlockExpandBtn")
             self._expand_btn.clicked.connect(self._on_toggle_expand)
@@ -223,9 +216,7 @@ class CodeBlockWidget(QFrame):
         self._code_edit.setObjectName("codeBlockBody")
         self._code_edit.setReadOnly(True)
         self._code_edit.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
-        self._code_edit.setFont(
-            QFont(["JetBrains Mono", "Fira Code", "monospace"], 13)
-        )
+        self._code_edit.setFont(QFont(["JetBrains Mono", "Fira Code", "monospace"], 13))
 
         self._set_code_content()
         main_layout.addWidget(self._code_edit)
@@ -238,9 +229,7 @@ class CodeBlockWidget(QFrame):
         self._output_area.setMaximumHeight(200)
         main_layout.addWidget(self._output_area)
 
-        self.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum
-        )
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
     @property
     def code(self) -> str:
@@ -289,15 +278,14 @@ class CodeBlockWidget(QFrame):
         self.run_requested.emit(self._code)
 
         loop = None
-        try:
+        with contextlib.suppress(RuntimeError):
             loop = asyncio.get_running_loop()
-        except RuntimeError:
-            pass
 
         if loop and loop.is_running():
             asyncio.ensure_future(self._run_and_display())
         else:
             import concurrent.futures
+
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
                 future = pool.submit(asyncio.run, self._run_and_display())
                 future.add_done_callback(lambda _: None)
@@ -314,9 +302,7 @@ class CodeBlockWidget(QFrame):
         output_text = "\n".join(output_parts) if output_parts else "(no output)"
 
         is_error = result["returncode"] != 0
-        self._output_area.setObjectName(
-            "codeBlockOutputError" if is_error else "codeBlockOutput"
-        )
+        self._output_area.setObjectName("codeBlockOutputError" if is_error else "codeBlockOutput")
         self._output_area.style().unpolish(self._output_area)
         self._output_area.style().polish(self._output_area)
         self._output_area.setPlainText(output_text)
@@ -332,7 +318,5 @@ class CodeBlockWidget(QFrame):
         if self._expand_btn is not None:
             n_lines = count_lines(self._code)
             self._expand_btn.setText(
-                f"\u25bc Show all ({n_lines} lines)"
-                if not self._expanded
-                else "\u25b2 Collapse"
+                f"\u25bc Show all ({n_lines} lines)" if not self._expanded else "\u25b2 Collapse"
             )

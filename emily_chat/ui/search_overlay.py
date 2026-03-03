@@ -7,11 +7,10 @@ the controller.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 
-from PySide6.QtCore import QTimer, Qt, Signal
-from PySide6.QtGui import QKeyEvent
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -21,6 +20,9 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+if TYPE_CHECKING:
+    from PySide6.QtGui import QKeyEvent
 
 COMMANDS: list[dict[str, str]] = [
     {"id": "new", "label": "New Conversation", "shortcut": "Ctrl+N"},
@@ -62,9 +64,9 @@ def format_search_result(
     if cost > 0:
         meta_parts.append(f"${cost:.3f}")
     if updated_at:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         if updated_at.tzinfo is None:
-            updated_at = updated_at.replace(tzinfo=timezone.utc)
+            updated_at = updated_at.replace(tzinfo=UTC)
         delta = now - updated_at
         if delta.days == 0:
             meta_parts.append("Today")
@@ -253,9 +255,7 @@ class GlobalSearchOverlay(QWidget):
         self._debounce = QTimer(self)
         self._debounce.setSingleShot(True)
         self._debounce.setInterval(100)
-        self._debounce.timeout.connect(
-            lambda: self.search_query.emit(self._search_input.text())
-        )
+        self._debounce.timeout.connect(lambda: self.search_query.emit(self._search_input.text()))
         self._search_input.textChanged.connect(lambda _: self._debounce.start())
 
         self._populate_commands()
@@ -289,9 +289,7 @@ class GlobalSearchOverlay(QWidget):
                 meta=r.get("meta", ""),
             )
             widget.clicked.connect(self._on_result_clicked)
-            self._results_layout.insertWidget(
-                self._results_layout.count() - 1, widget
-            )
+            self._results_layout.insertWidget(self._results_layout.count() - 1, widget)
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
         """Handle Escape to close."""
@@ -306,7 +304,9 @@ class GlobalSearchOverlay(QWidget):
         self._clear_results()
 
         section_label = QLabel("COMMANDS")
-        section_label.setStyleSheet("font-size: 10px; font-weight: 600; opacity: 0.5; padding: 4px 8px;")
+        section_label.setStyleSheet(
+            "font-size: 10px; font-weight: 600; opacity: 0.5; padding: 4px 8px;"
+        )
         self._results_layout.insertWidget(0, section_label)
 
         for cmd in COMMANDS:
@@ -316,9 +316,7 @@ class GlobalSearchOverlay(QWidget):
                 shortcut=cmd.get("shortcut", ""),
             )
             widget.clicked.connect(self._on_command_clicked)
-            self._results_layout.insertWidget(
-                self._results_layout.count() - 1, widget
-            )
+            self._results_layout.insertWidget(self._results_layout.count() - 1, widget)
 
     def _clear_results(self) -> None:
         """Remove all result widgets."""

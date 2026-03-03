@@ -67,6 +67,7 @@ class SystemTrayManager(QSystemTrayIcon):
         """Fully exit the application (save state first)."""
         self._window._save_state()
         from PySide6.QtWidgets import QApplication
+
         QApplication.instance().quit()
 
     def show_first_minimize_notice(self) -> None:

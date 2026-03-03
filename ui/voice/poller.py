@@ -85,9 +85,7 @@ class VoiceEnginePoller(QObject):
         if fsm is not None:
             state = _safe_attr(fsm, "state")
             snapshot["fsm_state"] = state.name if state is not None else "N/A"
-            snapshot["state_duration_s"] = round(
-                _safe_attr(fsm, "state_duration_s") or 0.0, 1
-            )
+            snapshot["state_duration_s"] = round(_safe_attr(fsm, "state_duration_s") or 0.0, 1)
         snapshot["running"] = bool(_safe_attr(self._engine, "is_running"))
 
         snapshot["emotion"] = _read_emotion(fsm)
@@ -101,9 +99,7 @@ class VoiceEnginePoller(QObject):
         if tts is not None:
             snapshot["tts_available"] = True
             snapshot["tts_provider"] = (
-                _safe_attr(tts, "_active_engine") or
-                _safe_attr(tts, "active_engine") or
-                "tts"
+                _safe_attr(tts, "_active_engine") or _safe_attr(tts, "active_engine") or "tts"
             )
 
         stt = modules.get("streaming_stt")
@@ -115,9 +111,7 @@ class VoiceEnginePoller(QObject):
         if noise is not None:
             snr_mon = _safe_attr(noise, "_snr_monitor")
             if snr_mon is not None:
-                snapshot["snr_db"] = round(
-                    _safe_attr(snr_mon, "current_snr_db") or 0.0, 1
-                )
+                snapshot["snr_db"] = round(_safe_attr(snr_mon, "current_snr_db") or 0.0, 1)
 
         capture = modules.get("audio_capture")
         if capture is not None:
@@ -189,10 +183,11 @@ class VoiceEnginePoller(QObject):
             return 0.0
         try:
             import numpy as np
+
             arr = np.asarray(data, dtype=np.float32)
             if arr.size == 0:
                 return 0.0
-            return float(np.sqrt(np.mean(arr ** 2)))
+            return float(np.sqrt(np.mean(arr**2)))
         except Exception:
             return 0.0
 
@@ -323,12 +318,14 @@ def _read_speakers(modules: dict[str, Any]) -> dict[str, Any]:
     active = _safe_attr(speaker_engine, "_active_speakers") or []
     speakers = []
     for s in active:
-        speakers.append({
-            "id": _safe_attr(s, "speaker_id"),
-            "label": _safe_attr(s, "label"),
-            "confidence": round(_safe_attr(s, "confidence") or 0.0, 3),
-            "is_primary": bool(_safe_attr(s, "is_primary")),
-        })
+        speakers.append(
+            {
+                "id": _safe_attr(s, "speaker_id"),
+                "label": _safe_attr(s, "label"),
+                "confidence": round(_safe_attr(s, "confidence") or 0.0, 3),
+                "is_primary": bool(_safe_attr(s, "is_primary")),
+            }
+        )
     return {"list": speakers, "total_tracked": len(speakers)}
 
 

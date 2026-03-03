@@ -21,16 +21,14 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QScrollArea,
-    QSizePolicy,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
-
 # ---------------------------------------------------------------------------
 # Reasoning phase detection
 # ---------------------------------------------------------------------------
+
 
 class ReasoningPhase:
     """Represents a detected reasoning phase with timing and content."""
@@ -148,9 +146,7 @@ def compute_session_stats(
         model = msg.get("model", "")
         if model:
             models_used.add(model)
-            cost_by_model[model] = cost_by_model.get(model, 0.0) + (
-                msg.get("cost_usd", 0.0) or 0.0
-            )
+            cost_by_model[model] = cost_by_model.get(model, 0.0) + (msg.get("cost_usd", 0.0) or 0.0)
 
     avg_latency = total_latency / msg_count if msg_count > 0 else 0
 
@@ -216,18 +212,14 @@ class _PhaseCard(QFrame):
         self._body = QLabel(content)
         self._body.setObjectName("phaseCardBody")
         self._body.setWordWrap(True)
-        self._body.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse
-        )
+        self._body.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         layout.addWidget(self._body)
 
     def mousePressEvent(self, event: Any) -> None:
         """Toggle expand/collapse on click."""
         self._expanded = not self._expanded
         self._body.setVisible(self._expanded)
-        phase_label = ReasoningPhase.LABELS.get(
-            self.property("phase"), ""
-        )
+        phase_label = ReasoningPhase.LABELS.get(self.property("phase"), "")
         arrow = "\u25b8" if not self._expanded else "\u25be"
         self._header.setText(f"{arrow} {phase_label}")
         super().mousePressEvent(event)
@@ -236,9 +228,7 @@ class _PhaseCard(QFrame):
         """Collapse this card."""
         self._expanded = False
         self._body.setVisible(False)
-        phase_label = ReasoningPhase.LABELS.get(
-            self.property("phase"), ""
-        )
+        phase_label = ReasoningPhase.LABELS.get(self.property("phase"), "")
         self._header.setText(f"\u25b8 {phase_label}")
 
 
@@ -284,9 +274,7 @@ class _ThinkingSection(QWidget):
 
         self._scroll = QScrollArea()
         self._scroll.setWidgetResizable(True)
-        self._scroll.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        )
+        self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
         self._phases_container = QWidget()
         self._phases_layout = QVBoxLayout(self._phases_container)
@@ -311,6 +299,7 @@ class _ThinkingSection(QWidget):
     def _on_copy(self) -> None:
         """Copy all reasoning text to clipboard."""
         from PySide6.QtWidgets import QApplication
+
         clipboard = QApplication.clipboard()
         if clipboard is not None:
             clipboard.setText(self._total_text)
@@ -344,9 +333,7 @@ class _ThinkingSection(QWidget):
             self._pending_text = ""
         elif self._phase_cards:
             current_card = self._phase_cards[-1]
-            current_card._body.setText(
-                current_card._body.text() + text
-            )
+            current_card._body.setText(current_card._body.text() + text)
 
         elapsed = time.monotonic() - self._start_time
         self._timer_label.setText(f"{elapsed:.1f}s")
@@ -579,9 +566,7 @@ class _SessionStatsSection(QWidget):
                 item.widget().deleteLater()
 
         for entry in data.get("cost_breakdown", []):
-            lbl = QLabel(
-                f"{entry['model']}  ${entry['cost']:.4f}  ({entry['pct']:.0f}%)"
-            )
+            lbl = QLabel(f"{entry['model']}  ${entry['cost']:.4f}  ({entry['pct']:.0f}%)")
             lbl.setObjectName("costBreakdownItem")
             self._breakdown_layout.addWidget(lbl)
 

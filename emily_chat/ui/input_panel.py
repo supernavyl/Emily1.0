@@ -10,10 +10,9 @@ from __future__ import annotations
 import os
 import re
 from collections import deque
-from typing import Any
+from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QMimeData, Qt, Signal
-from PySide6.QtGui import QDragEnterEvent, QDropEvent, QKeyEvent
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QFileDialog,
     QFrame,
@@ -26,6 +25,9 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+if TYPE_CHECKING:
+    from PySide6.QtGui import QDragEnterEvent, QDropEvent, QKeyEvent
 
 _MIN_HEIGHT = 38
 _MAX_HEIGHT = 220
@@ -96,9 +98,7 @@ def validate_attachments(paths: list[str]) -> tuple[list[str], list[str]]:
             continue
         size = os.path.getsize(path)
         if size > _MAX_ATTACHMENT_BYTES:
-            errors.append(
-                f"Too large ({format_file_size(size)}): {os.path.basename(path)}"
-            )
+            errors.append(f"Too large ({format_file_size(size)}): {os.path.basename(path)}")
             continue
         valid.append(path)
     return valid, errors
@@ -362,7 +362,9 @@ class InputPanel(QWidget):
         for mode in ("Normal", "Deep Think", "Concise", "Code", "Research"):
             action = menu.addAction(mode)
             action.triggered.connect(
-                lambda checked=False, m=mode.lower().replace(" ", "_"): self.quick_skill_override.emit(m)
+                lambda checked=False, m=mode.lower().replace(" ", "_"): (
+                    self.quick_skill_override.emit(m)
+                )
             )
         menu.exec(self._quick_btn.mapToGlobal(self._quick_btn.rect().topLeft()))
 
@@ -372,9 +374,7 @@ class InputPanel(QWidget):
         menu.setObjectName("slashCommandPopup")
         for cmd, desc in SLASH_COMMANDS.items():
             action = menu.addAction(f"{cmd}  \u2014  {desc}")
-            action.triggered.connect(
-                lambda checked=False, c=cmd: self._insert_slash_command(c)
-            )
+            action.triggered.connect(lambda checked=False, c=cmd: self._insert_slash_command(c))
         menu.exec(self._slash_btn.mapToGlobal(self._slash_btn.rect().topLeft()))
 
     def _insert_slash_command(self, command: str) -> None:
@@ -391,9 +391,7 @@ class InputPanel(QWidget):
 
     def _open_file_picker(self) -> None:
         """Open a file picker and attach selected files."""
-        paths, _ = QFileDialog.getOpenFileNames(
-            self, "Attach Files", "", "All Files (*)"
-        )
+        paths, _ = QFileDialog.getOpenFileNames(self, "Attach Files", "", "All Files (*)")
         if paths:
             self._add_attachments(paths)
 
@@ -424,12 +422,15 @@ class InputPanel(QWidget):
             self._attachments.remove(path)
         for i in range(self._attachment_row.count()):
             widget = self._attachment_row.itemAt(i)
-            if widget and isinstance(widget.widget(), _AttachmentChip):
-                if widget.widget().file_path == path:
-                    w = widget.widget()
-                    self._attachment_row.removeWidget(w)
-                    w.deleteLater()
-                    break
+            if (
+                widget
+                and isinstance(widget.widget(), _AttachmentChip)
+                and widget.widget().file_path == path
+            ):
+                w = widget.widget()
+                self._attachment_row.removeWidget(w)
+                w.deleteLater()
+                break
         self._attachment_container.setVisible(bool(self._attachments))
 
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:

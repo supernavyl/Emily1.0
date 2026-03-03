@@ -11,8 +11,10 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from PySide6.QtWidgets import QApplication
+if TYPE_CHECKING:
+    from PySide6.QtWidgets import QApplication
 
 _THEMES_DIR = Path(__file__).parent.parent / "assets" / "themes"
 
@@ -94,9 +96,11 @@ _TOKEN_RE = re.compile(r"@(\w+)")
 
 def _substitute(qss: str, palette: dict[str, str]) -> str:
     """Replace ``@token`` placeholders with values from *palette*."""
+
     def _replace(m: re.Match[str]) -> str:
         key = m.group(1)
         return palette.get(key, m.group(0))
+
     return _TOKEN_RE.sub(_replace, qss)
 
 

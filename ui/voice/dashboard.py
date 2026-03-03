@@ -21,10 +21,10 @@ Layout:
 
 from __future__ import annotations
 
-from typing import Any
+import contextlib
+from typing import TYPE_CHECKING, Any
 
 from PySide6.QtCore import QObject, Qt, Signal, Slot
-from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -35,7 +35,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ui.voice.poller import VoiceEnginePoller
 from ui.voice.widgets import (
     ACCENT,
     BG_PRIMARY,
@@ -59,6 +58,9 @@ from ui.voice.widgets import (
     VoiceDebugWidget,
 )
 
+if TYPE_CHECKING:
+    from ui.voice.poller import VoiceEnginePoller
+
 
 class _VoiceBrainSignals(QObject):
     """Qt signal bridge for BrainEventHub events in the Voice Dashboard."""
@@ -67,6 +69,7 @@ class _VoiceBrainSignals(QObject):
     llm_event = Signal(dict)
     fsm_event = Signal(dict)
     mic_test_done = Signal(bool, float)
+
 
 _DARK_STYLESHEET = f"""
 QMainWindow, QWidget {{
@@ -134,9 +137,7 @@ class VoiceDashboard(QMainWindow):
 
         main_scroll = QScrollArea()
         main_scroll.setWidgetResizable(True)
-        main_scroll.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        )
+        main_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         main_widget = QWidget()
         main_col = QVBoxLayout(main_widget)
         main_col.setContentsMargins(20, 12, 12, 20)
@@ -183,9 +184,7 @@ class VoiceDashboard(QMainWindow):
 
         sidebar_scroll = QScrollArea()
         sidebar_scroll.setWidgetResizable(True)
-        sidebar_scroll.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        )
+        sidebar_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         sidebar_widget = QWidget()
         sidebar_widget.setFixedWidth(300)
         sidebar = QVBoxLayout(sidebar_widget)
@@ -242,13 +241,10 @@ class VoiceDashboard(QMainWindow):
         row = QHBoxLayout()
         title = QLabel("EMILY")
         title.setStyleSheet(
-            f"color: {ACCENT}; font-size: 18px; font-weight: bold; "
-            f"letter-spacing: 2px;"
+            f"color: {ACCENT}; font-size: 18px; font-weight: bold; letter-spacing: 2px;"
         )
         subtitle = QLabel("Voice Mode")
-        subtitle.setStyleSheet(
-            f"color: {TEXT_SECONDARY}; font-size: 14px; margin-left: 8px;"
-        )
+        subtitle.setStyleSheet(f"color: {TEXT_SECONDARY}; font-size: 14px; margin-left: 8px;")
         row.addWidget(title)
         row.addWidget(subtitle)
         row.addStretch()
@@ -330,9 +326,7 @@ class VoiceDashboard(QMainWindow):
             import numpy as np
 
             chunks: list[Any] = []
-            chunk_ms = getattr(
-                getattr(capture, "_config", None), "input_chunk_ms", 30
-            )
+            chunk_ms = getattr(getattr(capture, "_config", None), "input_chunk_ms", 30)
             n_chunks = int(3000 / max(chunk_ms, 1))
             try:
                 for _ in range(n_chunks):
@@ -345,14 +339,12 @@ class VoiceDashboard(QMainWindow):
 
                 if chunks:
                     recording = np.concatenate(chunks)
-                    peak_rms = float(np.sqrt(np.mean(recording ** 2)))
+                    peak_rms = float(np.sqrt(np.mean(recording**2)))
                     peak_db = float(20 * np.log10(max(peak_rms, 1e-10)))
                     passed = peak_db > -40.0
 
-                    try:
+                    with contextlib.suppress(Exception):
                         await capture.write_output(recording)
-                    except Exception:
-                        pass
 
                     self._signals.mic_test_done.emit(passed, peak_db)
                 else:
@@ -381,9 +373,7 @@ class VoiceDashboard(QMainWindow):
 
         async def _speak() -> None:
             try:
-                audio = await tts.speak(
-                    "Hello, I'm Emily. Can you hear me clearly?"
-                )
+                audio = await tts.speak("Hello, I'm Emily. Can you hear me clearly?")
                 if capture is not None and audio is not None:
                     await capture.write_output(audio)
             except Exception:

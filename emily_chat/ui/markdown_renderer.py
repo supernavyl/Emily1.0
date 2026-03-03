@@ -8,7 +8,6 @@ instances.
 
 from __future__ import annotations
 
-import asyncio
 import base64
 import io
 import logging
@@ -40,6 +39,7 @@ _MERMAID_FENCE_RE = re.compile(
 # ---------------------------------------------------------------------------
 # Pygments highlighter (inline CSS — QTextBrowser has no class support)
 # ---------------------------------------------------------------------------
+
 
 @lru_cache(maxsize=1)
 def _formatter() -> HtmlFormatter:
@@ -73,16 +73,13 @@ def _highlight_code(code: str, lang: str) -> str:
 
 def _escape(text: str) -> str:
     """HTML-escape text for safe embedding."""
-    return (
-        text.replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-    )
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
 # ---------------------------------------------------------------------------
 # LaTeX rendering (matplotlib)
 # ---------------------------------------------------------------------------
+
 
 def _render_latex(expression: str, *, inline: bool = True) -> str:
     """Render a LaTeX expression to a base64-encoded PNG ``<img>`` tag.
@@ -102,7 +99,7 @@ def _render_latex(expression: str, *, inline: bool = True) -> str:
 
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
-        from matplotlib import mathtext
+        from matplotlib import mathtext  # noqa: F401
     except ImportError:
         return f"<code>${expression}$</code>"
 
@@ -111,14 +108,18 @@ def _render_latex(expression: str, *, inline: bool = True) -> str:
         dpi = 150 if inline else 200
         fig = plt.figure(figsize=(0.01, 0.01))
         fig.text(
-            0, 0,
+            0,
+            0,
             f"${expression}$",
             fontsize=14 if inline else 18,
             color="white",
         )
         fig.savefig(
-            buf, format="png", dpi=dpi,
-            bbox_inches="tight", pad_inches=0.05,
+            buf,
+            format="png",
+            dpi=dpi,
+            bbox_inches="tight",
+            pad_inches=0.05,
             transparent=True,
         )
         plt.close(fig)
@@ -132,18 +133,15 @@ def _render_latex(expression: str, *, inline: bool = True) -> str:
 
 def _replace_latex(html: str) -> str:
     """Post-process HTML to replace LaTeX ``$$...$$`` and ``$...$`` with rendered PNGs."""
-    html = _LATEX_BLOCK_RE.sub(
-        lambda m: _render_latex(m.group(1).strip(), inline=False), html
-    )
-    html = _LATEX_INLINE_RE.sub(
-        lambda m: _render_latex(m.group(1).strip(), inline=True), html
-    )
+    html = _LATEX_BLOCK_RE.sub(lambda m: _render_latex(m.group(1).strip(), inline=False), html)
+    html = _LATEX_INLINE_RE.sub(lambda m: _render_latex(m.group(1).strip(), inline=True), html)
     return html
 
 
 # ---------------------------------------------------------------------------
 # Mermaid rendering (subprocess to mmdc if available)
 # ---------------------------------------------------------------------------
+
 
 @lru_cache(maxsize=1)
 def _mmdc_available() -> bool:
@@ -172,8 +170,19 @@ def _render_mermaid_sync(source: str) -> str:
 
     try:
         result = subprocess.run(
-            ["mmdc", "-i", "/dev/stdin", "-o", "/dev/stdout", "-e", "svg",
-             "-b", "transparent", "-t", "dark"],
+            [
+                "mmdc",
+                "-i",
+                "/dev/stdin",
+                "-o",
+                "/dev/stdout",
+                "-e",
+                "svg",
+                "-b",
+                "transparent",
+                "-t",
+                "dark",
+            ],
             input=source.encode(),
             capture_output=True,
             timeout=15,
@@ -204,10 +213,7 @@ def _replace_mermaid(html: str) -> str:
 def _unescape(text: str) -> str:
     """Reverse HTML escaping for code block content."""
     return (
-        text.replace("&amp;", "&")
-        .replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&quot;", '"')
+        text.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", '"')
     )
 
 
@@ -303,11 +309,13 @@ class MarkdownRenderer:
                     svg = _render_mermaid_sync(code.strip())
                     segments.append({"type": "html", "content": svg})
                 else:
-                    segments.append({
-                        "type": "code",
-                        "lang": lang,
-                        "content": code.rstrip("\n"),
-                    })
+                    segments.append(
+                        {
+                            "type": "code",
+                            "lang": lang,
+                            "content": code.rstrip("\n"),
+                        }
+                    )
                 i += 1
             else:
                 prose_tokens.append(tok)

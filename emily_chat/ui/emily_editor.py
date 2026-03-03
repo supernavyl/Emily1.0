@@ -216,13 +216,16 @@ class EmilyEditorDialog(QDialog):
                 "The Default profile cannot be deleted.",
             )
             return
-        if QMessageBox.question(
-            self,
-            "Emily Editor",
-            "Delete this profile?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        ) != QMessageBox.StandardButton.Yes:
+        if (
+            QMessageBox.question(
+                self,
+                "Emily Editor",
+                "Delete this profile?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            != QMessageBox.StandardButton.Yes
+        ):
             return
         self._profiles = [p for p in self._profiles if p.id != pid]
         self._refresh_profile_list()
@@ -271,6 +274,7 @@ class EmilyEditorDialog(QDialog):
     def _find_config_path(self) -> Path | None:
         """Return path to main Emily config.yaml."""
         import os
+
         env_path = os.environ.get("EMILY_CONFIG_PATH")
         if env_path:
             p = Path(env_path)
@@ -308,7 +312,7 @@ class EmilyEditorDialog(QDialog):
         reply = QMessageBox.question(
             self,
             "Emily Editor",
-            f"Export profile \"{profile.name}\" to voice config?\n\n"
+            f'Export profile "{profile.name}" to voice config?\n\n'
             f"Backup will be saved as {config_path}.bak",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
@@ -316,10 +320,15 @@ class EmilyEditorDialog(QDialog):
         if reply != QMessageBox.StandardButton.Yes:
             return
         try:
-            import yaml
             from datetime import datetime
+
+            import yaml
+
             raw = yaml.safe_load(config_path.read_text()) or {}
-            backup_path = config_path.parent / f"{config_path.name}.bak.{datetime.now().strftime('%Y%m%d%H%M%S')}"
+            backup_path = (
+                config_path.parent
+                / f"{config_path.name}.bak.{datetime.now().strftime('%Y%m%d%H%M%S')}"
+            )
             backup_path.write_text(config_path.read_text(), encoding="utf-8")
             llm = raw.setdefault("llm", {})
             models = llm.setdefault("models", {})
@@ -334,7 +343,9 @@ class EmilyEditorDialog(QDialog):
                     models[tier] = spec.model_id
                 elif spec.provider == "llamacpp":
                     llm.setdefault("tier_backend", {})[tier] = "llamacpp"
-            config_path.write_text(yaml.dump(raw, default_flow_style=False, sort_keys=False), encoding="utf-8")
+            config_path.write_text(
+                yaml.dump(raw, default_flow_style=False, sort_keys=False), encoding="utf-8"
+            )
             QMessageBox.information(
                 self,
                 "Emily Editor",

@@ -27,19 +27,20 @@ from __future__ import annotations
 import asyncio
 import traceback
 import uuid
-from typing import Any, Coroutine
+from collections.abc import Coroutine
+from typing import Any
 
-from PySide6.QtCore import QThread, Signal, QObject
+from PySide6.QtCore import QObject, QThread, Signal
 
 
 class _Signals(QObject):
     """Carrier for cross-thread Qt signals (must inherit QObject)."""
 
-    result_ready = Signal(str, object)   # (token, result)
-    error_occurred = Signal(str, str)    # (token, traceback_str)
-    chunk_received = Signal(str, object) # (token, chunk)
-    stream_done = Signal(str)            # (token,)
-    loop_ready = Signal()                # emitted when event loop is running
+    result_ready = Signal(str, object)  # (token, result)
+    error_occurred = Signal(str, str)  # (token, traceback_str)
+    chunk_received = Signal(str, object)  # (token, chunk)
+    stream_done = Signal(str)  # (token,)
+    loop_ready = Signal()  # emitted when event loop is running
 
 
 class AsyncRunner(QThread):

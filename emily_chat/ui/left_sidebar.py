@@ -7,11 +7,10 @@ except the provider colour-dot map which is intentionally data-driven.
 from __future__ import annotations
 
 from collections import OrderedDict
-from datetime import datetime, timezone, timedelta
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 
 from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtGui import QAction, QColor, QPainter, QShortcut, QKeySequence
+from PySide6.QtGui import QColor, QKeySequence, QPainter, QShortcut
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -44,36 +43,85 @@ PROVIDER_COLORS: dict[str, str] = {
 # ── Built-in skills (display-only; no inline prompts) ────────────────
 
 BUILT_IN_SKILLS: list[dict[str, str]] = [
-    {"id": "deep_think", "icon": "\U0001f9e0", "name": "Deep Think",
-     "description": "Emily reasons step-by-step before answering"},
-    {"id": "code", "icon": "\U0001f4bb", "name": "Code",
-     "description": "Emily writes, reviews, and debugs code"},
-    {"id": "research", "icon": "\U0001f52c", "name": "Research",
-     "description": "Emily searches the web and synthesizes sources"},
-    {"id": "writing", "icon": "\u270d\ufe0f", "name": "Writing",
-     "description": "Emily writes and edits with craft and style"},
-    {"id": "concise", "icon": "\u26a1", "name": "Concise",
-     "description": "Emily keeps it short and sharp"},
-    {"id": "analyst", "icon": "\U0001f4ca", "name": "Analyst",
-     "description": "Emily breaks down complexity systematically"},
-    {"id": "tutor", "icon": "\U0001f393", "name": "Tutor",
-     "description": "Emily teaches through questions and examples"},
-    {"id": "debate", "icon": "\U0001f608", "name": "Devil's Advocate",
-     "description": "Emily argues the strongest opposing position"},
-    {"id": "translate", "icon": "\U0001f30d", "name": "Translate",
-     "description": "Emily translates between any languages"},
-    {"id": "brainstorm", "icon": "\U0001f4a1", "name": "Brainstorm",
-     "description": "Emily generates bold, diverse ideas"},
-    {"id": "eli5", "icon": "\U0001f9d2", "name": "Simple (ELI5)",
-     "description": "Emily explains anything simply"},
-    {"id": "compare", "icon": "\u2696\ufe0f", "name": "Compare Models",
-     "description": "Send the same message to multiple Emily engines"},
+    {
+        "id": "deep_think",
+        "icon": "\U0001f9e0",
+        "name": "Deep Think",
+        "description": "Emily reasons step-by-step before answering",
+    },
+    {
+        "id": "code",
+        "icon": "\U0001f4bb",
+        "name": "Code",
+        "description": "Emily writes, reviews, and debugs code",
+    },
+    {
+        "id": "research",
+        "icon": "\U0001f52c",
+        "name": "Research",
+        "description": "Emily searches the web and synthesizes sources",
+    },
+    {
+        "id": "writing",
+        "icon": "\u270d\ufe0f",
+        "name": "Writing",
+        "description": "Emily writes and edits with craft and style",
+    },
+    {
+        "id": "concise",
+        "icon": "\u26a1",
+        "name": "Concise",
+        "description": "Emily keeps it short and sharp",
+    },
+    {
+        "id": "analyst",
+        "icon": "\U0001f4ca",
+        "name": "Analyst",
+        "description": "Emily breaks down complexity systematically",
+    },
+    {
+        "id": "tutor",
+        "icon": "\U0001f393",
+        "name": "Tutor",
+        "description": "Emily teaches through questions and examples",
+    },
+    {
+        "id": "debate",
+        "icon": "\U0001f608",
+        "name": "Devil's Advocate",
+        "description": "Emily argues the strongest opposing position",
+    },
+    {
+        "id": "translate",
+        "icon": "\U0001f30d",
+        "name": "Translate",
+        "description": "Emily translates between any languages",
+    },
+    {
+        "id": "brainstorm",
+        "icon": "\U0001f4a1",
+        "name": "Brainstorm",
+        "description": "Emily generates bold, diverse ideas",
+    },
+    {
+        "id": "eli5",
+        "icon": "\U0001f9d2",
+        "name": "Simple (ELI5)",
+        "description": "Emily explains anything simply",
+    },
+    {
+        "id": "compare",
+        "icon": "\u2696\ufe0f",
+        "name": "Compare Models",
+        "description": "Send the same message to multiple Emily engines",
+    },
 ]
 
 
 # =====================================================================
 # Date-grouping helpers (pure functions — easy to test without Qt)
 # =====================================================================
+
 
 def group_conversations(
     conversations: list[ConversationSummary],
@@ -83,7 +131,7 @@ def group_conversations(
     Bucket order: PINNED, TODAY, YESTERDAY, THIS WEEK, THIS MONTH,
     then ``Month Year`` for older entries.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     yesterday_start = today_start - timedelta(days=1)
     week_start = today_start - timedelta(days=today_start.weekday())
@@ -99,7 +147,7 @@ def group_conversations(
     for conv in conversations:
         ts = conv.updated_at
         if ts.tzinfo is None:
-            ts = ts.replace(tzinfo=timezone.utc)
+            ts = ts.replace(tzinfo=UTC)
 
         if conv.pinned:
             pinned.append(conv)
@@ -126,7 +174,7 @@ def group_conversations(
         buckets["THIS WEEK"] = this_week
     if this_month:
         buckets["THIS MONTH"] = this_month
-    for label in sorted(older, key=lambda l: older[l][0].updated_at, reverse=True):
+    for label in sorted(older, key=lambda lbl: older[lbl][0].updated_at, reverse=True):
         buckets[label] = older[label]
 
     return buckets
@@ -134,9 +182,9 @@ def group_conversations(
 
 def relative_time(dt: datetime) -> str:
     """Human-friendly relative timestamp for sidebar items."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
     delta = now - dt
     seconds = int(delta.total_seconds())
 
@@ -159,6 +207,7 @@ def relative_time(dt: datetime) -> str:
 # =====================================================================
 # Widgets
 # =====================================================================
+
 
 class _ProviderDot(QWidget):
     """8px coloured circle indicating the model provider."""
@@ -186,7 +235,7 @@ class _ProviderDot(QWidget):
 class ConversationItemWidget(QWidget):
     """A single row in the conversation list."""
 
-    selected = Signal(str)   # conversation_id
+    selected = Signal(str)  # conversation_id
     rename_requested = Signal(str)
     pin_requested = Signal(str, bool)
     duplicate_requested = Signal(str)
@@ -216,9 +265,7 @@ class ConversationItemWidget(QWidget):
         layout.setContentsMargins(12, 4, 8, 4)
         layout.setSpacing(8)
 
-        self._dot = _ProviderDot(
-            PROVIDER_COLORS.get(self.summary.provider or "", "#555570")
-        )
+        self._dot = _ProviderDot(PROVIDER_COLORS.get(self.summary.provider or "", "#555570"))
         layout.addWidget(self._dot)
 
         text_col = QVBoxLayout()
@@ -442,7 +489,7 @@ class SkillsSection(QWidget):
         super().__init__(parent)
         self.setObjectName("skillsSection")
         self._collapsed = False
-        self._active_skill: Optional[str] = None
+        self._active_skill: str | None = None
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 8, 0, 0)
@@ -485,7 +532,7 @@ class SkillsSection(QWidget):
 
         root.addWidget(self._items_container)
 
-    def set_active_skill(self, skill_id: Optional[str]) -> None:
+    def set_active_skill(self, skill_id: str | None) -> None:
         """Highlight the active skill and dim the rest."""
         self._active_skill = skill_id
         for sid, widget in self._skill_widgets.items():
@@ -527,7 +574,7 @@ class LeftSidebar(QWidget):
         self.setMinimumWidth(200)
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
         self._collapsed_groups: set[str] = set()
-        self._active_conversation_id: Optional[str] = None
+        self._active_conversation_id: str | None = None
         self._item_map: dict[str, ConversationItemWidget] = {}
         self._groups: list[DateGroupWidget] = []
         self._build_ui()
@@ -654,7 +701,7 @@ class LeftSidebar(QWidget):
         if conversation_id in self._item_map:
             self._item_map[conversation_id].set_selected(True)
 
-    def set_active_skill(self, skill_id: Optional[str]) -> None:
+    def set_active_skill(self, skill_id: str | None) -> None:
         """Highlight the given skill in the skills panel."""
         self._skills.set_active_skill(skill_id)
 

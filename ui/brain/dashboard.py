@@ -21,10 +21,9 @@ Layout:
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from PySide6.QtCore import QObject, Qt, Signal, Slot
-from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -35,7 +34,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from core.brain_hub import BrainEventHub
 from ui.brain.widgets import (
     AgentBusWidget,
     EventLogWidget,
@@ -46,6 +44,9 @@ from ui.brain.widgets import (
     PerceptionWidget,
     ReActWidget,
 )
+
+if TYPE_CHECKING:
+    from core.brain_hub import BrainEventHub
 
 _DARK_STYLESHEET = """
 QMainWindow {

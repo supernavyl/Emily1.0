@@ -9,10 +9,9 @@ collapsible thinking chips, and interactive action bars.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
 
-from PySide6.QtCore import QTimer, Qt, Signal, Slot
-from PySide6.QtGui import QDesktopServices, QTextCursor
+from PySide6.QtCore import Qt, QTimer, Signal, Slot
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
@@ -73,9 +72,7 @@ class MarkdownTextBrowser(QWidget):
         self._debounce_timer.setSingleShot(True)
         self._debounce_timer.timeout.connect(self._do_render)
 
-        self.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum
-        )
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
     def set_markdown(self, md: str) -> None:
         """Render full markdown content (non-streaming).
@@ -128,16 +125,10 @@ class MarkdownTextBrowser(QWidget):
                 browser.setObjectName("markdownBrowserSegment")
                 browser.setOpenExternalLinks(False)
                 browser.setOpenLinks(False)
-                browser.anchorClicked.connect(
-                    lambda url: QDesktopServices.openUrl(url)
-                )
+                browser.anchorClicked.connect(lambda url: QDesktopServices.openUrl(url))
                 browser.setReadOnly(True)
-                browser.setVerticalScrollBarPolicy(
-                    Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-                )
-                browser.setHorizontalScrollBarPolicy(
-                    Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-                )
+                browser.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+                browser.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
                 doc = browser.document()
                 if doc is not None:
                     doc.setDefaultStyleSheet(css)
@@ -278,11 +269,13 @@ class UserMessageWidget(QFrame):
         self._version_label.setVisible(False)
         col.addWidget(self._version_label)
 
-        self._action_bar = _ActionBar([
-            ("copy", "\U0001f4cb Copy"),
-            ("edit", "\u270f\ufe0f Edit"),
-            ("resend", "\U0001f501 Resend"),
-        ])
+        self._action_bar = _ActionBar(
+            [
+                ("copy", "\U0001f4cb Copy"),
+                ("edit", "\u270f\ufe0f Edit"),
+                ("resend", "\U0001f501 Resend"),
+            ]
+        )
         bar_copy = self._action_bar.button("copy")
         if bar_copy:
             bar_copy.clicked.connect(self._on_copy)
@@ -406,9 +399,7 @@ class EmilyMessageWidget(QFrame):
         self._thinking_content.setObjectName("inlineThinkingContent")
         self._thinking_content.setWordWrap(True)
         self._thinking_content.setVisible(False)
-        self._thinking_content.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse
-        )
+        self._thinking_content.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         thinking_layout.addWidget(self._thinking_content)
 
         self._thinking_frame.setVisible(False)
@@ -419,14 +410,16 @@ class EmilyMessageWidget(QFrame):
         col.addWidget(self._body)
 
         # --- action bar ---
-        self._action_bar = _ActionBar([
-            ("like", "\U0001f44d"),
-            ("dislike", "\U0001f44e"),
-            ("copy", "\U0001f4cb Copy"),
-            ("copy_md", "\U0001f4cb MD"),
-            ("retry", "\U0001f501 Retry"),
-            ("branch", "\u2702\ufe0f Branch"),
-        ])
+        self._action_bar = _ActionBar(
+            [
+                ("like", "\U0001f44d"),
+                ("dislike", "\U0001f44e"),
+                ("copy", "\U0001f4cb Copy"),
+                ("copy_md", "\U0001f4cb MD"),
+                ("retry", "\U0001f501 Retry"),
+                ("branch", "\u2702\ufe0f Branch"),
+            ]
+        )
 
         bar_like = self._action_bar.button("like")
         if bar_like:
@@ -512,9 +505,8 @@ class EmilyMessageWidget(QFrame):
             if tokens:
                 parts.append(f"{tokens:,} tokens")
             if parts:
-                self._header.setText(
-                    f"Emily  \u00b7  {' \u00b7 '.join(parts)}"
-                )
+                sep = " \u00b7 "
+                self._header.setText(f"Emily  \u00b7  {sep.join(parts)}")
 
     def full_text(self) -> str:
         """Return the accumulated response text.
@@ -734,9 +726,7 @@ class ConversationStream(QScrollArea):
         super().__init__(parent)
         self.setObjectName("conversationStream")
         self.setWidgetResizable(True)
-        self.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        )
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
         self._container = QWidget()
         self._container.setObjectName("conversationContainer")
