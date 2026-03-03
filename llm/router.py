@@ -36,6 +36,8 @@ class ModelTier(Enum):
     FAST = "fast"
     SMART = "smart"
     REASONING = "reasoning"
+    DEEP_THINK = "deep_think"
+    CODE = "code"
     VISION = "vision"
     EMBEDDING = "embedding"
     CLOUD_BEST = "cloud_best"  # Claude Opus 4.6 — deep reasoning, reflection, planning

@@ -53,84 +53,9 @@ class ModelSpec:
 
 EMILY_MODEL_REGISTRY: dict[str, ModelSpec] = {
     # -----------------------------------------------------------------------
-    # Emily's local brain — Ollama (active default while TabbyAPI is offline)
-    # -----------------------------------------------------------------------
-    "emily-ollama": ModelSpec(
-        display="Emily \u2014 Local Brain (Ollama)",
-        provider="ollama",
-        model_id="huihui_ai/qwen3-abliterated:8b",
-        context=32_768,
-        thinking=True,
-        input_usd=0.0,
-        output_usd=0.0,
-        speed="fast",
-        tier="very-good",
-        default=True,
-        open_weights=True,
-        license="Apache-2.0",
-        best_for=("conversation", "general tasks", "private", "zero-cost", "abliterated"),
-        notes="Emily's default brain via Ollama. Qwen3-8B abliterated. Switch to emily-fast when TabbyAPI is running.",
-    ),
-    # -----------------------------------------------------------------------
-    # Emily's local brain (TabbyAPI EXL2 fleet — fully abliterated)
-    # -----------------------------------------------------------------------
-    "emily-fast": ModelSpec(
-        display="Emily \u2014 Local Brain",
-        provider="tabbyapi",
-        model_id="Qwen2.5-14B-Instruct-abliterated",
-        context=131_072,
-        thinking=True,
-        input_usd=0.0,
-        output_usd=0.0,
-        speed="ultra-fast",
-        tier="excellent",
-        open_weights=True,
-        license="Apache-2.0",
-        best_for=("conversation", "general tasks", "private", "zero-cost", "abliterated"),
-        notes="Emily's default brain. Qwen2.5-14B abliterated, 4.65bpw EXL2, ~8.5 GB VRAM. TabbyAPI.",
-    ),
-    "emily-think": ModelSpec(
-        display="Emily \u2014 Deep Think",
-        provider="tabbyapi",
-        model_id="QwQ-32B-abliterated",
-        context=131_072,
-        thinking=True,
-        input_usd=0.0,
-        output_usd=0.0,
-        speed="fast",
-        tier="best",
-        open_weights=True,
-        best_for=("complex reasoning", "math", "planning", "chain-of-thought", "abliterated"),
-        notes="Emily's reasoning brain. QwQ-32B abliterated, 4.0bpw EXL2, ~17 GB VRAM. TabbyAPI.",
-    ),
-    "emily-nano": ModelSpec(
-        display="Emily \u2014 Quick",
-        provider="llamacpp",
-        model_id="qwen3-4b-abliterated",
-        context=32_000,
-        thinking=True,
-        input_usd=0.0,
-        output_usd=0.0,
-        speed="blazing",
-        tier="good",
-        open_weights=True,
-        license="Apache-2.0",
-        best_for=("quick answers", "classification", "routing", "<100ms", "abliterated"),
-        notes="Emily's fast brain. Qwen3-4B abliterated Q4_K_M GGUF, ~3 GB VRAM. In-process.",
-    ),
-    "emily-vision": ModelSpec(
-        display="Emily \u2014 Vision",
-        provider="ollama",
-        model_id="minicpm-v:latest",
-        context=8_192,
-        vision=True,
-        input_usd=0.0,
-        output_usd=0.0,
-        speed="medium",
-        tier="very-good",
-        best_for=("screen understanding", "image analysis", "OCR", "scene description"),
-        notes="Emily's eyes. MiniCPM-V 2.6, ~8 GB VRAM. Local vision via Ollama.",
-    ),
+    # Local models (emily-* entries) are registered dynamically at startup
+    # by LLMFleet._register_config_models() from config.yaml tier mappings.
+    # Only static cloud provider entries are defined here.
     # -----------------------------------------------------------------------
     # Anthropic entries
     # -----------------------------------------------------------------------
@@ -573,9 +498,9 @@ EMILY_MODEL_REGISTRY: dict[str, ModelSpec] = {
         notes="Qwen3 VL 235B Thinking on OpenRouter free tier. Vision+reasoning.",
     ),
     # ── Ollama — additional local models (Phase 9) ──────────────────
-    # Emily's own fleet (emily-fast, emily-think, emily-nano, emily-vision)
-    # is defined at the top of the registry. Additional Ollama models are
-    # auto-discovered at runtime via OllamaProvider.discover_models().
+    # Emily's config-driven models (emily-fast, emily-smart, emily-nano, etc.)
+    # are registered dynamically at startup by LLMFleet._register_config_models().
+    # Additional Ollama models are auto-discovered via OllamaProvider.discover_models().
 }
 
 

@@ -16,10 +16,9 @@ Max iterations: configurable, default 8.
 
 from __future__ import annotations
 
-import asyncio
-import json
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
-from typing import Any, Callable, Coroutine, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from core.brain_hub import BrainEventHub
@@ -120,9 +119,7 @@ class ReActLoop:
 
             # Add tool-calling instruction to the current user turn
             if self._available_tools:
-                tool_prompt = self._prompts.build_tool_call_prompt(
-                    self._available_tools, task
-                )
+                tool_prompt = self._prompts.build_tool_call_prompt(self._available_tools, task)
                 messages.append(ChatMessage(role="user", content=tool_prompt))
             else:
                 messages.append(ChatMessage(role="user", content=task))
@@ -131,10 +128,14 @@ class ReActLoop:
                 log.debug("react_loop_iteration", iteration=iteration, n_tools=n_tool_calls)
 
                 if self._brain_hub is not None:
-                    await self._brain_hub.emit("react", "iteration_start", {
-                        "iteration": iteration,
-                        "task": task[:120],
-                    })
+                    await self._brain_hub.emit(
+                        "react",
+                        "iteration_start",
+                        {
+                            "iteration": iteration,
+                            "task": task[:120],
+                        },
+                    )
 
                 result = await self._fleet.chat(
                     user_message=task,
@@ -147,12 +148,15 @@ class ReActLoop:
                 step = self._parse_response(response_text)
                 steps.append(step)
 
-                if self._brain_hub is not None:
-                    if step.thought:
-                        await self._brain_hub.emit("react", "thought", {
+                if self._brain_hub is not None and step.thought:
+                    await self._brain_hub.emit(
+                        "react",
+                        "thought",
+                        {
                             "iteration": iteration,
                             "thought": step.thought[:500],
-                        })
+                        },
+                    )
 
                 if step.is_final:
                     log.info(
@@ -161,10 +165,14 @@ class ReActLoop:
                         n_tool_calls=n_tool_calls,
                     )
                     if self._brain_hub is not None:
-                        await self._brain_hub.emit("react", "final_answer", {
-                            "iterations": iteration + 1,
-                            "answer_len": len(step.final_answer),
-                        })
+                        await self._brain_hub.emit(
+                            "react",
+                            "final_answer",
+                            {
+                                "iterations": iteration + 1,
+                                "answer_len": len(step.final_answer),
+                            },
+                        )
                     return ReActResult(
                         final_answer=step.final_answer,
                         steps=steps,
@@ -177,16 +185,18 @@ class ReActLoop:
                     n_tool_calls += 1
 
                     if self._brain_hub is not None:
-                        await self._brain_hub.emit("react", "action", {
-                            "iteration": iteration,
-                            "tool": step.action,
-                            "input": str(step.action_input)[:300],
-                        })
+                        await self._brain_hub.emit(
+                            "react",
+                            "action",
+                            {
+                                "iteration": iteration,
+                                "tool": step.action,
+                                "input": str(step.action_input)[:300],
+                            },
+                        )
 
                     try:
-                        observation = await self._tool_executor(
-                            step.action, step.action_input
-                        )
+                        observation = await self._tool_executor(step.action, step.action_input)
                         step.observation = str(observation)
                     except Exception as exc:
                         step.observation = f"Tool error: {exc}"
@@ -197,15 +207,17 @@ class ReActLoop:
                         )
 
                     if self._brain_hub is not None:
-                        await self._brain_hub.emit("react", "observation", {
-                            "iteration": iteration,
-                            "tool": step.action,
-                            "observation": step.observation[:500],
-                        })
+                        await self._brain_hub.emit(
+                            "react",
+                            "observation",
+                            {
+                                "iteration": iteration,
+                                "tool": step.action,
+                                "observation": step.observation[:500],
+                            },
+                        )
 
-                    messages.append(
-                        ChatMessage(role="assistant", content=response_text)
-                    )
+                    messages.append(ChatMessage(role="assistant", content=response_text))
                     messages.append(
                         ChatMessage(
                             role="user",

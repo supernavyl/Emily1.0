@@ -19,8 +19,10 @@ llm:
     nano: "goekdenizguelmez/JOSIEFIED-Qwen3:8b" # Routing & classification
     voice_fast: "goekdenizguelmez/JOSIEFIED-Qwen3:8b" # Fast voice responses (<1s)
     fast: "goekdenizguelmez/JOSIEFIED-Qwen3:14b" # Standard conversation + voice escalation
-    smart: "huihui_ai/qwen3.5-abliterated:27b" # Complex reasoning & text chat
-    reasoning: "huihui_ai/qwen3.5-abliterated:27b" # Deep reasoning with thinking (text chat)
+    smart: "huihui_ai/qwen3.5-abliterated:27b" # Complex reasoning & text chat + translation
+    reasoning: "huihui_ai/deepseek-r1-abliterated:14b-qwen-distill" # Analyst, research, debate
+    deep_think: "huihui_ai/deepseek-r1-abliterated:32b" # Deep Think skill — full R1 32B
+    code: "huihui_ai/qwen3-coder-abliterated:30b" # Code skill — dedicated coder
     vision: "minicpm-v:latest" # Ollama - vision only (not abliterated)
     embedding: "bge-m3" # Ollama - embeddings (not abliterated)
     cloud_best: "claude-opus-4-6" # Anthropic - deep reasoning, reflection, planning
@@ -71,10 +73,30 @@ llm:
       max_tokens: 8192
       enable_thinking: true
       thinking_budget: 8000 # Claude Sonnet 4.6 extended thinking budget
+  cache:
+    enabled: true
+    dir: "data/llm_cache"
+    max_size_gb: 2
   critic:
     enabled: true
     min_confidence: 0.65
     max_retries: 2
+  # ── Reasoning orchestrator ────────────────────────────────────────────
+  reasoning:
+    consensus_models: 2           # how many models for consensus strategy
+    escalation_threshold: 0.6     # confidence below this triggers escalation
+    max_critic_loops: 3
+    tree_branches: 3              # branches for tree-of-thought
+
+# ── Modes ────────────────────────────────────────────────────────────────
+modes:
+  default: "normal"
+  custom_path: "~/.emily-chat/custom_modes.json"
+
+# ── Rules ────────────────────────────────────────────────────────────────
+rules:
+  enabled: true
+  custom_path: "~/.emily-chat/custom_rules.json"
   llamacpp:
     enabled: false
     models_dir: "models" # ignored while disabled
@@ -99,14 +121,14 @@ llm:
     cloud_fast: "anthropic" # Claude Sonnet 4.6 — fast cloud inference
 
 audio:
-  sample_rate: 16000
+  sample_rate: 44100
   channels: 1
-  chunk_size: 1024
+  chunk_size: 4096  # 44100→16000 resampled ≈1495 samples, well above Silero min
   # ── AUDIO DEVICE CONFIGURATION ──
   # [10] Yeti Nano: USB Audio (input, 44100Hz)
   # [42] USB Audio Speakers (output, 48000Hz)
-  input_device: 10 # Yeti Nano
-  output_device: 41 # USB Audio Front Headphones
+  input_device: "auto"
+  output_device: "auto"
 
 wake_word:
   model: "hey_emily"
@@ -116,7 +138,7 @@ wake_word:
 
 vad:
   model: "silero"
-  threshold: 0.1
+  threshold: 0.5
   min_silence_ms: 600
   min_speech_ms: 0
   adaptive: true
@@ -124,7 +146,7 @@ vad:
 
 stt:
   profile: "accurate" # fast | accurate
-  model: "large-v3-turbo"
+  model: "distil-large-v3"
   device: "cuda"
   compute_type: "float16"
   language: "en"
@@ -161,6 +183,10 @@ tts:
   kokoro:
     voice: "af_heart"
     speed: 0.88
+  chatterbox:
+    exaggeration: 0.5
+    ref_audio: null  # path to reference audio for voice cloning
+    emotion_threshold: 0.6  # route to Chatterbox when any emotional dim exceeds this
   csm:
     model_id: "sesame/csm-1b"
     speaker_id: 0
@@ -197,7 +223,7 @@ voice_engine:
   # Provider selection (detailed config in .env — see voice_engine/config.py)
   stt_provider: "faster_whisper"
   llm_provider: "ollama" # uses TabbyAPI (ExLlamaV2)
-  tts_provider: "kokoro"
+  tts_provider: "tiered"
   vad_threshold: 0.5
   min_speech_ms: 200
   min_silence_ms: 800
@@ -248,7 +274,7 @@ agents:
 tools:
   sandbox: "bubblewrap"
   allowed_paths:
-    - "/home/supernovyl/Emily1.0"
+    - "/home/supernovyl"
     - "/tmp/emily_sandbox"
   web_search_url: "http://localhost:8888"
   home_assistant:
@@ -314,6 +340,8 @@ api:
   port: 8000
   reload: false
   secret_key: null # set in .env
+  rate_limit_requests: 2000  # increased for local desktop app polling
+  rate_limit_window_s: 60
 
 observability:
   otlp_endpoint: "http://localhost:4317"

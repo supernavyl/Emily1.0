@@ -17,7 +17,8 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, AsyncIterator
+from collections.abc import AsyncIterator
+from typing import Any
 
 import httpx
 
@@ -91,9 +92,7 @@ class OllamaProvider(BaseProvider):
             ``StreamChunk`` with types ``thinking``, ``text``, ``usage``,
             ``error``, or ``stop``.
         """
-        body = self._build_request_body(
-            messages, system_prompt, settings, model_spec
-        )
+        body = self._build_request_body(messages, system_prompt, settings, model_spec)
         url = f"{self._base_url}{_CHAT_ENDPOINT}"
         use_think_tags = self._uses_think_tags(model_spec.model_id)
         extractor = ThinkTagExtractor() if use_think_tags else None
@@ -133,15 +132,23 @@ class OllamaProvider(BaseProvider):
                             )
 
                     if data.get("done"):
+                        tool_calls = data.get("message", {}).get("tool_calls", [])
+                        if tool_calls:
+                            # Model wants to call tools — emit tool_call and return
+                            # (no USAGE or STOP; the caller handles the agentic loop)
+                            yield StreamChunk(
+                                type=ChunkType.TOOL_CALL,
+                                metadata={"tool_calls": tool_calls},
+                            )
+                            return
+
                         if extractor:
                             for remaining in extractor.flush():
                                 yield remaining
                         yield StreamChunk(
                             type=ChunkType.USAGE,
                             metadata={
-                                "prompt_tokens": data.get(
-                                    "prompt_eval_count", 0
-                                ),
+                                "prompt_tokens": data.get("prompt_eval_count", 0),
                                 "completion_tokens": data.get("eval_count", 0),
                                 "reasoning_tokens": 0,
                             },
@@ -173,9 +180,7 @@ class OllamaProvider(BaseProvider):
             ``True`` if the Ollama server responds.
         """
         try:
-            resp = await self._client.get(
-                f"{self._base_url}{_TAGS_ENDPOINT}"
-            )
+            resp = await self._client.get(f"{self._base_url}{_TAGS_ENDPOINT}")
             return resp.status_code == 200
         except httpx.HTTPError:
             return False
@@ -199,9 +204,7 @@ class OllamaProvider(BaseProvider):
             Ollama is unreachable.
         """
         try:
-            resp = await self._client.get(
-                f"{self._base_url}{_TAGS_ENDPOINT}"
-            )
+            resp = await self._client.get(f"{self._base_url}{_TAGS_ENDPOINT}")
             if resp.status_code != 200:
                 return []
             data = resp.json()
@@ -257,6 +260,9 @@ class OllamaProvider(BaseProvider):
         if settings.top_p != 1.0:
             body["options"]["top_p"] = settings.top_p
 
+        if settings.tools:
+            body["tools"] = settings.tools
+
         return body
 
     # ── think-tag detection ───────────────────────────────────
@@ -285,10 +291,8 @@ class OllamaProvider(BaseProvider):
         Returns:
             A new :class:`ModelSpec` with ``provider="ollama"`` and zero cost.
         """
-        tag = model_name.split(":")[0] if ":" in model_name else model_name
-        has_thinking = any(
-            p in model_name.lower() for p in _THINK_TAG_PATTERNS
-        )
+        model_name.split(":")[0] if ":" in model_name else model_name
+        has_thinking = any(p in model_name.lower() for p in _THINK_TAG_PATTERNS)
         return ModelSpec(
             display=f"Emily \u2014 Local ({model_name})",
             provider="ollama",

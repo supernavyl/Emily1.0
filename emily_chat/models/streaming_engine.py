@@ -43,6 +43,7 @@ class ChunkType(StrEnum):
     USAGE = "usage"
     STOP = "stop"
     ERROR = "error"
+    TOOL_CALL = "tool_call"
 
 
 @dataclass
@@ -69,6 +70,8 @@ class GenerationSettings:
     thinking_budget: int = 8000
     top_p: float = 1.0
     stop: list[str] = field(default_factory=list)
+    # Ollama-format tool schemas: [{"type": "function", "function": {...}}]
+    tools: list[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -93,6 +96,61 @@ OnDone = Callable[[UsageStats], None]
 OnError = Callable[[Exception], None]
 
 
+async def _iter_with_timeout(
+    stream: AsyncIterator[StreamChunk],
+    total_timeout: float,
+    stall_timeout: float = 15.0,
+    interrupt: asyncio.Event | None = None,
+) -> AsyncIterator[StreamChunk]:
+    """Iterate a provider stream with per-chunk stall detection, total timeout, and interrupt.
+
+    When *interrupt* is set, the generator exits immediately. Because this is an
+    async generator, Python will call ``aclose()`` on exit which cascades through
+    the provider's stream → HTTP connection, cleanly terminating the inference.
+
+    Args:
+        stream: The raw provider async iterator.
+        total_timeout: Maximum wall-clock seconds for the entire stream.
+        stall_timeout: Max seconds to wait for any single chunk before re-checking.
+        interrupt: Optional event that, when set, causes immediate clean exit.
+    """
+    deadline = time.monotonic() + total_timeout
+    aiter = stream.__aiter__()
+    while True:
+        # Check interrupt before waiting for next chunk
+        if interrupt is not None and interrupt.is_set():
+            return
+
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            yield StreamChunk(
+                type=ChunkType.ERROR,
+                content=f"LLM inference timed out after {total_timeout:.0f}s",
+            )
+            return
+        try:
+            chunk = await asyncio.wait_for(
+                aiter.__anext__(),
+                timeout=min(stall_timeout, remaining),
+            )
+            yield chunk
+        except StopAsyncIteration:
+            return
+        except TimeoutError:
+            # Check interrupt — exit immediately if set (even during a stall)
+            if interrupt is not None and interrupt.is_set():
+                return
+            # Check if this was a stall (< total timeout) or total timeout
+            if time.monotonic() < deadline:
+                # Stall — continue waiting
+                continue
+            yield StreamChunk(
+                type=ChunkType.ERROR,
+                content=f"LLM inference timed out after {total_timeout:.0f}s",
+            )
+            return
+
+
 class EmilyStreamingEngine:
     """Orchestrates a single streaming generation.
 
@@ -108,9 +166,10 @@ class EmilyStreamingEngine:
     Call :meth:`interrupt` to cancel a running generation.
     """
 
-    def __init__(self, persona: EmilyPersonaEngine) -> None:
+    def __init__(self, persona: EmilyPersonaEngine, stream_timeout_seconds: int = 60) -> None:
         self._persona = persona
         self._interrupt = asyncio.Event()
+        self._stream_timeout = stream_timeout_seconds
 
     def interrupt(self) -> None:
         """Signal the running stream to stop at the next chunk boundary."""
@@ -151,7 +210,11 @@ class EmilyStreamingEngine:
         first_token_seen = False
 
         try:
-            async for chunk in provider.stream(messages, system_prompt, settings, model_spec):
+            async for chunk in _iter_with_timeout(
+                provider.stream(messages, system_prompt, settings, model_spec),
+                total_timeout=self._stream_timeout,
+                interrupt=self._interrupt,
+            ):
                 if self._interrupt.is_set():
                     break
 
@@ -241,7 +304,11 @@ class EmilyStreamingEngine:
         first_token_seen = False
 
         try:
-            async for chunk in provider.stream(messages, system_prompt, settings, model_spec):
+            async for chunk in _iter_with_timeout(
+                provider.stream(messages, system_prompt, settings, model_spec),
+                total_timeout=self._stream_timeout,
+                interrupt=self._interrupt,
+            ):
                 if self._interrupt.is_set():
                     break
 
@@ -364,8 +431,9 @@ class StreamingEngine:
     per-call instead.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, stream_timeout_seconds: int = 60) -> None:
         self._interrupt = asyncio.Event()
+        self._stream_timeout = stream_timeout_seconds
 
     def interrupt(self) -> None:
         """Signal the running stream to stop."""
@@ -381,7 +449,7 @@ class StreamingEngine:
         persona_filter: Callable[[str], str] | None = None,
         interrupt: asyncio.Event | None = None,
     ) -> AsyncIterator[StreamChunk]:
-        """Stream a completion, yielding :class:`~emily_chat.models.base.StreamChunk`.
+        """Stream a completion, yielding :class:`StreamChunk`.
 
         Args:
             model_spec: Resolved model spec from the registry.
@@ -394,35 +462,40 @@ class StreamingEngine:
         Yields:
             StreamChunk objects (from ``emily_chat.models.base``).
         """
-        from emily_chat.models.base import StreamChunk as BaseChunk
-
         provider = _get_provider(model_spec.provider)
 
         t0 = time.monotonic()
         first_token_ms: float | None = None
 
+        # Merge external and internal interrupt events for the timeout wrapper
+        effective_interrupt = interrupt or self._interrupt
+
         try:
-            async for chunk in provider.stream(messages, system_prompt, settings, model_spec):
+            async for chunk in _iter_with_timeout(
+                provider.stream(messages, system_prompt, settings, model_spec),
+                total_timeout=self._stream_timeout,
+                interrupt=effective_interrupt,
+            ):
                 if (interrupt and interrupt.is_set()) or self._interrupt.is_set():
-                    yield BaseChunk(type="stop")
+                    yield StreamChunk(type=ChunkType.STOP)
                     return
 
-                if chunk.type == "thinking":
+                if chunk.type == ChunkType.THINKING:
                     if first_token_ms is None:
                         first_token_ms = (time.monotonic() - t0) * 1000
                     yield chunk
 
-                elif chunk.type == "text":
+                elif chunk.type == ChunkType.TEXT:
                     if first_token_ms is None:
                         first_token_ms = (time.monotonic() - t0) * 1000
                     content = persona_filter(chunk.content) if persona_filter else chunk.content
-                    yield BaseChunk(type="text", content=content)
+                    yield StreamChunk(type=ChunkType.TEXT, content=content)
 
-                elif chunk.type == "usage":
+                elif chunk.type == ChunkType.USAGE:
                     latency_ms = (time.monotonic() - t0) * 1000
                     from emily_chat.models.cost_tracker import estimate_cost
 
-                    usage_data = getattr(chunk, "usage", None) or getattr(chunk, "metadata", {})
+                    usage_data = chunk.metadata
                     cost = estimate_cost(
                         model_spec,
                         usage_data.get("input_tokens", usage_data.get("prompt_tokens", 0)),
@@ -435,13 +508,20 @@ class StreamingEngine:
                         "first_token_ms": round(first_token_ms or 0),
                         "cost_usd": cost,
                     }
-                    yield BaseChunk(type="usage", usage=enriched)
+                    yield StreamChunk(type=ChunkType.USAGE, metadata=enriched)
 
-                elif chunk.type == "stop":
+                elif chunk.type == ChunkType.TOOL_CALL:
+                    # Forward tool_call chunks to the caller (chat_v1 agentic loop)
+                    tool_calls = chunk.metadata.get("tool_calls", [])
+                    yield StreamChunk(type=ChunkType.TOOL_CALL, metadata={"tool_calls": tool_calls})
+
+                elif chunk.type == ChunkType.STOP:
                     yield chunk
 
         except Exception as exc:
-            yield BaseChunk(type="stop", content=str(exc))
+            yield StreamChunk(type=ChunkType.ERROR, content=str(exc))
             return
 
+        # Ensure a STOP sentinel is always emitted (e.g. after interrupt exit)
+        yield StreamChunk(type=ChunkType.STOP)
         self._interrupt.clear()

@@ -101,6 +101,24 @@ def classify_request(text: str, skill: EmilySkill | None = None) -> RoutingReque
     if _NON_ENGLISH_PATTERNS.search(text):
         req.is_non_english = True
 
+    # Skills that should use the 27B smart model locally
+    _SMART_SKILLS = {
+        "Code",
+        "Deep Think",
+        "Research",
+        "Analyst",
+        "Tutor",
+        "Devil's Advocate",
+        "Writing",
+        "Ad Copywriter",
+        "Social Media",
+        "Video Script",
+        "Market Research",
+        "Translate",
+    }
+    # Skills that should prefer the fast 8B model
+    _FAST_SKILLS = {"Voice", "Concise", "Simple (ELI5)", "Brainstorm", "Singing & Music"}
+
     if skill:
         if skill.enable_thinking:
             req.thinking_enabled = True
@@ -109,10 +127,22 @@ def classify_request(text: str, skill: EmilySkill | None = None) -> RoutingReque
         elif skill.name == "Deep Think":
             req.thinking_enabled = True
             req.is_math_or_logic = True
-        elif skill.name in ("Writing", "Brainstorm"):
+        elif skill.name in (
+            "Writing",
+            "Brainstorm",
+            "Ad Copywriter",
+            "Social Media",
+            "Video Script",
+            "Singing & Music",
+        ):
             req.is_creative = True
         elif skill.name == "Translate":
             req.is_non_english = True
+
+        if skill.name in _SMART_SKILLS:
+            req.priority = "smart"
+        elif skill.name in _FAST_SKILLS:
+            req.priority = "speed"
 
     return req
 
@@ -232,6 +262,7 @@ class EmilyAutoRouter:
         if request.thinking_enabled and request.is_math_or_logic:
             result = first_available(
                 [
+                    "emily-deep-think",
                     "o3",
                     "deepseek-r2",
                     "gemini-3-pro",
@@ -246,6 +277,8 @@ class EmilyAutoRouter:
         if request.is_math_or_logic:
             result = first_available(
                 [
+                    "emily-reasoning",
+                    "emily-deep-think",
                     "o4-mini",
                     "o3",
                     "deepseek-r2",
@@ -259,6 +292,8 @@ class EmilyAutoRouter:
         if request.is_code_request:
             result = first_available(
                 [
+                    "emily-code",
+                    "emily-smart",
                     "codestral-2",
                     "deepseek-v3-2",
                     "o4-mini",
@@ -272,6 +307,7 @@ class EmilyAutoRouter:
         if request.is_creative:
             result = first_available(
                 [
+                    "emily-fast",
                     "grok-4-1",
                     "gpt-5-2",
                     "gpt-5",
@@ -284,6 +320,7 @@ class EmilyAutoRouter:
         if request.is_non_english:
             result = first_available(
                 [
+                    "emily-smart",
                     "qwen3-235b",
                     "qwen3-72b",
                     "mistral-large-3",
@@ -314,9 +351,28 @@ class EmilyAutoRouter:
             if result:
                 return result
 
-        if request.priority == "speed":
+        if request.priority == "smart":
+            # analyst, research, debate, tutor, market_research → R1 reasoning
             result = first_available(
                 [
+                    "emily-reasoning",
+                    "emily-deep-think",
+                    "emily-smart",
+                    "deepseek-v3-2",
+                    "gemini-3-flash",
+                    "gpt-4o",
+                    "emily-fast",
+                ]
+            )
+            if result:
+                return result
+
+        if request.priority == "speed":
+            # voice, concise, eli5 → fastest local uncensored
+            result = first_available(
+                [
+                    "emily-voice-fast",
+                    "emily-fast",
                     "groq-llama-70b",
                     "gemini-3-flash",
                     "mistral-small-3",
@@ -360,16 +416,14 @@ class EmilyAutoRouter:
                 "deepseek-v3-2",
                 "groq-llama-70b",
                 "or-free-llama-70b",
-                "emily-ollama",
+                "emily-smart",
                 "emily-fast",
             ]
         )
         if result:
             return result
 
-        fallback = EMILY_MODEL_REGISTRY.get("emily-ollama") or EMILY_MODEL_REGISTRY.get(
-            "emily-fast"
-        )
+        fallback = EMILY_MODEL_REGISTRY.get("emily-smart") or EMILY_MODEL_REGISTRY.get("emily-fast")
         if fallback is not None:
             return fallback
 

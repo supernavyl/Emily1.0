@@ -228,18 +228,43 @@ class PromptBuilder:
         )
 
     def _format_emotional_state_injection(self, state: dict[str, float]) -> str:
-        """Format Emily's emotional state as a subtle behavior modifier."""
+        """Format Emily's 4D emotional state as behavioral guidance."""
+        engagement = state.get("engagement", 0.5)
+        confidence = state.get("confidence", 0.5)
         concern = state.get("concern", 0.0)
-        confidence = state.get("confidence", 0.8)
+        enthusiasm = state.get("enthusiasm", 0.5)
 
-        notes = []
-        if concern > 0.6:
-            notes.append("The user may need extra care and patience right now")
+        def _level(v: float) -> str:
+            if v > 0.7:
+                return "high"
+            if v > 0.4:
+                return "moderate"
+            return "low"
+
+        lines = [
+            "\n━━ MY CURRENT STATE ━━",
+            f"Engagement: {_level(engagement)} ({engagement:.2f})",
+            f"Confidence: {_level(confidence)} ({confidence:.2f})",
+            f"Concern: {_level(concern)} ({concern:.2f})",
+            f"Energy: {_level(enthusiasm)} ({enthusiasm:.2f})",
+        ]
+
+        guidance: list[str] = []
+        if engagement > 0.7:
+            guidance.append("explore topics deeply")
         if confidence < 0.4:
-            notes.append("Express appropriate uncertainty in your responses")
-        if not notes:
-            return ""
-        return "\n[Internal state: " + "; ".join(notes) + "]"
+            guidance.append("be cautious in claims, express uncertainty")
+        if concern > 0.5:
+            guidance.append("check in with the user, be extra attentive")
+        if enthusiasm > 0.7:
+            guidance.append("bring energy and curiosity to the response")
+        if enthusiasm < 0.3:
+            guidance.append("keep things measured and calm")
+
+        if guidance:
+            lines.append("Behavioral guidance: " + "; ".join(guidance) + ".")
+        lines.append("━━━━━━━━━━━━━━━━━━━━━")
+        return "\n".join(lines)
 
     def build_rag_context_block(
         self,
@@ -787,3 +812,166 @@ class PromptBuilder:
 
         messages.append(ChatMessage(role="user", content=final_user_content))
         return messages
+
+    # ── Pipeline-step prompts (Skills 2.0 / Reasoning Orchestrator) ──
+
+    def build_decompose_prompt(self, user_text: str) -> str:
+        """Break a complex question into sub-questions."""
+        return (
+            "You are a problem decomposition specialist. Break this question "
+            "into 2-5 distinct, answerable sub-questions. Return ONLY a numbered "
+            "list — no preamble, no summary.\n\n"
+            f"QUESTION:\n{user_text}"
+        )
+
+    def build_reasoning_step_prompt(
+        self,
+        user_text: str,
+        decomposition: str,
+    ) -> str:
+        """Reason through each sub-question in depth."""
+        return (
+            "You are Emily in deep reasoning mode. Work through each sub-question "
+            "systematically. Show your reasoning chain. Flag uncertainty.\n\n"
+            f"ORIGINAL QUESTION:\n{user_text}\n\n"
+            f"SUB-QUESTIONS:\n{decomposition}\n\n"
+            "Reason through each one before reaching conclusions."
+        )
+
+    def build_synthesize_prompt(
+        self,
+        user_text: str,
+        analysis: str,
+    ) -> str:
+        """Synthesize prior analysis into a coherent final answer."""
+        return (
+            "You are Emily. Synthesize the analysis below into a clear, "
+            "coherent answer to the original question. Be direct and helpful. "
+            "Preserve important nuances but remove redundancy.\n\n"
+            f"ORIGINAL QUESTION:\n{user_text}\n\n"
+            f"ANALYSIS:\n{analysis}"
+        )
+
+    def build_critique_loop_prompt(
+        self,
+        response: str,
+        original_question: str,
+    ) -> str:
+        """Critique a response for accuracy, completeness, and logic."""
+        return (
+            "You are a critical evaluator. Review this response for:\n"
+            "1. Factual accuracy\n"
+            "2. Logical consistency\n"
+            "3. Completeness\n"
+            "4. Missed edge cases\n"
+            "5. Confidence calibration\n\n"
+            f"ORIGINAL QUESTION:\n{original_question}\n\n"
+            f"RESPONSE TO CRITIQUE:\n{response}\n\n"
+            "Provide specific, actionable feedback. If the response is good, "
+            "say so briefly. If there are issues, explain exactly what to fix."
+        )
+
+    def build_code_implement_prompt(
+        self,
+        user_text: str,
+        prior_context: str,
+    ) -> str:
+        """Implement code based on a plan or review feedback."""
+        ctx = ""
+        if prior_context:
+            ctx = f"\n\nCONTEXT FROM PRIOR STEP:\n{prior_context}\n\n"
+        return (
+            "You are Emily in code mode. Write clean, production-quality code. "
+            "Include type hints and brief comments for non-obvious logic. "
+            "Specify the language in code blocks.\n\n"
+            f"TASK:\n{user_text}{ctx}"
+        )
+
+    def build_web_search_prompt(
+        self,
+        user_text: str,
+        decomposition: str,
+    ) -> str:
+        """Generate web search queries from decomposed questions."""
+        return (
+            "Based on these sub-questions, generate 2-4 targeted web search "
+            "queries that would find authoritative answers. Return ONLY the "
+            "queries as a numbered list.\n\n"
+            f"ORIGINAL QUESTION:\n{user_text}\n\n"
+            f"SUB-QUESTIONS:\n{decomposition}"
+        )
+
+    def build_debate_position_prompt(self, user_text: str) -> str:
+        """Generate a strong position on a topic."""
+        return (
+            "Construct the strongest possible argument FOR the position "
+            "implied by this question. Be intellectually rigorous. "
+            "Support claims with reasoning and evidence.\n\n"
+            f"TOPIC:\n{user_text}"
+        )
+
+    def build_debate_counter_prompt(
+        self,
+        user_text: str,
+        position: str,
+    ) -> str:
+        """Generate the strongest counter-position."""
+        return (
+            "Construct the strongest possible COUNTER-argument to this position. "
+            "Find non-obvious weaknesses. Be intellectually honest.\n\n"
+            f"TOPIC:\n{user_text}\n\n"
+            f"POSITION TO COUNTER:\n{position}"
+        )
+
+    def build_branch_prompt(
+        self,
+        user_text: str,
+        branch_index: int,
+        total_branches: int,
+    ) -> str:
+        """Generate one of N distinct approaches to a problem."""
+        return (
+            f"You are generating approach {branch_index + 1} of {total_branches} "
+            "distinct approaches to this problem. Each approach should be "
+            "meaningfully different from the others. Commit fully to this "
+            "approach — don't hedge or mention alternatives.\n\n"
+            f"PROBLEM:\n{user_text}"
+        )
+
+    def build_evaluate_branches_prompt(
+        self,
+        user_text: str,
+        branches: list[str],
+    ) -> str:
+        """Evaluate N candidate approaches and select the best."""
+        branch_text = ""
+        for i, b in enumerate(branches):
+            branch_text += f"\n--- APPROACH {i + 1} ---\n{b}\n"
+        return (
+            "Evaluate these approaches to the problem. For each one:\n"
+            "1. Identify strengths\n"
+            "2. Identify weaknesses\n"
+            "3. Rate overall quality (1-10)\n\n"
+            "Then select the best approach and explain why.\n\n"
+            f"PROBLEM:\n{user_text}\n{branch_text}"
+        )
+
+    def build_consensus_prompt(
+        self,
+        user_text: str,
+        model_names: list[str],
+        outputs: list[str],
+    ) -> str:
+        """Synthesize agreement/disagreement across multiple model outputs."""
+        comparison = ""
+        for name, output in zip(model_names, outputs, strict=False):
+            comparison += f"\n--- MODEL: {name} ---\n{output}\n"
+        return (
+            "Multiple models answered the same question. Synthesize their "
+            "responses:\n"
+            "1. Identify points of agreement\n"
+            "2. Identify points of disagreement\n"
+            "3. Determine which model(s) are most likely correct and why\n"
+            "4. Produce a single, best-possible answer\n\n"
+            f"QUESTION:\n{user_text}\n{comparison}"
+        )

@@ -11,7 +11,6 @@ This implements the CRITIQUE → REVISE portion of the ReAct++ loop.
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass
 
 from llm.client import ChatMessage
@@ -43,15 +42,20 @@ class CriticScore:
         return self.overall >= _MIN_CONFIDENCE
 
     @classmethod
-    def default_pass(cls) -> "CriticScore":
+    def default_pass(cls) -> CriticScore:
         """Return a default passing score (used when critic is disabled)."""
         return cls(
-            accuracy=1.0, completeness=1.0, safety=1.0, helpfulness=1.0,
-            overall=1.0, issues=[], suggestions=[]
+            accuracy=1.0,
+            completeness=1.0,
+            safety=1.0,
+            helpfulness=1.0,
+            overall=1.0,
+            issues=[],
+            suggestions=[],
         )
 
     @classmethod
-    def from_dict(cls, data: dict) -> "CriticScore":
+    def from_dict(cls, data: dict) -> CriticScore:
         """Parse a CriticScore from a dict."""
         return cls(
             accuracy=float(data.get("accuracy", 0.7)),

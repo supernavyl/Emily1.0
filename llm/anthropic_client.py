@@ -20,7 +20,8 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
-from emily_chat.models.base import GenerationSettings
+from emily_chat.models.base import ModelSpec
+from emily_chat.models.streaming_engine import GenerationSettings
 from llm.client import ChatMessage, CompletionChunk, CompletionResult, EmbeddingResult
 from observability.logger import get_logger
 
@@ -117,6 +118,18 @@ class AnthropicFleetClient:
             thinking_budget=budget,
         )
 
+        # Build a minimal ModelSpec for the provider contract
+        from emily_chat.models.registry import get_model
+
+        spec = get_model(model)
+        if spec is None:
+            spec = ModelSpec(
+                id=model,
+                display=model,
+                provider="anthropic",
+                model_id=model,
+            )
+
         log.debug(
             "anthropic_fleet_stream",
             model=model,
@@ -126,10 +139,10 @@ class AnthropicFleetClient:
         )
 
         async for chunk in provider.stream(
-            model_id=model,
-            messages=chat_messages,
-            system_prompt=system_prompt,  # noqa
-            settings=settings,
+            chat_messages,
+            system_prompt,
+            settings,
+            spec,
         ):
             if chunk.type == "text":
                 yield CompletionChunk(content=chunk.content, done=False, model=model)

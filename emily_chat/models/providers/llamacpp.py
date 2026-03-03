@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import Any, AsyncIterator
+from typing import Any
 
 from emily_chat.models.providers.base import BaseProvider
 from emily_chat.models.registry import ModelSpec
@@ -28,6 +29,7 @@ _SENTINEL = object()
 def _find_config_path() -> Path | None:
     """Return path to main Emily config.yaml, or None if not found."""
     import os
+
     env_path = os.environ.get("EMILY_CONFIG_PATH")
     if env_path:
         p = Path(env_path)
@@ -55,6 +57,7 @@ def load_llamacpp_config() -> tuple[str, dict[str, dict[str, Any]]] | None:
         return None
     try:
         import yaml
+
         data = yaml.safe_load(path.read_text()) or {}
         llm = data.get("llm") or {}
         lc = llm.get("llamacpp") or {}
@@ -73,7 +76,13 @@ def load_llamacpp_config() -> tuple[str, dict[str, dict[str, Any]]] | None:
                     "alias_of": cfg.get("alias_of"),
                 }
             else:
-                models[tier] = {"filename": "", "n_gpu_layers": -1, "n_ctx": 8192, "n_batch": 512, "alias_of": None}
+                models[tier] = {
+                    "filename": "",
+                    "n_gpu_layers": -1,
+                    "n_ctx": 8192,
+                    "n_batch": 512,
+                    "alias_of": None,
+                }
         return (models_dir, models)
     except Exception as e:
         logger.warning("llamacpp_config_load_failed", path=str(path), error=str(e))
@@ -300,7 +309,7 @@ class LlamaCppProvider(BaseProvider):
 
     async def close(self) -> None:
         """Unload all cached models."""
-        for key, llm in list(self._cache.items()):
+        for _key, llm in list(self._cache.items()):
             try:
                 if hasattr(llm, "close"):
                     llm.close()

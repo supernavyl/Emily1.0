@@ -20,8 +20,9 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import Any, AsyncIterator
+from typing import Any
 
 from config import LlamaCppConfig
 from llm.client import ChatMessage, CompletionChunk, CompletionResult, EmbeddingResult
@@ -177,10 +178,7 @@ class LlamaCppClient:
                 f"No llama-cpp model loaded for tier={model_tier!r} / model={model!r}"
             )
 
-        msgs = [
-            {"role": m.role, "content": m.content}
-            for m in messages
-        ]
+        msgs = [{"role": m.role, "content": m.content} for m in messages]
 
         loop = asyncio.get_running_loop()
         queue: asyncio.Queue[Any] = asyncio.Queue(maxsize=64)
@@ -221,9 +219,7 @@ class LlamaCppClient:
 
                 if first_token and content:
                     latency = time.monotonic() - t0
-                    LLM_FIRST_TOKEN_LATENCY.labels(model_tier=model_tier).observe(
-                        latency
-                    )
+                    LLM_FIRST_TOKEN_LATENCY.labels(model_tier=model_tier).observe(latency)
                     log.debug(
                         "llm_first_token",
                         model=model,
@@ -242,20 +238,14 @@ class LlamaCppClient:
             await fut
 
             if exc_holder:
-                LLM_REQUESTS_TOTAL.labels(
-                    model_tier=model_tier, status="error"
-                ).inc()
+                LLM_REQUESTS_TOTAL.labels(model_tier=model_tier, status="error").inc()
                 raise exc_holder[0]
 
-            LLM_REQUESTS_TOTAL.labels(
-                model_tier=model_tier, status="success"
-            ).inc()
+            LLM_REQUESTS_TOTAL.labels(model_tier=model_tier, status="success").inc()
 
         except Exception as exc:
             LLM_REQUESTS_TOTAL.labels(model_tier=model_tier, status="error").inc()
-            log.error(
-                "llamacpp_stream_error", model=model, error=str(exc)
-            )
+            log.error("llamacpp_stream_error", model=model, error=str(exc))
             raise
 
     async def chat(
@@ -323,9 +313,7 @@ class LlamaCppClient:
         """
         llm = self._models.get(model)
         if llm is None:
-            raise RuntimeError(
-                f"No llama-cpp model loaded for embedding model={model!r}"
-            )
+            raise RuntimeError(f"No llama-cpp model loaded for embedding model={model!r}")
         result = await asyncio.to_thread(llm.embed, text)
         vec = result if isinstance(result, list) else list(result)
         if vec and isinstance(vec[0], list):

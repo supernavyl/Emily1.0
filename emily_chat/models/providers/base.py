@@ -8,7 +8,8 @@ the rest of the application never deals with provider-specific details.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, AsyncIterator
+from collections.abc import AsyncIterator
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from emily_chat.models.registry import ModelSpec
@@ -71,5 +72,5 @@ class BaseProvider(ABC):
         """Return ``True`` if any model from this provider accepts images."""
         return False
 
-    async def close(self) -> None:
+    async def close(self) -> None:  # noqa: B027
         """Release underlying HTTP clients.  Override if needed."""

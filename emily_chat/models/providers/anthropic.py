@@ -10,10 +10,13 @@ from __future__ import annotations
 import os
 from typing import TYPE_CHECKING
 
-from emily_chat.models.base import BaseProvider, GenerationSettings, StreamChunk
+from emily_chat.models.providers.base import BaseProvider
+from emily_chat.models.streaming_engine import ChunkType, GenerationSettings, StreamChunk
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
+
+    from emily_chat.models.registry import ModelSpec
 
 
 class AnthropicProvider(BaseProvider):
@@ -47,12 +50,10 @@ class AnthropicProvider(BaseProvider):
 
     async def stream(
         self,
-        messages: list[dict[str, str]],
+        messages: list[dict],
         system_prompt: str,
         settings: GenerationSettings,
-        model_spec: object | None = None,
-        *,
-        model_id: str | None = None,
+        model_spec: ModelSpec,
     ) -> AsyncIterator[StreamChunk]:
         """Stream a Claude completion, yielding normalised chunks.
 
@@ -63,18 +64,12 @@ class AnthropicProvider(BaseProvider):
             messages: Conversation history.
             system_prompt: The full Emily system prompt.
             settings: Generation parameters.
-            model_spec: ModelSpec with model_id (preferred).
-            model_id: Explicit model ID override.
+            model_spec: The resolved model specification from the registry.
 
         Yields:
             :class:`StreamChunk` instances.
         """
-        # Resolve model ID from model_spec or explicit kwarg
-        resolved_model_id = model_id
-        if resolved_model_id is None and model_spec is not None:
-            resolved_model_id = getattr(model_spec, "model_id", None)
-        if resolved_model_id is None:
-            resolved_model_id = "claude-sonnet-4-6"
+        resolved_model_id = model_spec.model_id
 
         client = self._get_client()
 
@@ -96,8 +91,8 @@ class AnthropicProvider(BaseProvider):
         else:
             kwargs["temperature"] = settings.temperature
 
-        if settings.stop_sequences:
-            kwargs["stop_sequences"] = settings.stop_sequences
+        if settings.stop:
+            kwargs["stop_sequences"] = settings.stop
 
         input_tokens = 0
         output_tokens = 0
@@ -116,13 +111,13 @@ class AnthropicProvider(BaseProvider):
             output_tokens = getattr(final.usage, "output_tokens", 0)
 
         yield StreamChunk(
-            type="usage",
-            usage={
+            type=ChunkType.USAGE,
+            metadata={
                 "input_tokens": input_tokens,
                 "output_tokens": output_tokens,
             },
         )
-        yield StreamChunk(type="stop")
+        yield StreamChunk(type=ChunkType.STOP)
 
     async def validate_key(self, api_key: str) -> bool:
         """Validate an Anthropic API key by sending a minimal request.
@@ -160,8 +155,8 @@ def _map_event(event: object) -> StreamChunk | None:
             return None
         delta_type = getattr(delta, "type", "")
         if delta_type == "thinking_delta":
-            return StreamChunk(type="thinking", content=getattr(delta, "thinking", ""))
+            return StreamChunk(type=ChunkType.THINKING, content=getattr(delta, "thinking", ""))
         if delta_type == "text_delta":
-            return StreamChunk(type="text", content=getattr(delta, "text", ""))
+            return StreamChunk(type=ChunkType.TEXT, content=getattr(delta, "text", ""))
 
     return None

@@ -12,7 +12,7 @@ Handles:
 from __future__ import annotations
 
 import re
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 from observability.logger import get_logger
 
@@ -21,9 +21,25 @@ log = get_logger(__name__)
 _THINKING_BLOCK_PATTERN = re.compile(r"<think>.*?</think>", re.DOTALL)
 
 _ABBREVIATIONS = {
-    "dr", "mr", "mrs", "ms", "prof", "sr", "jr", "st",
-    "vs", "etc", "inc", "ltd", "corp", "dept", "univ",
-    "approx", "est", "govt", "assn",
+    "dr",
+    "mr",
+    "mrs",
+    "ms",
+    "prof",
+    "sr",
+    "jr",
+    "st",
+    "vs",
+    "etc",
+    "inc",
+    "ltd",
+    "corp",
+    "dept",
+    "univ",
+    "approx",
+    "est",
+    "govt",
+    "assn",
 }
 
 _MARKDOWN_BOLD_ITALIC = re.compile(r"\*{1,3}(.+?)\*{1,3}")
@@ -86,9 +102,13 @@ def _is_sentence_boundary(buffer: str, pos: int) -> bool:
         if pos + 1 < len(buffer) and buffer[pos + 1] == ".":
             return False
 
-        if pos > 0 and buffer[pos - 1].isdigit():
-            if pos + 1 < len(buffer) and buffer[pos + 1].isdigit():
-                return False
+        if (
+            pos > 0
+            and buffer[pos - 1].isdigit()
+            and pos + 1 < len(buffer)
+            and buffer[pos + 1].isdigit()
+        ):
+            return False
 
         word_start = pos - 1
         while word_start >= 0 and buffer[word_start].isalpha():
@@ -111,10 +131,7 @@ def _is_sentence_boundary(buffer: str, pos: int) -> bool:
     if buffer[after] == " " and after + 1 < len(buffer) and buffer[after + 1].isupper():
         return True
 
-    if buffer[after] == "\n":
-        return True
-
-    return False
+    return buffer[after] == "\n"
 
 
 class StreamProcessor:
@@ -174,10 +191,10 @@ class StreamProcessor:
 
             split_pos = self._find_best_split(buffer)
             if split_pos is not None:
-                sentence = clean_for_tts(buffer[:split_pos + 1].strip())
+                sentence = clean_for_tts(buffer[: split_pos + 1].strip())
                 if sentence:
                     yield sentence
-                buffer = buffer[split_pos + 1:].lstrip()
+                buffer = buffer[split_pos + 1 :].lstrip()
 
         if buffer.strip():
             sentence = clean_for_tts(buffer.strip())

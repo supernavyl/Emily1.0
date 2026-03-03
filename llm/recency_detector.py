@@ -9,7 +9,7 @@ tools to look it up.
 from __future__ import annotations
 
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from observability.logger import get_logger
 
@@ -65,15 +65,12 @@ def needs_web_search(text: str) -> bool:
     references_old_year = False
     if year_match:
         year = int(year_match.group(1))
-        current_year = datetime.now(timezone.utc).year
+        current_year = datetime.now(UTC).year
         if year >= current_year - 1:
             return True
         references_old_year = True
 
-    if _NEWS_KEYWORDS.search(text) and not references_old_year:
-        return True
-
-    return False
+    return bool(_NEWS_KEYWORDS.search(text) and not references_old_year)
 
 
 def needs_web_search_voice(text: str) -> bool:

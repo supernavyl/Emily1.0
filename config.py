@@ -28,6 +28,8 @@ class LLMModels(BaseModel):
     fast: str = "Qwen2.5-14B-Instruct-abliterated"
     smart: str = "qwq-32b-abliterated"
     reasoning: str = "qwq-32b-abliterated"
+    deep_think: str = ""
+    code: str = ""
     vision: str = "minicpm-v:latest"
     embedding: str = "bge-m3"
     cloud_best: str = "claude-opus-4-6"
@@ -91,6 +93,16 @@ class TierInferenceConfig(BaseModel):
             temperature=0.6, max_tokens=16384, enable_thinking=True
         )
     )
+    deep_think: TierInferenceOverride = Field(
+        default_factory=lambda: TierInferenceOverride(
+            temperature=0.6, max_tokens=16384, enable_thinking=True
+        )
+    )
+    code: TierInferenceOverride = Field(
+        default_factory=lambda: TierInferenceOverride(
+            temperature=0.3, max_tokens=8192, enable_thinking=True
+        )
+    )
     cloud_best: TierInferenceOverride = Field(
         default_factory=lambda: TierInferenceOverride(
             temperature=1.0, max_tokens=16384, enable_thinking=True, thinking_budget=16_000
@@ -139,6 +151,8 @@ class TierBackend(BaseModel):
     fast: str = "tabbyapi"
     smart: str = "tabbyapi"
     reasoning: str = "tabbyapi"
+    deep_think: str = "ollama"
+    code: str = "ollama"
     vision: str = "ollama"
     embedding: str = "ollama"
     cloud_best: str = "anthropic"
@@ -154,6 +168,12 @@ class TierBackend(BaseModel):
         return v
 
 
+class LLMCacheConfig(BaseModel):
+    enabled: bool = True
+    dir: str = "data/llm_cache"
+    max_size_gb: float = 2.0
+
+
 class LLMConfig(BaseModel):
     backend: str = "tabbyapi"
     ollama_base_url: str = "http://localhost:11434"
@@ -166,6 +186,7 @@ class LLMConfig(BaseModel):
     critic: LLMCritic = Field(default_factory=LLMCritic)
     llamacpp: LlamaCppConfig = Field(default_factory=LlamaCppConfig)
     tier_backend: TierBackend = Field(default_factory=TierBackend)
+    cache: LLMCacheConfig = Field(default_factory=LLMCacheConfig)
 
 
 class AudioConfig(BaseModel):
@@ -465,6 +486,14 @@ class OwnerConfig(BaseModel):
     lockout_duration_minutes: int = 5
 
 
+class ReplayConfig(BaseModel):
+    """Agent Replay Debugger configuration."""
+
+    enabled: bool = True
+    dir: str = "data/replay"
+    compress_after_hours: float = 24.0
+
+
 class SelfImprovementConfig(BaseModel):
     track_performance: bool = True
     evolve_prompts: bool = True
@@ -539,6 +568,7 @@ class EmilySettings(BaseSettings):
     persona: PersonaConfig = Field(default_factory=PersonaConfig)
     security: SecurityConfig = Field(default_factory=SecurityConfig)
     owner: OwnerConfig = Field(default_factory=OwnerConfig)
+    replay: ReplayConfig = Field(default_factory=ReplayConfig)
     self_improvement: SelfImprovementConfig = Field(default_factory=SelfImprovementConfig)
     api: APIConfig = Field(default_factory=APIConfig)
     observability: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
@@ -583,6 +613,7 @@ class EmilySettings(BaseSettings):
                 "persona",
                 "security",
                 "owner",
+                "replay",
                 "self_improvement",
                 "api",
                 "observability",

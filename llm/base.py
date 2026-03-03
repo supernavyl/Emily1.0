@@ -9,7 +9,8 @@ without inheriting from a base class.
 
 from __future__ import annotations
 
-from typing import AsyncIterator, Protocol, runtime_checkable
+from collections.abc import AsyncIterator
+from typing import Protocol, runtime_checkable
 
 from llm.client import ChatMessage, CompletionChunk, CompletionResult, EmbeddingResult
 

@@ -16,7 +16,8 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, AsyncIterator
+from collections.abc import AsyncIterator
+from typing import Any
 
 import httpx
 
@@ -85,9 +86,7 @@ class ThinkTagExtractor:
         chunks: list[StreamChunk] = []
         if self._buffer:
             chunk_type = ChunkType.THINKING if self._inside_think else ChunkType.TEXT
-            chunks.append(
-                StreamChunk(type=chunk_type, content=self._buffer, tokens=1)
-            )
+            chunks.append(StreamChunk(type=chunk_type, content=self._buffer, tokens=1))
             self._buffer = ""
         return chunks
 
@@ -102,9 +101,7 @@ class ThinkTagExtractor:
                     # Might be a partial close tag at the end — keep it buffered
                     safe, held = self._split_partial(self._buffer, self._CLOSE_TAG)
                     if safe:
-                        chunks.append(
-                            StreamChunk(type=ChunkType.THINKING, content=safe, tokens=1)
-                        )
+                        chunks.append(StreamChunk(type=ChunkType.THINKING, content=safe, tokens=1))
                     self._buffer = held
                     break
 
@@ -113,7 +110,7 @@ class ThinkTagExtractor:
                     chunks.append(
                         StreamChunk(type=ChunkType.THINKING, content=thinking_text, tokens=1)
                     )
-                self._buffer = self._buffer[idx + len(self._CLOSE_TAG):]
+                self._buffer = self._buffer[idx + len(self._CLOSE_TAG) :]
                 self._inside_think = False
 
             else:
@@ -121,18 +118,14 @@ class ThinkTagExtractor:
                 if idx == -1:
                     safe, held = self._split_partial(self._buffer, self._OPEN_TAG)
                     if safe:
-                        chunks.append(
-                            StreamChunk(type=ChunkType.TEXT, content=safe, tokens=1)
-                        )
+                        chunks.append(StreamChunk(type=ChunkType.TEXT, content=safe, tokens=1))
                     self._buffer = held
                     break
 
                 text_before = self._buffer[:idx]
                 if text_before:
-                    chunks.append(
-                        StreamChunk(type=ChunkType.TEXT, content=text_before, tokens=1)
-                    )
-                self._buffer = self._buffer[idx + len(self._OPEN_TAG):]
+                    chunks.append(StreamChunk(type=ChunkType.TEXT, content=text_before, tokens=1))
+                self._buffer = self._buffer[idx + len(self._OPEN_TAG) :]
                 self._inside_think = True
 
         return chunks
@@ -349,7 +342,7 @@ class OpenAICompatibleProvider(BaseProvider):
         if not line.startswith("data:"):
             return None
 
-        payload = line[len("data:"):].strip()
+        payload = line[len("data:") :].strip()
 
         if payload == "[DONE]":
             return StreamChunk(type=ChunkType.STOP)

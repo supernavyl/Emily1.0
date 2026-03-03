@@ -19,7 +19,8 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, AsyncIterator
+from collections.abc import AsyncIterator
+from typing import Any
 
 import httpx
 
@@ -229,7 +230,7 @@ def _parse_sse_line(
     if not line.startswith("data:"):
         return []
 
-    payload = line[len("data:"):].strip()
+    payload = line[len("data:") :].strip()
     if not payload:
         return []
 
@@ -253,13 +254,9 @@ def _parse_sse_line(
                 continue
             is_thought = part.get("thought", False)
             if is_thought:
-                chunks.append(
-                    StreamChunk(type=ChunkType.THINKING, content=text, tokens=1)
-                )
+                chunks.append(StreamChunk(type=ChunkType.THINKING, content=text, tokens=1))
             else:
-                chunks.append(
-                    StreamChunk(type=ChunkType.TEXT, content=text, tokens=1)
-                )
+                chunks.append(StreamChunk(type=ChunkType.TEXT, content=text, tokens=1))
 
     # Accumulate usage metadata (last chunk carries final totals)
     usage = data.get("usageMetadata")
