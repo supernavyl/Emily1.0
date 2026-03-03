@@ -49,7 +49,9 @@ def _get_vault() -> CredentialVault:
 
 
 # UUID v4 pattern for credential_id path param
-CREDENTIAL_ID_PATTERN = r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+CREDENTIAL_ID_PATTERN = (
+    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+)
 
 # Max lengths for request body fields (input validation)
 _MAX_STR = 2048
@@ -196,6 +198,7 @@ async def add_credential(
         cred_type = CredentialType.OTHER
 
     from security.vault.health_checker import PasswordStrengthScorer
+
     strength = PasswordStrengthScorer().score(body.secret)
 
     cred = Credential(

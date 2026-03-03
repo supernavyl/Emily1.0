@@ -68,11 +68,13 @@ async def entity_subgraph(
 
         ent = await store.get_entity(eid)
         if ent:
-            nodes.append({
-                "id": ent.id,
-                "label": ent.canonical_name,
-                "type": ent.type,
-            })
+            nodes.append(
+                {
+                    "id": ent.id,
+                    "label": ent.canonical_name,
+                    "type": ent.type,
+                }
+            )
 
         rels = await store.get_relationships_for_entity(eid)
         for rel in rels:
@@ -127,11 +129,7 @@ async def entity_path(
 
         rels = await store.get_relationships_for_entity(current)
         for rel in rels:
-            neighbor = (
-                rel.to_entity_id
-                if rel.from_entity_id == current
-                else rel.from_entity_id
-            )
+            neighbor = rel.to_entity_id if rel.from_entity_id == current else rel.from_entity_id
             if neighbor == to_id:
                 full_path = path + [neighbor]
                 return {"path": full_path, "hops": len(full_path) - 1}
@@ -189,4 +187,4 @@ async def proactive_alerts(
         }
     except Exception as exc:
         log.error("proactive_alerts_api_error", error=str(exc))
-        return {"alerts": [], "error": str(exc)}
+        raise HTTPException(500, f"Proactive alerts failed: {exc}") from exc

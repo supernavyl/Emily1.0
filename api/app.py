@@ -33,7 +33,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect  # noqa: E402
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse  # noqa: E402
 from pydantic import BaseModel  # noqa: E402
@@ -45,12 +45,14 @@ from api.routes import conversations as conversations_routes  # noqa: E402
 from api.routes import graph as graph_routes  # noqa: E402
 from api.routes import integrations as integrations_routes  # noqa: E402
 from api.routes import models_v1 as models_v1_routes  # noqa: E402
+from api.routes import onboarding as onboarding_routes  # noqa: E402
 from api.routes import people as people_routes  # noqa: E402
 from api.routes import query as query_routes  # noqa: E402
 from api.routes import settings as settings_routes  # noqa: E402
 from api.routes import singing as singing_routes  # noqa: E402
 from api.routes import tts as tts_routes  # noqa: E402
 from api.routes import vault as vault_routes  # noqa: E402
+from api.routes import vision as vision_routes  # noqa: E402
 from api.routes import voice_engine as voice_engine_routes  # noqa: E402
 from config import get_settings  # noqa: E402
 from observability.logger import get_logger  # noqa: E402
@@ -164,11 +166,22 @@ async def _lifespan(application: FastAPI) -> AsyncIterator[None]:
     _chat_db = ConversationDatabase()
     await _chat_db.init()
 
+    # Owner identity manager — first-time setup / passphrase auth
+    from users.owner_identity import OwnerIdentityManager
+
+    identity_manager = OwnerIdentityManager(data_path="data/owner_identity.json")
+    settings_routes.init_identity_manager(identity_manager)
+
+    # Vision subsystem — screen capture, webcam, presence, analysis
+    if getattr(settings, "vision", None) and settings.vision.enabled:
+        asyncio.create_task(vision_routes.init_vision(settings.vision, "http://localhost:11434"))
+
     log.info("knowledge_os_services_started")
 
     yield  # application runs here
 
     # Shutdown
+    await vision_routes.cleanup_vision()
     if _chat_db:
         await _chat_db.close()
         _chat_db = None
@@ -304,10 +317,12 @@ app.include_router(voice_engine_routes.router)
 app.include_router(conversations_routes.router)
 app.include_router(chat_v1_routes.router)
 app.include_router(models_v1_routes.router)
+app.include_router(onboarding_routes.router)
 app.include_router(tts_routes.router)
 app.include_router(settings_routes.router)
 app.include_router(integrations_routes.router)
 app.include_router(singing_routes.router)
+app.include_router(vision_routes.router)
 
 # ---------------------------------------------------------------------------
 # Data models
@@ -427,7 +442,7 @@ async def get_status() -> JSONResponse:
     fsm_state = "UNKNOWN"
     fsm_history: list[list[str]] = []
     if _bootstrap and hasattr(_bootstrap, "fsm"):
-        fsm_state = _bootstrap.fsm.current_state.name
+        fsm_state = _bootstrap.fsm.state.name
         try:
             fsm_history = [[f, t] for f, t in _bootstrap.fsm.history(10)]
         except Exception as exc:
@@ -600,6 +615,75 @@ async def get_metrics_summary() -> JSONResponse:
     return JSONResponse({"metrics": _get_prometheus_snapshot()})
 
 
+# ---------------------------------------------------------------------------
+# Latency breakdown rolling buffer
+# ---------------------------------------------------------------------------
+
+from collections import deque
+
+_latency_buffer: deque[dict[str, Any]] = deque(maxlen=100)
+
+
+def record_latency_breakdown(entry: dict[str, Any]) -> None:
+    """Append a request latency breakdown to the rolling buffer.
+
+    Called by ConversationAgent or the chat API route after each request.
+    """
+    entry.setdefault("timestamp", time.time())
+    _latency_buffer.append(entry)
+
+
+@app.get("/metrics/latency-breakdown")
+async def get_latency_breakdown() -> JSONResponse:
+    """Return the last N request latencies broken down by stage.
+
+    Each entry includes: stt_ms, routing_ms, rag_ms, llm_first_token_ms,
+    llm_total_ms, tts_first_sentence_ms, total_ms, model, tier, timestamp.
+    """
+    return JSONResponse({"entries": list(_latency_buffer)})
+
+
+# ---------------------------------------------------------------------------
+# Knowledge ingestion endpoints
+# ---------------------------------------------------------------------------
+
+
+class IngestRequest(BaseModel):
+    path: str
+
+
+@app.post("/knowledge/ingest")
+async def ingest_file(req: IngestRequest) -> JSONResponse:
+    """Manually trigger ingestion of a file into the RAG index."""
+    if not _bootstrap or not getattr(_bootstrap, "ingestor", None):
+        raise HTTPException(503, "Ingestion pipeline not initialized")
+    try:
+        result = await _bootstrap.ingestor.ingest_file(req.path)
+        return JSONResponse(
+            {
+                "success": result.success,
+                "path": str(result.path),
+                "chunks": result.n_chunks,
+                "error": result.error,
+            }
+        )
+    except Exception as exc:
+        raise HTTPException(500, f"Ingestion failed: {exc}") from exc
+
+
+@app.get("/knowledge/status")
+async def knowledge_status() -> JSONResponse:
+    """Show ingested document count, chunk count, and last ingestion time."""
+    status: dict[str, Any] = {
+        "pipeline_active": bool(_bootstrap and getattr(_bootstrap, "ingestor", None)),
+        "watcher_active": bool(_bootstrap and getattr(_bootstrap, "rag_watcher", None)),
+    }
+    if _bootstrap and getattr(_bootstrap, "ingestor", None):
+        ingestor = _bootstrap.ingestor
+        status["ingested_files"] = len(getattr(ingestor, "_ingested_hashes", {}))
+    return JSONResponse(status)
+
+
 @app.get("/self-improvement")
 async def get_self_improvement() -> JSONResponse:
     result: dict[str, Any] = {"performance": [], "gaps": [], "rag_quality": {}}
@@ -680,7 +764,7 @@ async def get_config() -> JSONResponse:
         sanitized["log_level"] = s.log_level
         return JSONResponse(sanitized)
     except Exception as exc:
-        return JSONResponse({"error": str(exc)})
+        raise HTTPException(500, f"Config load failed: {exc}") from exc
 
 
 # #region agent log — debug log proxy for browser JS
@@ -856,7 +940,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 resources = _get_system_resources()
                 fsm_state = "UNKNOWN"
                 if _bootstrap and hasattr(_bootstrap, "fsm"):
-                    fsm_state = _bootstrap.fsm.current_state.name
+                    fsm_state = _bootstrap.fsm.state.name
                 await websocket.send_json(
                     {
                         "type": "status_update",
