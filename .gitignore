@@ -116,3 +116,49 @@ docs/_build/
 site/
 .cache/
 .eslintcache
+
+# ========================
+# Additional Python Envs
+# ========================
+emily-env/
+
+# ========================
+# Test Artifacts
+# ========================
+MagicMock/
+pytest_results.txt
+tests/simple_voice_test_results.json
+tests/voice_assistant_comparison.json
+tests/voice_test_results.json
+
+# ========================
+# IDE / Editor State
+# ========================
+.cursor/extensions/
+.cursor/plans/
+.cursor/skills/
+.zed/
+pyrightconfig.json
+vibe-tools.config.json
+
+# ========================
+# Build Artifacts
+# ========================
+web/.vite/
+web/src-tauri/target/
+*.tar.gz
+
+# ========================
+# Runtime / Generated
+# ========================
+persona/profile.json
+
+# ========================
+# Nested Repos
+# ========================
+tools/applio/
+
+# ========================
+# Scratch / Temp
+# ========================
+Untitled
