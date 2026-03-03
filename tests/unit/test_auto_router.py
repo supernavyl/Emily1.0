@@ -15,7 +15,7 @@ from emily_chat.models.auto_router import (
     estimate_cost,
     first_available,
 )
-from emily_chat.models.registry import EMILY_MODEL_REGISTRY, ModelSpec
+from emily_chat.models.registry import EMILY_MODEL_REGISTRY, ModelSpec, register_dynamic_model
 
 
 @pytest.fixture()
@@ -114,7 +114,7 @@ class TestEstimateCost:
         assert cost < 0.001
 
     def test_free_model(self) -> None:
-        spec = EMILY_MODEL_REGISTRY["emily-fast"]
+        spec = EMILY_MODEL_REGISTRY["or-free-llama-70b"]
         assert estimate_cost(spec, 100_000, 100_000) == 0.0
 
 
@@ -147,7 +147,15 @@ class TestFirstAvailable:
         assert result is None
 
     def test_ollama_always_available(self) -> None:
-        result = first_available(["emily-fast"])
+        register_dynamic_model(
+            "test-ollama-local",
+            ModelSpec(
+                display="Test Ollama",
+                provider="ollama",
+                model_id="test:7b",
+            ),
+        )
+        result = first_available(["test-ollama-local"])
         assert result is not None
 
 

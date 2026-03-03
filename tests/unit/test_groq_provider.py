@@ -29,20 +29,29 @@ _GROQ_MODELS_URL = "https://api.groq.com/openai/v1/models"
 # SSE helpers
 # ------------------------------------------------------------------
 
+
 def _sse(payload: str) -> str:
     return f"data: {payload}\n\n"
 
 
 def _text_chunk(content: str) -> str:
-    return _sse(json.dumps({
-        "choices": [{"delta": {"content": content}, "finish_reason": None}],
-    }))
+    return _sse(
+        json.dumps(
+            {
+                "choices": [{"delta": {"content": content}, "finish_reason": None}],
+            }
+        )
+    )
 
 
 def _usage_chunk(prompt: int = 50, completion: int = 20) -> str:
-    return _sse(json.dumps({
-        "usage": {"prompt_tokens": prompt, "completion_tokens": completion},
-    }))
+    return _sse(
+        json.dumps(
+            {
+                "usage": {"prompt_tokens": prompt, "completion_tokens": completion},
+            }
+        )
+    )
 
 
 def _done_line() -> str:
@@ -50,9 +59,13 @@ def _done_line() -> str:
 
 
 def _finish_chunk() -> str:
-    return _sse(json.dumps({
-        "choices": [{"delta": {}, "finish_reason": "stop"}],
-    }))
+    return _sse(
+        json.dumps(
+            {
+                "choices": [{"delta": {}, "finish_reason": "stop"}],
+            }
+        )
+    )
 
 
 def _plain_stream(text: str = "Hello from Groq") -> str:
@@ -236,9 +249,7 @@ class TestGroqErrors:
     @pytest.mark.asyncio
     async def test_api_error(self) -> None:
         with respx.mock:
-            respx.post(_GROQ_CHAT_URL).mock(
-                return_value=httpx.Response(429, text="Rate limited")
-            )
+            respx.post(_GROQ_CHAT_URL).mock(return_value=httpx.Response(429, text="Rate limited"))
             provider = GroqProvider(api_key="gsk-test")
             chunks: list[StreamChunk] = []
 
@@ -267,9 +278,7 @@ class TestGroqKeyValidation:
     @pytest.mark.asyncio
     async def test_valid_key(self) -> None:
         with respx.mock:
-            respx.get(_GROQ_MODELS_URL).mock(
-                return_value=httpx.Response(200, json={"data": []})
-            )
+            respx.get(_GROQ_MODELS_URL).mock(return_value=httpx.Response(200, json={"data": []}))
             provider = GroqProvider(api_key="gsk-test")
             assert await provider.validate_key("gsk-test") is True
             await provider.close()

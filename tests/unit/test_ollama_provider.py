@@ -17,12 +17,18 @@ import respx
 from emily_chat.models.providers.ollama import OllamaProvider
 from emily_chat.models.registry import (
     EMILY_MODEL_REGISTRY,
-    get_models_for_provider,
+    ModelSpec,
     register_dynamic_model,
 )
 from emily_chat.models.streaming_engine import ChunkType, GenerationSettings, StreamChunk
 
-_LOCAL_SPEC = EMILY_MODEL_REGISTRY["emily-ollama"]
+_LOCAL_SPEC = ModelSpec(
+    display="Emily — Test Ollama",
+    provider="ollama",
+    model_id="huihui_ai/qwen3-abliterated:8b",
+    context=32_768,
+    thinking=True,
+)
 _OLLAMA_CHAT_URL = "http://localhost:11434/api/chat"
 _OLLAMA_TAGS_URL = "http://localhost:11434/api/tags"
 
@@ -89,21 +95,23 @@ def _discovery_response(models: list[str] | None = None) -> dict:
 
 
 class TestOllamaRegistry:
-    """Verify Emily's local fleet models are registered."""
+    """Verify dynamic model registration and Ollama spec factory."""
 
-    def test_emily_fast_present(self) -> None:
-        """Emily's default local brain should exist in the registry."""
-        ollama = get_models_for_provider("ollama")
-        assert "emily-ollama" in ollama
+    def test_dynamic_registration(self) -> None:
+        """register_dynamic_model should make a model available in the registry."""
+        spec = OllamaProvider.create_local_spec("test-model:7b")
+        register_dynamic_model("test-ollama-7b", spec)
+        assert "test-ollama-7b" in EMILY_MODEL_REGISTRY
 
-    def test_emily_fleet_present(self) -> None:
-        """All Emily fleet models should be registered."""
-        ollama = get_models_for_provider("ollama")
-        assert "emily-ollama" in ollama
-        assert "emily-vision" in ollama
+    def test_local_spec_factory(self) -> None:
+        """create_local_spec should produce zero-cost Ollama specs."""
+        spec = OllamaProvider.create_local_spec("qwen3:8b")
+        assert spec.provider == "ollama"
+        assert spec.input_usd == 0.0
+        assert spec.output_usd == 0.0
 
-    def test_ollama_spec(self) -> None:
-        """Emily-ollama spec should have zero cost and correct provider."""
+    def test_test_spec(self) -> None:
+        """The test spec should have zero cost and correct provider."""
         assert _LOCAL_SPEC.provider == "ollama"
         assert _LOCAL_SPEC.input_usd == 0.0
         assert _LOCAL_SPEC.output_usd == 0.0

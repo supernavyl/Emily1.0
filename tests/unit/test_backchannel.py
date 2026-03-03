@@ -13,13 +13,11 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from typing import Any
 
 import pytest
 
 from conversation.backchannel import (
     BackchannelEngine,
-    BackchannelEvent,
     BackchannelType,
 )
 from perception.audio.prosody_analyzer import ProsodyFeatures

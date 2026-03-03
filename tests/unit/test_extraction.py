@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
+from datetime import UTC
+
 import pytest
 import pytest_asyncio
 
 from extraction.deduplicator import Deduplicator, _jaro_winkler, _normalize
 from extraction.entity_extractor import ExtractedEntity, _extract_json_array
-from extraction.relation_extractor import ExtractedRelationship
 from memory.knowledge_models import EntityRecord
 from memory.knowledge_store import KnowledgeStore
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -181,7 +181,7 @@ async def test_proactive_birthday_alert(store: KnowledgeStore) -> None:
     """ProactiveEngine.check_birthdays returns alert for today's birthday."""
     from datetime import date
 
-    from memory.knowledge_models import EntityRecord, PersonRecord
+    from memory.knowledge_models import PersonRecord
     from proactive.engine import ProactiveEngine
 
     entity = EntityRecord(canonical_name="Birthday Person", type="person")
@@ -203,15 +203,13 @@ async def test_proactive_birthday_alert(store: KnowledgeStore) -> None:
 @pytest.mark.asyncio
 async def test_proactive_upcoming_event(store: KnowledgeStore) -> None:
     """ProactiveEngine.check_upcoming_events includes events within the window."""
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from memory.knowledge_models import EventRecord
     from proactive.engine import ProactiveEngine
 
-    soon = (datetime.now(timezone.utc) + timedelta(hours=2)).isoformat()
-    event = EventRecord(
-        title="Test Meeting", event_type="meeting", datetime=soon
-    )
+    soon = (datetime.now(UTC) + timedelta(hours=2)).isoformat()
+    event = EventRecord(title="Test Meeting", event_type="meeting", datetime=soon)
     await store.upsert_event(event)
 
     engine = ProactiveEngine(store)

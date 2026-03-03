@@ -28,6 +28,7 @@ _OR_MODELS_URL = "https://openrouter.ai/api/v1/models"
 # SSE helpers
 # ------------------------------------------------------------------
 
+
 def _sse(payload: str) -> str:
     """Wrap a JSON payload as an SSE data line."""
     return f"data: {payload}\n\n"
@@ -35,16 +36,24 @@ def _sse(payload: str) -> str:
 
 def _text_chunk(content: str) -> str:
     """Build an SSE text delta chunk."""
-    return _sse(json.dumps({
-        "choices": [{"delta": {"content": content}, "finish_reason": None}],
-    }))
+    return _sse(
+        json.dumps(
+            {
+                "choices": [{"delta": {"content": content}, "finish_reason": None}],
+            }
+        )
+    )
 
 
 def _usage_chunk(prompt: int = 50, completion: int = 20) -> str:
     """Build an SSE usage chunk."""
-    return _sse(json.dumps({
-        "usage": {"prompt_tokens": prompt, "completion_tokens": completion},
-    }))
+    return _sse(
+        json.dumps(
+            {
+                "usage": {"prompt_tokens": prompt, "completion_tokens": completion},
+            }
+        )
+    )
 
 
 def _done_line() -> str:
@@ -54,9 +63,13 @@ def _done_line() -> str:
 
 def _finish_chunk() -> str:
     """Build an SSE finish_reason chunk."""
-    return _sse(json.dumps({
-        "choices": [{"delta": {}, "finish_reason": "stop"}],
-    }))
+    return _sse(
+        json.dumps(
+            {
+                "choices": [{"delta": {}, "finish_reason": "stop"}],
+            }
+        )
+    )
 
 
 def _plain_stream(text: str = "Hello from OpenRouter") -> str:
@@ -141,9 +154,7 @@ class TestOpenRouterStreaming:
     async def test_usage_chunk_emitted(self) -> None:
         """A USAGE chunk should be yielded with token counts."""
         with respx.mock:
-            respx.post(_OR_CHAT_URL).mock(
-                return_value=httpx.Response(200, text=_plain_stream())
-            )
+            respx.post(_OR_CHAT_URL).mock(return_value=httpx.Response(200, text=_plain_stream()))
             provider = OpenRouterProvider(api_key="sk-or-test")
             usage_chunks: list[StreamChunk] = []
 
@@ -293,9 +304,7 @@ class TestOpenRouterCustomSpec:
 
     def test_create_custom_spec_with_display(self) -> None:
         """Factory should accept a custom display name."""
-        spec = OpenRouterProvider.create_custom_spec(
-            "custom/model", display="My Custom Model"
-        )
+        spec = OpenRouterProvider.create_custom_spec("custom/model", display="My Custom Model")
         assert spec.display == "My Custom Model"
 
     def test_create_custom_spec_no_slash(self) -> None:
@@ -316,9 +325,7 @@ class TestOpenRouterErrors:
     async def test_api_error(self) -> None:
         """Non-200 responses should yield an ERROR chunk."""
         with respx.mock:
-            respx.post(_OR_CHAT_URL).mock(
-                return_value=httpx.Response(429, text="Rate limited")
-            )
+            respx.post(_OR_CHAT_URL).mock(return_value=httpx.Response(429, text="Rate limited"))
             provider = OpenRouterProvider(api_key="sk-or-test")
             chunks: list[StreamChunk] = []
 
@@ -348,9 +355,7 @@ class TestOpenRouterKeyValidation:
     async def test_valid_key(self) -> None:
         """A 200 response from /models should return True."""
         with respx.mock:
-            respx.get(_OR_MODELS_URL).mock(
-                return_value=httpx.Response(200, json={"data": []})
-            )
+            respx.get(_OR_MODELS_URL).mock(return_value=httpx.Response(200, json={"data": []}))
             provider = OpenRouterProvider(api_key="sk-or-test")
             assert await provider.validate_key("sk-or-test") is True
             await provider.close()

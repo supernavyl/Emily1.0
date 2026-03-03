@@ -14,7 +14,6 @@ from unittest.mock import patch
 import pytest
 
 from emily_chat.ui.markdown_renderer import (
-    DOCUMENT_CSS,
     MarkdownRenderer,
     _escape,
     _highlight_code,
@@ -219,9 +218,7 @@ class TestMermaid:
 
     def test_mermaid_fallback_without_mmdc(self, renderer: MarkdownRenderer) -> None:
         """Without mmdc, mermaid blocks should render as code."""
-        with patch(
-            "emily_chat.ui.markdown_renderer._mmdc_available", return_value=False
-        ):
+        with patch("emily_chat.ui.markdown_renderer._mmdc_available", return_value=False):
             md = "```mermaid\nflowchart LR\n  A --> B\n```"
             html = renderer.render(md)
             assert "flowchart" in html
@@ -229,9 +226,7 @@ class TestMermaid:
 
     def test_render_mermaid_sync_fallback(self) -> None:
         """_render_mermaid_sync should fall back gracefully."""
-        with patch(
-            "emily_chat.ui.markdown_renderer._mmdc_available", return_value=False
-        ):
+        with patch("emily_chat.ui.markdown_renderer._mmdc_available", return_value=False):
             result = _render_mermaid_sync("flowchart LR\n  A --> B")
             assert "<pre" in result
             assert "flowchart" in result
@@ -272,9 +267,7 @@ class TestCodeBlockSegmentation:
 
     def test_mermaid_becomes_html(self, renderer: MarkdownRenderer) -> None:
         """Mermaid blocks become HTML segments (rendered or fallback)."""
-        with patch(
-            "emily_chat.ui.markdown_renderer._mmdc_available", return_value=False
-        ):
+        with patch("emily_chat.ui.markdown_renderer._mmdc_available", return_value=False):
             md = "Text\n\n```mermaid\nflowchart LR\n  A-->B\n```\n\nMore"
             segments = renderer.render_with_code_blocks(md)
             types = [s["type"] for s in segments]

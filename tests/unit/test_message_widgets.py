@@ -13,7 +13,6 @@ import pytest
 from emily_chat.ui.markdown_renderer import MarkdownRenderer, build_document_css
 from emily_chat.ui.theme_engine import PALETTES
 
-
 # ------------------------------------------------------------------
 # MarkdownTextBrowser streaming logic (non-widget internals)
 # ------------------------------------------------------------------
@@ -96,6 +95,7 @@ class TestConversationStreamContract:
             ThinkingIndicator,
             UserMessageWidget,
         )
+
         assert ConversationStream is not None
         assert EmilyMessageWidget is not None
         assert UserMessageWidget is not None
@@ -105,6 +105,7 @@ class TestConversationStreamContract:
     def test_signal_names_on_conversation_stream(self) -> None:
         """ConversationStream should declare the expected signals."""
         from emily_chat.ui.conversation_stream import ConversationStream
+
         expected_signals = [
             "scroll_locked_changed",
             "edit_requested",
@@ -120,6 +121,7 @@ class TestConversationStreamContract:
     def test_emily_widget_signals(self) -> None:
         """EmilyMessageWidget should declare the expected signals."""
         from emily_chat.ui.conversation_stream import EmilyMessageWidget
+
         expected = ["feedback_given", "retry_requested", "branch_requested", "copy_requested"]
         for name in expected:
             assert hasattr(EmilyMessageWidget, name), f"Missing signal: {name}"
@@ -127,6 +129,7 @@ class TestConversationStreamContract:
     def test_user_widget_signals(self) -> None:
         """UserMessageWidget should declare the expected signals."""
         from emily_chat.ui.conversation_stream import UserMessageWidget
+
         expected = ["edit_submitted", "resend_requested", "copy_requested"]
         for name in expected:
             assert hasattr(UserMessageWidget, name), f"Missing signal: {name}"

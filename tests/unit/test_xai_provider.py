@@ -25,15 +25,23 @@ def _sse(payload: str) -> str:
 
 
 def _text_chunk(content: str) -> str:
-    return _sse(json.dumps({
-        "choices": [{"delta": {"content": content}, "finish_reason": None}],
-    }))
+    return _sse(
+        json.dumps(
+            {
+                "choices": [{"delta": {"content": content}, "finish_reason": None}],
+            }
+        )
+    )
 
 
 def _usage_chunk(prompt: int = 50, completion: int = 20) -> str:
-    return _sse(json.dumps({
-        "usage": {"prompt_tokens": prompt, "completion_tokens": completion},
-    }))
+    return _sse(
+        json.dumps(
+            {
+                "usage": {"prompt_tokens": prompt, "completion_tokens": completion},
+            }
+        )
+    )
 
 
 def _done_line() -> str:
@@ -41,9 +49,13 @@ def _done_line() -> str:
 
 
 def _finish_chunk() -> str:
-    return _sse(json.dumps({
-        "choices": [{"delta": {}, "finish_reason": "stop"}],
-    }))
+    return _sse(
+        json.dumps(
+            {
+                "choices": [{"delta": {}, "finish_reason": "stop"}],
+            }
+        )
+    )
 
 
 def _full_stream(text: str = "Grok says hello") -> str:
@@ -125,9 +137,7 @@ class TestGrokStreaming:
     @pytest.mark.asyncio
     async def test_usage_chunk(self) -> None:
         with respx.mock:
-            respx.post(_XAI_CHAT_URL).mock(
-                return_value=httpx.Response(200, text=_full_stream())
-            )
+            respx.post(_XAI_CHAT_URL).mock(return_value=httpx.Response(200, text=_full_stream()))
             provider = XAIProvider(api_key="xai-test")
             usage_meta = None
 
@@ -156,9 +166,7 @@ class TestXAIErrors:
     @pytest.mark.asyncio
     async def test_api_error(self) -> None:
         with respx.mock:
-            respx.post(_XAI_CHAT_URL).mock(
-                return_value=httpx.Response(500, text="Internal Error")
-            )
+            respx.post(_XAI_CHAT_URL).mock(return_value=httpx.Response(500, text="Internal Error"))
             provider = XAIProvider(api_key="xai-test")
             chunks: list[StreamChunk] = []
 
@@ -181,9 +189,7 @@ class TestXAIKeyValidation:
     @pytest.mark.asyncio
     async def test_valid_key(self) -> None:
         with respx.mock:
-            respx.get(_XAI_MODELS_URL).mock(
-                return_value=httpx.Response(200, json={"data": []})
-            )
+            respx.get(_XAI_MODELS_URL).mock(return_value=httpx.Response(200, json={"data": []}))
             provider = XAIProvider(api_key="xai-test")
             assert await provider.validate_key("xai-test") is True
             await provider.close()

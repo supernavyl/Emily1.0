@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -27,9 +26,11 @@ def _mock_settings():
 
 @pytest.fixture()
 def manager(_mock_settings):
-    with patch("memory.manager.EpisodicMemory"), \
-         patch("memory.manager.ProceduralMemory"), \
-         patch("memory.manager.WorkingMemory") as wm_cls:
+    with (
+        patch("memory.manager.EpisodicMemory"),
+        patch("memory.manager.ProceduralMemory"),
+        patch("memory.manager.WorkingMemory") as wm_cls,
+    ):
         wm_instance = MagicMock()
         wm_instance.session_id = "test-session"
         wm_instance.to_dict_list.return_value = []
@@ -38,6 +39,7 @@ def manager(_mock_settings):
         wm_cls.return_value = wm_instance
 
         from memory.manager import MemoryManager
+
         mgr = MemoryManager(_mock_settings)
         yield mgr
 
@@ -55,7 +57,10 @@ async def test_startup(manager):
 async def test_add_user_turn(manager):
     await manager.add_user_turn("hello", importance=0.7)
     manager.working.add.assert_called_once_with(
-        role="user", content="hello", importance=0.7, metadata={},
+        role="user",
+        content="hello",
+        importance=0.7,
+        metadata={},
     )
 
 
@@ -63,7 +68,10 @@ async def test_add_user_turn(manager):
 async def test_add_assistant_turn(manager):
     await manager.add_assistant_turn("hi there", importance=0.5, metadata={"model": "phi4"})
     manager.working.add.assert_called_once_with(
-        role="assistant", content="hi there", importance=0.5, metadata={"model": "phi4"},
+        role="assistant",
+        content="hi there",
+        importance=0.5,
+        metadata={"model": "phi4"},
     )
 
 

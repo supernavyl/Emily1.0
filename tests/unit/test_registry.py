@@ -13,10 +13,12 @@ def registry():
     fleet = MagicMock()
     memory = MagicMock()
 
-    with patch("agents.registry.ConversationAgent") as ca, \
-         patch("agents.registry.PlannerAgent") as pa, \
-         patch("agents.registry.MemoryAgent") as ma, \
-         patch("agents.registry.ReflectionAgent") as ra:
+    with (
+        patch("agents.registry.ConversationAgent") as ca,
+        patch("agents.registry.PlannerAgent") as pa,
+        patch("agents.registry.MemoryAgent") as ma,
+        patch("agents.registry.ReflectionAgent") as ra,
+    ):
         for cls in (ca, pa, ma, ra):
             instance = MagicMock()
             instance.name = cls._mock_name or "MockAgent"
@@ -30,6 +32,7 @@ def registry():
         ra.return_value.name = "ReflectionAgent"
 
         from agents.registry import AgentRegistry
+
         reg = AgentRegistry(bus, fleet, memory)
         yield reg
 

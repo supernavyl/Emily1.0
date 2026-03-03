@@ -15,7 +15,6 @@ from emily_chat.emily.persona import (
 from emily_chat.emily.response_filter import EmilyResponseFilter
 from emily_chat.emily.skills import EMILY_SKILLS, EmilySkill, get_skill
 
-
 # ── fixtures ─────────────────────────────────────────────────────
 
 
@@ -102,9 +101,7 @@ class TestResponseFilter:
         clean = "The weather in Tokyo is 22 degrees Celsius today."
         assert response_filter.filter_chunk(clean) == clean
 
-    def test_multiple_leaks_in_one_chunk(
-        self, response_filter: EmilyResponseFilter
-    ) -> None:
+    def test_multiple_leaks_in_one_chunk(self, response_filter: EmilyResponseFilter) -> None:
         chunk = "I'm Claude, made by Anthropic."
         result = response_filter.filter_chunk(chunk)
         assert "Claude" not in result
@@ -224,9 +221,7 @@ class TestPrivacyBoundary:
 
     def test_granted_category_passes(self) -> None:
         grants = PrivacyGrants(files=True)
-        result = EmilyPersonaEngine.enforce_privacy_boundary(
-            "Read my documents folder", grants
-        )
+        result = EmilyPersonaEngine.enforce_privacy_boundary("Read my documents folder", grants)
         assert result is None
 
     def test_normal_message_passes(self, grants_none: PrivacyGrants) -> None:
@@ -358,12 +353,27 @@ class TestSystemPromptAssembly:
 
 class TestSkills:
     EXPECTED_IDS = {
-        "deep_think", "code", "research", "writing", "concise",
-        "analyst", "tutor", "brainstorm", "debate", "translate",
-        "eli5", "compare",
+        "deep_think",
+        "code",
+        "research",
+        "writing",
+        "concise",
+        "analyst",
+        "tutor",
+        "brainstorm",
+        "debate",
+        "translate",
+        "eli5",
+        "compare",
+        "video_script",
+        "market_research",
+        "ad_copywriter",
+        "singing",
+        "social_media",
+        "voice",
     }
 
-    def test_all_12_built_in_skills_present(self) -> None:
+    def test_all_built_in_skills_present(self) -> None:
         assert set(EMILY_SKILLS.keys()) == self.EXPECTED_IDS
 
     def test_each_skill_has_name_and_description(self) -> None:
@@ -407,8 +417,17 @@ class TestIdentityContract:
         assert "ALWAYS AVAILABLE" in EMILY_CORE_IDENTITY
 
     def test_contract_forbids_other_model_names(self) -> None:
-        for name in ("Claude", "GPT", "Gemini", "Grok", "DeepSeek",
-                      "Qwen", "Kimi", "Mistral", "Llama"):
+        for name in (
+            "Claude",
+            "GPT",
+            "Gemini",
+            "Grok",
+            "DeepSeek",
+            "Qwen",
+            "Kimi",
+            "Mistral",
+            "Llama",
+        ):
             assert name in EMILY_CORE_IDENTITY, (
                 f"Contract should mention {name} to explicitly deny it"
             )

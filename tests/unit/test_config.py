@@ -43,8 +43,13 @@ def test_memory_defaults() -> None:
 def test_persona_dimensions_in_range() -> None:
     """All persona dimensions are in [0, 1]."""
     s = EmilySettings()
-    for dim in [s.persona.curiosity, s.persona.warmth, s.persona.directness,
-                s.persona.humor, s.persona.formality]:
+    for dim in [
+        s.persona.curiosity,
+        s.persona.warmth,
+        s.persona.directness,
+        s.persona.humor,
+        s.persona.formality,
+    ]:
         assert 0.0 <= dim <= 1.0
 
 

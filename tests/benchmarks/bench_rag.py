@@ -10,13 +10,10 @@ Measures:
 
 from __future__ import annotations
 
-import asyncio
 import time
 from pathlib import Path
-from typing import Any
 
 import pytest
-
 
 SAMPLE_DOCUMENTS = [
     "Python is a high-level, interpreted programming language with dynamic semantics.",
@@ -49,7 +46,9 @@ async def test_chunker_throughput(tmp_text_file: Path) -> None:
         chunks = chunker.chunk(content, source=str(tmp_text_file))
         elapsed_ms = (time.monotonic() - t0) * 1000
 
-        print(f"\n[chunker] content_len={len(content)} chunks={len(chunks)} elapsed={elapsed_ms:.1f}ms")
+        print(
+            f"\n[chunker] content_len={len(content)} chunks={len(chunks)} elapsed={elapsed_ms:.1f}ms"
+        )
 
         assert len(chunks) > 0, "Chunker produced no chunks"
         assert elapsed_ms < 500, f"Chunker too slow: {elapsed_ms:.0f}ms"
@@ -87,4 +86,5 @@ async def test_bm25_retrieval_latency() -> None:
         pytest.skip(f"Import error: {e}")
     finally:
         import shutil
+
         shutil.rmtree("data/test_bm25_bench", ignore_errors=True)

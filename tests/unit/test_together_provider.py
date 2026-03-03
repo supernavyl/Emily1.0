@@ -26,15 +26,23 @@ def _sse(payload: str) -> str:
 
 
 def _text_chunk(content: str) -> str:
-    return _sse(json.dumps({
-        "choices": [{"delta": {"content": content}, "finish_reason": None}],
-    }))
+    return _sse(
+        json.dumps(
+            {
+                "choices": [{"delta": {"content": content}, "finish_reason": None}],
+            }
+        )
+    )
 
 
 def _usage_chunk(prompt: int = 60, completion: int = 25) -> str:
-    return _sse(json.dumps({
-        "usage": {"prompt_tokens": prompt, "completion_tokens": completion},
-    }))
+    return _sse(
+        json.dumps(
+            {
+                "usage": {"prompt_tokens": prompt, "completion_tokens": completion},
+            }
+        )
+    )
 
 
 def _done_line() -> str:
@@ -42,9 +50,13 @@ def _done_line() -> str:
 
 
 def _finish_chunk() -> str:
-    return _sse(json.dumps({
-        "choices": [{"delta": {}, "finish_reason": "stop"}],
-    }))
+    return _sse(
+        json.dumps(
+            {
+                "choices": [{"delta": {}, "finish_reason": "stop"}],
+            }
+        )
+    )
 
 
 def _full_stream(text: str = "Together works") -> str:
@@ -184,9 +196,7 @@ class TestTogetherKeyValidation:
     @pytest.mark.asyncio
     async def test_valid_key(self) -> None:
         with respx.mock:
-            respx.get(_TOGETHER_MODELS_URL).mock(
-                return_value=httpx.Response(200, json=[])
-            )
+            respx.get(_TOGETHER_MODELS_URL).mock(return_value=httpx.Response(200, json=[]))
             provider = TogetherProvider(api_key="tog-test")
             assert await provider.validate_key("tog-test") is True
             await provider.close()

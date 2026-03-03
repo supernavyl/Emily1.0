@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone, timedelta
-
-import pytest
+from datetime import UTC, datetime, timedelta
 
 from emily_chat.storage.models import ConversationSummary
 from emily_chat.ui.left_sidebar import (
@@ -20,7 +18,7 @@ def _make_conv(
     pinned: bool = False,
     provider: str | None = None,
 ) -> ConversationSummary:
-    now = updated_at or datetime.now(timezone.utc)
+    now = updated_at or datetime.now(UTC)
     return ConversationSummary(
         id=title.lower().replace(" ", "_"),
         title=title,
@@ -42,7 +40,7 @@ class TestGroupConversations:
         assert len(groups) == 0
 
     def test_pinned_appears_first(self) -> None:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         convs = [
             _make_conv("Normal", updated_at=now),
             _make_conv("Pinned", updated_at=now - timedelta(days=10), pinned=True),
@@ -53,14 +51,14 @@ class TestGroupConversations:
         assert groups["PINNED"][0].title == "Pinned"
 
     def test_today_bucket(self) -> None:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         convs = [_make_conv("Recent", updated_at=now - timedelta(minutes=30))]
         groups = group_conversations(convs)
         assert "TODAY" in groups
         assert groups["TODAY"][0].title == "Recent"
 
     def test_yesterday_bucket(self) -> None:
-        yesterday = datetime.now(timezone.utc).replace(
+        yesterday = datetime.now(UTC).replace(
             hour=0, minute=0, second=0, microsecond=0
         ) - timedelta(hours=6)
         convs = [_make_conv("Yesterday chat", updated_at=yesterday)]
@@ -68,13 +66,13 @@ class TestGroupConversations:
         assert "YESTERDAY" in groups
 
     def test_older_buckets_use_month_year(self) -> None:
-        old = datetime(2024, 6, 15, tzinfo=timezone.utc)
+        old = datetime(2024, 6, 15, tzinfo=UTC)
         convs = [_make_conv("Old one", updated_at=old)]
         groups = group_conversations(convs)
         assert "June 2024" in groups
 
     def test_pinned_conversation_not_in_date_bucket(self) -> None:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         convs = [_make_conv("Pinned today", updated_at=now, pinned=True)]
         groups = group_conversations(convs)
         assert "PINNED" in groups
@@ -88,32 +86,32 @@ class TestGroupConversations:
 
 class TestRelativeTime:
     def test_just_now(self) -> None:
-        assert relative_time(datetime.now(timezone.utc)) == "just now"
+        assert relative_time(datetime.now(UTC)) == "just now"
 
     def test_minutes_ago(self) -> None:
-        t = datetime.now(timezone.utc) - timedelta(minutes=5)
+        t = datetime.now(UTC) - timedelta(minutes=5)
         assert relative_time(t) == "5m ago"
 
     def test_hours_ago(self) -> None:
-        t = datetime.now(timezone.utc) - timedelta(hours=3)
+        t = datetime.now(UTC) - timedelta(hours=3)
         assert relative_time(t) == "3h ago"
 
     def test_yesterday(self) -> None:
-        t = datetime.now(timezone.utc) - timedelta(hours=30)
+        t = datetime.now(UTC) - timedelta(hours=30)
         assert relative_time(t) == "Yesterday"
 
     def test_days_ago(self) -> None:
-        t = datetime.now(timezone.utc) - timedelta(days=4)
+        t = datetime.now(UTC) - timedelta(days=4)
         assert relative_time(t) == "4d ago"
 
     def test_older_uses_date(self) -> None:
-        t = datetime(2024, 1, 15, tzinfo=timezone.utc)
+        t = datetime(2024, 1, 15, tzinfo=UTC)
         result = relative_time(t)
         assert "Jan" in result and "15" in result
 
     def test_naive_datetime_handled(self) -> None:
         """Naive (no tzinfo) datetimes should not crash; they're treated as UTC."""
-        t = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=1)
+        t = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=1)
         assert relative_time(t) == "1h ago"
 
 

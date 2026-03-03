@@ -8,7 +8,6 @@ fallback when GGUF is missing, and first-token latency metrics.
 
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -18,18 +17,20 @@ import pytest
 from config import LlamaCppConfig, LlamaCppModelConfig
 from llm.llamacpp_client import LlamaCppClient
 
-
 # ------------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------------
 
+
 def _make_chunk(content: str, finish: bool = False) -> dict[str, Any]:
     """Build a single llama-cpp-python streaming chunk dict."""
     return {
-        "choices": [{
-            "delta": {"content": content},
-            "finish_reason": "stop" if finish else None,
-        }],
+        "choices": [
+            {
+                "delta": {"content": content},
+                "finish_reason": "stop" if finish else None,
+            }
+        ],
     }
 
 
@@ -126,9 +127,7 @@ async def test_chat_stream_marks_done() -> None:
     client._loaded_tiers.add("nano")
 
     last_done = False
-    async for chunk in client.chat_stream(
-        model="nano", messages=[], model_tier="nano"
-    ):
+    async for chunk in client.chat_stream(model="nano", messages=[], model_tier="nano"):
         last_done = chunk.done
     assert last_done is True
 
@@ -141,9 +140,7 @@ async def test_chat_returns_complete_result() -> None:
     client._models["nano"] = _mock_llama(chunks)
     client._loaded_tiers.add("nano")
 
-    result = await client.chat(
-        model="nano", messages=[], model_tier="nano"
-    )
+    result = await client.chat(model="nano", messages=[], model_tier="nano")
     assert "Hello" in result.content
     assert "world" in result.content
     assert result.latency_ms > 0

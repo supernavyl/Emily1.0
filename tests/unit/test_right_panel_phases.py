@@ -15,7 +15,6 @@ from emily_chat.ui.right_panel import (
     detect_phase,
 )
 
-
 # ------------------------------------------------------------------
 # Phase detection
 # ------------------------------------------------------------------
@@ -149,9 +148,27 @@ class TestComputeSessionStats:
     def test_multiple_messages(self) -> None:
         """Multiple messages should accumulate correctly."""
         messages = [
-            {"model": "gpt-5", "tokens_in": 100, "tokens_out": 200, "cost_usd": 0.01, "latency_ms": 500},
-            {"model": "gpt-5", "tokens_in": 150, "tokens_out": 300, "cost_usd": 0.02, "latency_ms": 600},
-            {"model": "claude", "tokens_in": 200, "tokens_out": 400, "cost_usd": 0.03, "latency_ms": 700},
+            {
+                "model": "gpt-5",
+                "tokens_in": 100,
+                "tokens_out": 200,
+                "cost_usd": 0.01,
+                "latency_ms": 500,
+            },
+            {
+                "model": "gpt-5",
+                "tokens_in": 150,
+                "tokens_out": 300,
+                "cost_usd": 0.02,
+                "latency_ms": 600,
+            },
+            {
+                "model": "claude",
+                "tokens_in": 200,
+                "tokens_out": 400,
+                "cost_usd": 0.03,
+                "latency_ms": 700,
+            },
         ]
         stats = compute_session_stats(messages)
         assert stats["messages"] == 3
@@ -219,8 +236,6 @@ class TestComputeSessionStats:
 
     def test_thinking_tokens_included(self) -> None:
         """Thinking tokens should be included in total."""
-        messages = [
-            {"tokens_in": 10, "tokens_out": 20, "tokens_thinking": 30}
-        ]
+        messages = [{"tokens_in": 10, "tokens_out": 20, "tokens_thinking": 30}]
         stats = compute_session_stats(messages)
         assert stats["total_tokens"] == 60

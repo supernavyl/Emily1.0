@@ -52,4 +52,10 @@ def test_message_json_is_valid() -> None:
 
 def test_priority_ordering() -> None:
     """Priority enum values maintain correct ordering (lower = more urgent)."""
-    assert Priority.EMERGENCY < Priority.REALTIME < Priority.ACTIVE < Priority.BACKGROUND < Priority.IDLE
+    assert (
+        Priority.EMERGENCY
+        < Priority.REALTIME
+        < Priority.ACTIVE
+        < Priority.BACKGROUND
+        < Priority.IDLE
+    )

@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import tempfile
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -20,6 +19,7 @@ def singing_config() -> SingingConfig:
 @pytest.fixture()
 def tool(singing_config: SingingConfig):
     from plugins.builtin.singing import SingingTool
+
     return SingingTool(singing_config=singing_config)
 
 
@@ -56,11 +56,13 @@ async def test_dry_run_voice_convert(tool) -> None:
 @pytest.mark.asyncio
 async def test_dry_run_full_song(tool) -> None:
     """dry_run describes full song generation."""
-    result = await tool.dry_run({
-        "prompt": "love ballad",
-        "mode": "full_song",
-        "style": "jazz",
-    })
+    result = await tool.dry_run(
+        {
+            "prompt": "love ballad",
+            "mode": "full_song",
+            "style": "jazz",
+        }
+    )
     assert "song" in result.lower()
     assert "jazz" in result
 
@@ -91,11 +93,13 @@ async def test_validate_voice_convert_needs_audio(tool) -> None:
 @pytest.mark.asyncio
 async def test_validate_voice_convert_file_must_exist(tool) -> None:
     """voice_convert validation fails if the audio file doesn't exist."""
-    result = await tool.validate({
-        "prompt": "test",
-        "mode": "voice_convert",
-        "input_audio_path": "/nonexistent/song.wav",
-    })
+    result = await tool.validate(
+        {
+            "prompt": "test",
+            "mode": "voice_convert",
+            "input_audio_path": "/nonexistent/song.wav",
+        }
+    )
     assert not result.valid
 
 
@@ -103,21 +107,25 @@ async def test_validate_voice_convert_file_must_exist(tool) -> None:
 async def test_validate_voice_convert_valid(tool) -> None:
     """voice_convert passes when a valid file exists."""
     with tempfile.NamedTemporaryFile(suffix=".wav") as f:
-        result = await tool.validate({
-            "prompt": "test",
-            "mode": "voice_convert",
-            "input_audio_path": f.name,
-        })
+        result = await tool.validate(
+            {
+                "prompt": "test",
+                "mode": "voice_convert",
+                "input_audio_path": f.name,
+            }
+        )
         assert result.valid
 
 
 @pytest.mark.asyncio
 async def test_validate_duration_out_of_range(tool) -> None:
     """Duration outside 1-300 range fails validation."""
-    result = await tool.validate({
-        "prompt": "test",
-        "duration_seconds": 500,
-    })
+    result = await tool.validate(
+        {
+            "prompt": "test",
+            "duration_seconds": 500,
+        }
+    )
     assert not result.valid
 
 
@@ -163,7 +171,7 @@ async def test_execute_handles_engine_failure(tool, context) -> None:
 
     async def exploding_sing(*args, **kwargs):
         raise RuntimeError("GPU exploded")
-        yield  # noqa: unreachable — makes this an async generator
+        yield  # noqa: F841 — unreachable yield makes this an async generator
 
     mock_manager.sing = exploding_sing
     mock_manager.load = AsyncMock()

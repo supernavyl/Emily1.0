@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from agents.conversation import ConversationAgent
+from llm.router import TaskType
 from plugins.base import BaseTool, ExecutionContext, ToolResult
 
 if TYPE_CHECKING:
@@ -28,6 +29,7 @@ class _FakeRouting:
     tier: MagicMock = field(default_factory=lambda: MagicMock(value="fast"))
     model_name: str = "Qwen2.5-14B-Instruct-abliterated"
     complexity_score: int = 3
+    task_type: TaskType = TaskType.CHAT
 
 
 class _FakeWorkingMemory:

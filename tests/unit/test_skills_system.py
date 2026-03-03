@@ -134,24 +134,29 @@ class TestSkillEditorValidation:
 
     def test_valid(self) -> None:
         from emily_chat.ui.skill_editor import validate_skill_fields
+
         assert validate_skill_fields("My Skill", "\U0001f680", "A description") == []
 
     def test_empty_name(self) -> None:
         from emily_chat.ui.skill_editor import validate_skill_fields
+
         errors = validate_skill_fields("", "\U0001f680", "desc")
         assert any("Name" in e for e in errors)
 
     def test_long_name(self) -> None:
         from emily_chat.ui.skill_editor import validate_skill_fields
+
         errors = validate_skill_fields("x" * 31, "\U0001f680", "desc")
         assert any("30" in e for e in errors)
 
     def test_empty_icon(self) -> None:
         from emily_chat.ui.skill_editor import validate_skill_fields
+
         errors = validate_skill_fields("Name", "", "desc")
         assert any("Icon" in e for e in errors)
 
     def test_empty_description(self) -> None:
         from emily_chat.ui.skill_editor import validate_skill_fields
+
         errors = validate_skill_fields("Name", "\U0001f680", "")
         assert any("Description" in e for e in errors)

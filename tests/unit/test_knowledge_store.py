@@ -14,7 +14,6 @@ from memory.knowledge_models import (
 )
 from memory.knowledge_store import KnowledgeStore
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -88,18 +87,14 @@ async def test_get_entity_missing_returns_none(store: KnowledgeStore) -> None:
 
 
 @pytest.mark.asyncio
-async def test_find_entities_by_name(
-    store: KnowledgeStore, alice_entity: EntityRecord
-) -> None:
+async def test_find_entities_by_name(store: KnowledgeStore, alice_entity: EntityRecord) -> None:
     """find_entities returns partial name matches."""
     results = await store.find_entities("Alice")
     assert any(e.id == alice_entity.id for e in results)
 
 
 @pytest.mark.asyncio
-async def test_find_entities_by_type(
-    store: KnowledgeStore, alice_entity: EntityRecord
-) -> None:
+async def test_find_entities_by_type(store: KnowledgeStore, alice_entity: EntityRecord) -> None:
     """find_entities filters by type correctly."""
     person_results = await store.find_entities("Alice", entity_type="person")
     org_results = await store.find_entities("Alice", entity_type="org")
@@ -121,9 +116,7 @@ async def test_delete_entity(store: KnowledgeStore) -> None:
 @pytest.mark.asyncio
 async def test_entity_aliases_roundtrip(store: KnowledgeStore) -> None:
     """Aliases list survives JSON serialization roundtrip."""
-    entity = EntityRecord(
-        canonical_name="Carol", type="person", aliases=["Caz", "Caroline"]
-    )
+    entity = EntityRecord(canonical_name="Carol", type="person", aliases=["Caz", "Caroline"])
     await store.upsert_entity(entity)
     fetched = await store.get_entity(entity.id)
     assert fetched is not None
@@ -136,9 +129,7 @@ async def test_entity_aliases_roundtrip(store: KnowledgeStore) -> None:
 
 
 @pytest.mark.asyncio
-async def test_upsert_and_get_person(
-    store: KnowledgeStore, alice_person: PersonRecord
-) -> None:
+async def test_upsert_and_get_person(store: KnowledgeStore, alice_person: PersonRecord) -> None:
     """Person profile can be retrieved after insertion."""
     fetched = await store.get_person(alice_person.entity_id)
     assert fetched is not None
@@ -148,18 +139,14 @@ async def test_upsert_and_get_person(
 
 
 @pytest.mark.asyncio
-async def test_search_people_by_name(
-    store: KnowledgeStore, alice_person: PersonRecord
-) -> None:
+async def test_search_people_by_name(store: KnowledgeStore, alice_person: PersonRecord) -> None:
     """search_people matches on full_name substring."""
     results = await store.search_people(name_fragment="Alice")
     assert any(p.entity_id == alice_person.entity_id for p in results)
 
 
 @pytest.mark.asyncio
-async def test_search_people_by_employer(
-    store: KnowledgeStore, alice_person: PersonRecord
-) -> None:
+async def test_search_people_by_employer(store: KnowledgeStore, alice_person: PersonRecord) -> None:
     """search_people filters by employer correctly."""
     results = await store.search_people(employer="Acme Corp")
     assert any(p.entity_id == alice_person.entity_id for p in results)
@@ -169,9 +156,7 @@ async def test_search_people_by_employer(
 
 
 @pytest.mark.asyncio
-async def test_birthday_this_week(
-    store: KnowledgeStore, alice_person: PersonRecord
-) -> None:
+async def test_birthday_this_week(store: KnowledgeStore, alice_person: PersonRecord) -> None:
     """get_people_with_birthday_this_week returns person with today's birthday."""
     from datetime import date
 
@@ -234,9 +219,7 @@ async def test_relationship_bidirectional_lookup(
 
 
 @pytest.mark.asyncio
-async def test_add_and_retrieve_fact(
-    store: KnowledgeStore, alice_entity: EntityRecord
-) -> None:
+async def test_add_and_retrieve_fact(store: KnowledgeStore, alice_entity: EntityRecord) -> None:
     """Facts can be stored and retrieved for an entity."""
     fact = FactRecord(
         entity_id=alice_entity.id,
@@ -266,9 +249,7 @@ async def test_add_fact_low_confidence_raises(
 
 
 @pytest.mark.asyncio
-async def test_supersede_fact(
-    store: KnowledgeStore, alice_entity: EntityRecord
-) -> None:
+async def test_supersede_fact(store: KnowledgeStore, alice_entity: EntityRecord) -> None:
     """supersede_fact marks old fact inactive and stores the new one."""
     old = FactRecord(
         entity_id=alice_entity.id,
@@ -297,9 +278,7 @@ async def test_supersede_fact(
 
 
 @pytest.mark.asyncio
-async def test_upsert_and_get_event(
-    store: KnowledgeStore, alice_entity: EntityRecord
-) -> None:
+async def test_upsert_and_get_event(store: KnowledgeStore, alice_entity: EntityRecord) -> None:
     """Events can be stored and retrieved by participant."""
     event = EventRecord(
         title="Q1 Planning",

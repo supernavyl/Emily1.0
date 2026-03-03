@@ -32,8 +32,20 @@ from emily_chat.models.streaming_engine import (
     StreamChunk,
 )
 
-_LOCAL_SPEC = EMILY_MODEL_REGISTRY["emily-fast"]  # TabbyAPI (abliterated fast model)
-_OLLAMA_SPEC = EMILY_MODEL_REGISTRY["emily-vision"]  # Ollama (vision — still on Ollama)
+_LOCAL_SPEC = ModelSpec(
+    display="Emily — Test Fast",
+    provider="tabbyapi",
+    model_id="Qwen2.5-14B-Instruct-abliterated",
+    context=131_072,
+    thinking=True,
+)
+_OLLAMA_SPEC = ModelSpec(
+    display="Emily — Test Vision",
+    provider="ollama",
+    model_id="minicpm-v:latest",
+    context=8_192,
+    vision=True,
+)
 _OLLAMA_CHAT_URL = "http://localhost:11434/api/chat"
 
 

@@ -12,12 +12,9 @@ Verifies:
 from __future__ import annotations
 
 import pytest
-import numpy as np
 
 from conversation.rhythm_sync import (
-    RhythmProfile,
     RhythmSynchronizer,
-    RhythmTargets,
 )
 from perception.audio.prosody_analyzer import ProsodyFeatures
 

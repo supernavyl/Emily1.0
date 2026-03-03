@@ -8,20 +8,19 @@ subprocess execution (mocked and real), and the collapse threshold.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 
 from emily_chat.ui.code_block_widget import (
-    _COLLAPSE_THRESHOLD,
     _COLLAPSE_PREVIEW_LINES,
+    _COLLAPSE_THRESHOLD,
     _RUNNABLE_LANGUAGES,
     count_lines,
     detect_language,
     is_diff,
     run_python_sandbox,
 )
-
 
 # ------------------------------------------------------------------
 # Language detection
@@ -192,9 +191,7 @@ class TestRunPythonSandbox:
     @pytest.mark.asyncio
     async def test_timeout(self) -> None:
         """Long-running code should time out."""
-        with patch(
-            "emily_chat.ui.code_block_widget._RUN_TIMEOUT", 1
-        ):
+        with patch("emily_chat.ui.code_block_widget._RUN_TIMEOUT", 1):
             result = await run_python_sandbox("import time; time.sleep(30)")
             assert result["timed_out"] is True or result["returncode"] != 0
 

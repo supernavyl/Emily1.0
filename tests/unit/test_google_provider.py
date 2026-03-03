@@ -27,7 +27,6 @@ from emily_chat.models.streaming_engine import (
     UsageStats,
 )
 
-
 # ------------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------------
@@ -41,8 +40,7 @@ _GEMINI_3_PRO_URL = (
     "/models/gemini-3-pro-preview:streamGenerateContent"
 )
 _GEMINI_3_FLASH_URL = (
-    "https://generativelanguage.googleapis.com/v1beta"
-    "/models/gemini-3-flash:streamGenerateContent"
+    "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash:streamGenerateContent"
 )
 _GEMINI_2_5_PRO_URL = (
     "https://generativelanguage.googleapis.com/v1beta"
@@ -338,9 +336,7 @@ class TestGeminiTextStreaming:
         stream_body = _full_text_stream("Hello world")
 
         with respx.mock:
-            respx.post(_GEMINI_3_PRO_URL).mock(
-                return_value=httpx.Response(200, text=stream_body)
-            )
+            respx.post(_GEMINI_3_PRO_URL).mock(return_value=httpx.Response(200, text=stream_body))
 
             provider = GoogleProvider(api_key="test-key")
             settings = GenerationSettings(temperature=0.5)
@@ -366,9 +362,7 @@ class TestGeminiTextStreaming:
         stream_body = _full_text_stream("ok")
 
         with respx.mock:
-            respx.post(_GEMINI_3_FLASH_URL).mock(
-                return_value=httpx.Response(200, text=stream_body)
-            )
+            respx.post(_GEMINI_3_FLASH_URL).mock(return_value=httpx.Response(200, text=stream_body))
 
             provider = GoogleProvider(api_key="test-key")
             settings = GenerationSettings()
@@ -391,9 +385,7 @@ class TestGeminiTextStreaming:
         stream_body = _full_text_stream("response")
 
         with respx.mock:
-            respx.post(_GEMINI_3_PRO_URL).mock(
-                return_value=httpx.Response(200, text=stream_body)
-            )
+            respx.post(_GEMINI_3_PRO_URL).mock(return_value=httpx.Response(200, text=stream_body))
 
             provider = GoogleProvider(api_key="test-key")
             settings = GenerationSettings()
@@ -447,9 +439,7 @@ class TestGeminiTextStreaming:
     @pytest.mark.asyncio
     async def test_api_error_yields_error_chunk(self) -> None:
         with respx.mock:
-            respx.post(_GEMINI_3_PRO_URL).mock(
-                return_value=httpx.Response(403, text="Forbidden")
-            )
+            respx.post(_GEMINI_3_PRO_URL).mock(return_value=httpx.Response(403, text="Forbidden"))
 
             provider = GoogleProvider(api_key="bad-key")
             settings = GenerationSettings()
@@ -486,9 +476,7 @@ class TestGeminiThinkingStreaming:
         )
 
         with respx.mock:
-            respx.post(_GEMINI_3_PRO_URL).mock(
-                return_value=httpx.Response(200, text=stream_body)
-            )
+            respx.post(_GEMINI_3_PRO_URL).mock(return_value=httpx.Response(200, text=stream_body))
 
             provider = GoogleProvider(api_key="test-key")
             settings = GenerationSettings(thinking_budget=8000)
@@ -574,9 +562,7 @@ class TestGeminiThinkingStreaming:
         stream_body = _full_thinking_stream()
 
         with respx.mock:
-            respx.post(_GEMINI_3_PRO_URL).mock(
-                return_value=httpx.Response(200, text=stream_body)
-            )
+            respx.post(_GEMINI_3_PRO_URL).mock(return_value=httpx.Response(200, text=stream_body))
 
             provider = GoogleProvider(api_key="test-key")
             settings = GenerationSettings(thinking_budget=8000)
@@ -609,9 +595,9 @@ class TestKeyValidation:
     @pytest.mark.asyncio
     async def test_valid_key(self) -> None:
         with respx.mock:
-            respx.get(
-                "https://generativelanguage.googleapis.com/v1beta/models"
-            ).mock(return_value=httpx.Response(200, json={"models": []}))
+            respx.get("https://generativelanguage.googleapis.com/v1beta/models").mock(
+                return_value=httpx.Response(200, json={"models": []})
+            )
 
             provider = GoogleProvider(api_key="test-key")
             assert await provider.validate_key("test-key") is True
@@ -620,9 +606,9 @@ class TestKeyValidation:
     @pytest.mark.asyncio
     async def test_invalid_key(self) -> None:
         with respx.mock:
-            respx.get(
-                "https://generativelanguage.googleapis.com/v1beta/models"
-            ).mock(return_value=httpx.Response(401, json={"error": "invalid"}))
+            respx.get("https://generativelanguage.googleapis.com/v1beta/models").mock(
+                return_value=httpx.Response(401, json={"error": "invalid"})
+            )
 
             provider = GoogleProvider(api_key="bad-key")
             assert await provider.validate_key("bad-key") is False
@@ -676,9 +662,7 @@ class TestStreamingEngineGoogle:
         )
 
         with respx.mock:
-            respx.post(_GEMINI_3_PRO_URL).mock(
-                return_value=httpx.Response(200, text=stream_body)
-            )
+            respx.post(_GEMINI_3_PRO_URL).mock(return_value=httpx.Response(200, text=stream_body))
 
             provider = GoogleProvider(api_key="test-key")
             persona = EmilyPersonaEngine()
@@ -714,9 +698,7 @@ class TestStreamingEngineGoogle:
         )
 
         with respx.mock:
-            respx.post(_GEMINI_3_PRO_URL).mock(
-                return_value=httpx.Response(200, text=stream_body)
-            )
+            respx.post(_GEMINI_3_PRO_URL).mock(return_value=httpx.Response(200, text=stream_body))
 
             provider = GoogleProvider(api_key="test-key")
             persona = EmilyPersonaEngine()
@@ -745,9 +727,7 @@ class TestStreamingEngineGoogle:
         long_stream += _usage_event()
 
         with respx.mock:
-            respx.post(_GEMINI_3_FLASH_URL).mock(
-                return_value=httpx.Response(200, text=long_stream)
-            )
+            respx.post(_GEMINI_3_FLASH_URL).mock(return_value=httpx.Response(200, text=long_stream))
 
             provider = GoogleProvider(api_key="test-key")
             persona = EmilyPersonaEngine()
@@ -819,9 +799,7 @@ class TestGeminiFlashAndTwoFivePro:
         stream_body = _full_text_stream("fast answer")
 
         with respx.mock:
-            respx.post(_GEMINI_3_FLASH_URL).mock(
-                return_value=httpx.Response(200, text=stream_body)
-            )
+            respx.post(_GEMINI_3_FLASH_URL).mock(return_value=httpx.Response(200, text=stream_body))
 
             provider = GoogleProvider(api_key="test-key")
             settings = GenerationSettings()
@@ -848,9 +826,7 @@ class TestGeminiFlashAndTwoFivePro:
         )
 
         with respx.mock:
-            respx.post(_GEMINI_2_5_PRO_URL).mock(
-                return_value=httpx.Response(200, text=stream_body)
-            )
+            respx.post(_GEMINI_2_5_PRO_URL).mock(return_value=httpx.Response(200, text=stream_body))
 
             provider = GoogleProvider(api_key="test-key")
             settings = GenerationSettings(thinking_budget=8000)

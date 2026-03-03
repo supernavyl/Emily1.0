@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -17,8 +17,8 @@ def _make_conv(**overrides) -> ConversationSummary:
     defaults = {
         "id": "conv-1",
         "title": "Test Conversation",
-        "created_at": datetime(2025, 6, 15, 12, 0, tzinfo=timezone.utc),
-        "updated_at": datetime(2025, 6, 15, 13, 0, tzinfo=timezone.utc),
+        "created_at": datetime(2025, 6, 15, 12, 0, tzinfo=UTC),
+        "updated_at": datetime(2025, 6, 15, 13, 0, tzinfo=UTC),
         "model": "gpt-5",
         "provider": "openai",
         "skill_id": "code",
@@ -39,7 +39,7 @@ def _make_messages() -> list[Message]:
             conversation_id="conv-1",
             role="user",
             content="Hello Emily, can you help me?",
-            created_at=datetime(2025, 6, 15, 12, 0, tzinfo=timezone.utc),
+            created_at=datetime(2025, 6, 15, 12, 0, tzinfo=UTC),
         ),
         Message(
             id="msg-2",
@@ -52,7 +52,7 @@ def _make_messages() -> list[Message]:
             tokens_in=50,
             tokens_out=100,
             cost_usd=0.0042,
-            created_at=datetime(2025, 6, 15, 12, 1, tzinfo=timezone.utc),
+            created_at=datetime(2025, 6, 15, 12, 1, tzinfo=UTC),
         ),
     ]
 

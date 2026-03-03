@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
-
 import pytest
 import pytest_asyncio
 
@@ -90,11 +88,16 @@ async def test_delete_conversation(db: ConversationDatabase) -> None:
 @pytest.mark.asyncio
 async def test_add_and_get_messages(db: ConversationDatabase) -> None:
     conv = await db.create_conversation("Chat")
-    m1 = await db.add_message(conv.id, "user", "Hello Emily")
-    m2 = await db.add_message(
-        conv.id, "assistant", "Hi there!",
-        model="claude-sonnet", provider="anthropic",
-        tokens_in=10, tokens_out=5, cost_usd=0.001,
+    await db.add_message(conv.id, "user", "Hello Emily")
+    await db.add_message(
+        conv.id,
+        "assistant",
+        "Hi there!",
+        model="claude-sonnet",
+        provider="anthropic",
+        tokens_in=10,
+        tokens_out=5,
+        cost_usd=0.001,
     )
 
     msgs = await db.get_messages(conv.id)
@@ -162,9 +165,9 @@ async def test_duplicate_conversation(db: ConversationDatabase) -> None:
 @pytest.mark.asyncio
 async def test_fork_conversation(db: ConversationDatabase) -> None:
     conv = await db.create_conversation("Long chat")
-    m1 = await db.add_message(conv.id, "user", "First")
+    await db.add_message(conv.id, "user", "First")
     m2 = await db.add_message(conv.id, "assistant", "Second")
-    m3 = await db.add_message(conv.id, "user", "Third")
+    await db.add_message(conv.id, "user", "Third")
 
     fork = await db.fork_conversation(conv.id, m2.id)
     assert fork is not None

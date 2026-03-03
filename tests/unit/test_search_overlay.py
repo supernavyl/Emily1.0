@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -35,22 +35,22 @@ class TestFormatSearchResult:
         assert "42 msgs" in result["meta"]
 
     def test_today_relative(self) -> None:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         result = format_search_result("T", "e", updated_at=now)
         assert "Today" in result["meta"]
 
     def test_yesterday_relative(self) -> None:
-        yesterday = datetime.now(timezone.utc) - timedelta(days=1)
+        yesterday = datetime.now(UTC) - timedelta(days=1)
         result = format_search_result("T", "e", updated_at=yesterday)
         assert "Yesterday" in result["meta"]
 
     def test_days_ago_relative(self) -> None:
-        three_days = datetime.now(timezone.utc) - timedelta(days=3)
+        three_days = datetime.now(UTC) - timedelta(days=3)
         result = format_search_result("T", "e", updated_at=three_days)
         assert "3d ago" in result["meta"]
 
     def test_old_date_formatted(self) -> None:
-        old = datetime(2024, 1, 15, tzinfo=timezone.utc)
+        old = datetime(2024, 1, 15, tzinfo=UTC)
         result = format_search_result("T", "e", updated_at=old)
         assert "Jan" in result["meta"]
 
@@ -60,8 +60,12 @@ class TestFormatSearchResult:
 
     def test_all_metadata(self) -> None:
         result = format_search_result(
-            "T", "e", model="GPT-5", message_count=10,
-            cost=0.05, updated_at=datetime.now(timezone.utc),
+            "T",
+            "e",
+            model="GPT-5",
+            message_count=10,
+            cost=0.05,
+            updated_at=datetime.now(UTC),
         )
         assert "GPT-5" in result["meta"]
         assert "10 msgs" in result["meta"]
@@ -141,12 +145,15 @@ class TestOverlaySignals:
 
     def test_has_conversation_opened(self) -> None:
         from emily_chat.ui.search_overlay import GlobalSearchOverlay
+
         assert hasattr(GlobalSearchOverlay, "conversation_opened")
 
     def test_has_command_executed(self) -> None:
         from emily_chat.ui.search_overlay import GlobalSearchOverlay
+
         assert hasattr(GlobalSearchOverlay, "command_executed")
 
     def test_has_search_query(self) -> None:
         from emily_chat.ui.search_overlay import GlobalSearchOverlay
+
         assert hasattr(GlobalSearchOverlay, "search_query")

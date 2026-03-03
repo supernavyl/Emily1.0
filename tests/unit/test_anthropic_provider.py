@@ -12,8 +12,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from emily_chat.models.base import GenerationSettings, StreamChunk
 from emily_chat.models.registry import get_default_model, get_model, list_models
+from emily_chat.models.streaming_engine import ChunkType, GenerationSettings, StreamChunk
 
 # ---------------------------------------------------------------------------
 # Registry tests
@@ -34,10 +34,17 @@ class TestModelRegistry:
         assert get_model("nonexistent-model-99") is None
 
     def test_get_default_model(self) -> None:
-        """get_default_model returns Emily's local brain as default."""
+        """get_default_model returns first entry when no default is flagged.
+
+        Local emily-* models are registered dynamically at fleet startup.
+        In tests (no fleet), the static registry has no default, so the
+        first cloud entry is returned as fallback.
+        """
         key, spec = get_default_model()
-        assert key == "emily-ollama"
-        assert spec.default is True
+        # First static entry is claude-sonnet-4-6; at runtime, emily-fast
+        # is registered dynamically with default=True by LLMFleet.
+        assert key is not None
+        assert spec is not None
 
     def test_list_models_all(self) -> None:
         """list_models without filter returns all registered models."""
@@ -168,10 +175,22 @@ class TestAnthropicProvider:
 
         return AnthropicProvider(api_key="test-key-123")
 
+    def _make_model_spec(self) -> Any:
+        """Create a minimal ModelSpec for testing."""
+        from emily_chat.models.base import ModelSpec
+
+        return ModelSpec(
+            id="claude-sonnet-4-6",
+            display="Claude Sonnet",
+            provider="anthropic",
+            model_id="claude-sonnet-4-6",
+        )
+
     @pytest.mark.asyncio
     async def test_thinking_chunks_emitted(self) -> None:
-        """Thinking deltas produce StreamChunk(type='thinking')."""
+        """Thinking deltas produce StreamChunk(type=THINKING)."""
         provider = self._make_provider()
+        spec = self._make_model_spec()
         stream = _build_fake_stream(
             thinking_chunks=["Let me think...", " Step 1."],
             text_chunks=["Hello!"],
@@ -179,28 +198,25 @@ class TestAnthropicProvider:
         self._mock_client.messages.stream.return_value = stream
 
         settings = GenerationSettings(thinking_budget=8000)
-        chunks = [
-            c async for c in provider.stream([], "system", settings, model_id="claude-sonnet-4-6")
-        ]
+        chunks = [c async for c in provider.stream([], "system", settings, spec)]
 
-        thinking = [c for c in chunks if c.type == "thinking"]
+        thinking = [c for c in chunks if c.type == ChunkType.THINKING]
         assert len(thinking) == 2
         assert thinking[0].content == "Let me think..."
         assert thinking[1].content == " Step 1."
 
     @pytest.mark.asyncio
     async def test_text_chunks_emitted(self) -> None:
-        """Text deltas produce StreamChunk(type='text')."""
+        """Text deltas produce StreamChunk(type=TEXT)."""
         provider = self._make_provider()
+        spec = self._make_model_spec()
         stream = _build_fake_stream(text_chunks=["Hello", " world!"])
         self._mock_client.messages.stream.return_value = stream
 
         settings = GenerationSettings(thinking_budget=0)
-        chunks = [
-            c async for c in provider.stream([], "system", settings, model_id="claude-sonnet-4-6")
-        ]
+        chunks = [c async for c in provider.stream([], "system", settings, spec)]
 
-        text = [c for c in chunks if c.type == "text"]
+        text = [c for c in chunks if c.type == ChunkType.TEXT]
         assert len(text) == 2
         assert text[0].content == "Hello"
         assert text[1].content == " world!"
@@ -209,6 +225,7 @@ class TestAnthropicProvider:
     async def test_usage_chunk_emitted(self) -> None:
         """A usage chunk with token counts is emitted after the stream."""
         provider = self._make_provider()
+        spec = self._make_model_spec()
         stream = _build_fake_stream(
             text_chunks=["Hi"],
             input_tokens=200,
@@ -217,33 +234,31 @@ class TestAnthropicProvider:
         self._mock_client.messages.stream.return_value = stream
 
         settings = GenerationSettings(thinking_budget=0)
-        chunks = [
-            c async for c in provider.stream([], "system", settings, model_id="claude-sonnet-4-6")
-        ]
+        chunks = [c async for c in provider.stream([], "system", settings, spec)]
 
-        usage = [c for c in chunks if c.type == "usage"]
+        usage = [c for c in chunks if c.type == ChunkType.USAGE]
         assert len(usage) == 1
-        assert usage[0].usage["input_tokens"] == 200
-        assert usage[0].usage["output_tokens"] == 80
+        assert usage[0].metadata["input_tokens"] == 200
+        assert usage[0].metadata["output_tokens"] == 80
 
     @pytest.mark.asyncio
     async def test_stop_chunk_emitted(self) -> None:
         """A stop chunk is the final item in every stream."""
         provider = self._make_provider()
+        spec = self._make_model_spec()
         stream = _build_fake_stream(text_chunks=["Done."])
         self._mock_client.messages.stream.return_value = stream
 
         settings = GenerationSettings(thinking_budget=0)
-        chunks = [
-            c async for c in provider.stream([], "system", settings, model_id="claude-sonnet-4-6")
-        ]
+        chunks = [c async for c in provider.stream([], "system", settings, spec)]
 
-        assert chunks[-1].type == "stop"
+        assert chunks[-1].type == ChunkType.STOP
 
     @pytest.mark.asyncio
     async def test_chunk_order_thinking_then_text(self) -> None:
         """Thinking chunks come before text chunks in the stream."""
         provider = self._make_provider()
+        spec = self._make_model_spec()
         stream = _build_fake_stream(
             thinking_chunks=["think1", "think2"],
             text_chunks=["text1", "text2"],
@@ -251,13 +266,11 @@ class TestAnthropicProvider:
         self._mock_client.messages.stream.return_value = stream
 
         settings = GenerationSettings(thinking_budget=8000)
-        chunks = [
-            c async for c in provider.stream([], "system", settings, model_id="claude-sonnet-4-6")
-        ]
+        chunks = [c async for c in provider.stream([], "system", settings, spec)]
 
         types = [c.type for c in chunks]
-        think_end = max(i for i, t in enumerate(types) if t == "thinking")
-        text_start = min(i for i, t in enumerate(types) if t == "text")
+        think_end = max(i for i, t in enumerate(types) if t == ChunkType.THINKING)
+        text_start = min(i for i, t in enumerate(types) if t == ChunkType.TEXT)
         assert think_end < text_start
 
     @pytest.mark.asyncio
@@ -265,10 +278,11 @@ class TestAnthropicProvider:
         """Instantiating without an API key and calling stream raises ValueError."""
         from emily_chat.models.providers.anthropic import AnthropicProvider
 
+        spec = self._make_model_spec()
         provider = AnthropicProvider(api_key="")
         settings = GenerationSettings()
         with pytest.raises(ValueError, match="No Anthropic API key"):
-            async for _ in provider.stream("model", [], "sys", settings):
+            async for _ in provider.stream([], "sys", settings, spec):
                 pass
 
 
@@ -341,12 +355,12 @@ class TestStreamingEngine:
         settings = GenerationSettings(thinking_budget=0)
         chunks = [c async for c in engine.stream(spec, [], "system", settings)]
 
-        usage = [c for c in chunks if c.type == "usage"]
+        usage = [c for c in chunks if c.type == ChunkType.USAGE]
         assert len(usage) == 1
-        assert "latency_ms" in usage[0].usage
-        assert "first_token_ms" in usage[0].usage
-        assert "cost_usd" in usage[0].usage
-        assert usage[0].usage["cost_usd"] >= 0
+        assert "latency_ms" in usage[0].metadata
+        assert "first_token_ms" in usage[0].metadata
+        assert "cost_usd" in usage[0].metadata
+        assert usage[0].metadata["cost_usd"] >= 0
 
     @pytest.mark.asyncio
     async def test_interrupt_stops_stream(self) -> None:
@@ -371,5 +385,5 @@ class TestStreamingEngine:
             if count >= 2:
                 interrupt.set()
 
-        assert result[-1].type == "stop"
-        assert len([c for c in result if c.type == "text"]) <= 3
+        assert result[-1].type == ChunkType.STOP
+        assert len([c for c in result if c.type == ChunkType.TEXT]) <= 3

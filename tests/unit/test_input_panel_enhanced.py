@@ -43,8 +43,18 @@ class TestParseSlashCommand:
         assert parse_slash_command("  /clear") == ("/clear", "")
 
     def test_all_commands_defined(self) -> None:
-        expected = {"/new", "/clear", "/model", "/search", "/export",
-                    "/branch", "/retry", "/edit", "/cost", "/summarize"}
+        expected = {
+            "/new",
+            "/clear",
+            "/model",
+            "/search",
+            "/export",
+            "/branch",
+            "/retry",
+            "/edit",
+            "/cost",
+            "/summarize",
+        }
         assert set(SLASH_COMMANDS.keys()) == expected
 
 
@@ -112,16 +122,20 @@ class TestInputPanelSignals:
 
     def test_has_web_search_toggled(self) -> None:
         from emily_chat.ui.input_panel import InputPanel
+
         assert hasattr(InputPanel, "web_search_toggled")
 
     def test_has_quick_skill_override(self) -> None:
         from emily_chat.ui.input_panel import InputPanel
+
         assert hasattr(InputPanel, "quick_skill_override")
 
     def test_has_slash_command(self) -> None:
         from emily_chat.ui.input_panel import InputPanel
+
         assert hasattr(InputPanel, "slash_command")
 
     def test_has_files_attached(self) -> None:
         from emily_chat.ui.input_panel import InputPanel
+
         assert hasattr(InputPanel, "files_attached")

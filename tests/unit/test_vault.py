@@ -11,7 +11,6 @@ from security.vault.models import Credential, CredentialSummary, CredentialType
 from security.vault.totp import TOTPProvider
 from security.vault.vault import CredentialVault, VaultLockedError
 
-
 MASTER = "correct-horse-battery-staple-test"
 
 
@@ -196,6 +195,7 @@ def test_totp_generate_code() -> None:
     """TOTPProvider generates a 6-digit code from a valid seed."""
     totp = TOTPProvider()
     import pyotp
+
     seed = pyotp.random_base32()
     code = totp.get_code(seed)
     assert len(code) == 6
@@ -206,6 +206,7 @@ def test_totp_verify() -> None:
     """Generated TOTP code verifies correctly."""
     totp = TOTPProvider()
     import pyotp
+
     seed = pyotp.random_base32()
     code = totp.get_code(seed)
     assert totp.verify(seed, code)
@@ -251,10 +252,19 @@ def test_health_checker_expiring() -> None:
     soon = (date.today() + timedelta(days=5)).isoformat()
     summaries = [
         CredentialSummary(
-            id="1", type=CredentialType.PASSWORD, name="Expiring Soon",
-            service="s", username="u", url="", tags=[], created_at="",
-            updated_at="", last_accessed="", password_strength=0.9,
-            expiry_date=soon, associated_entity_ids=[],
+            id="1",
+            type=CredentialType.PASSWORD,
+            name="Expiring Soon",
+            service="s",
+            username="u",
+            url="",
+            tags=[],
+            created_at="",
+            updated_at="",
+            last_accessed="",
+            password_strength=0.9,
+            expiry_date=soon,
+            associated_entity_ids=[],
         )
     ]
     alerts = checker.check_expiring(summaries, warn_days=30)
@@ -270,10 +280,19 @@ def test_health_checker_expired() -> None:
     past = (date.today() - timedelta(days=10)).isoformat()
     summaries = [
         CredentialSummary(
-            id="2", type=CredentialType.PASSWORD, name="Expired Key",
-            service="s", username="u", url="", tags=[], created_at="",
-            updated_at="", last_accessed="", password_strength=0.5,
-            expiry_date=past, associated_entity_ids=[],
+            id="2",
+            type=CredentialType.PASSWORD,
+            name="Expired Key",
+            service="s",
+            username="u",
+            url="",
+            tags=[],
+            created_at="",
+            updated_at="",
+            last_accessed="",
+            password_strength=0.5,
+            expiry_date=past,
+            associated_entity_ids=[],
         )
     ]
     alerts = checker.check_expiring(summaries)

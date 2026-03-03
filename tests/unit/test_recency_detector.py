@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from datetime import UTC
+
 import pytest
 
 from llm.recency_detector import needs_web_search, needs_web_search_voice
-
 
 # ── positive cases (should trigger web search) ──────────────────
 
@@ -60,9 +61,9 @@ def test_old_year_does_not_trigger() -> None:
 
 def test_current_year_triggers() -> None:
     """A reference to the current year should trigger."""
-    from datetime import datetime, timezone
+    from datetime import datetime
 
-    year = datetime.now(timezone.utc).year
+    year = datetime.now(UTC).year
     assert needs_web_search(f"events in {year}") is True
 
 

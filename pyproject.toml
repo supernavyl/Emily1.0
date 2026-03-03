@@ -191,6 +191,9 @@ ignore = [
     "SIM105", # contextlib.suppress
     "B008",   # function call in default arg (FastAPI Depends pattern)
     "B904",   # raise from (refactor later)
+    "SIM115", # context manager for opening files (test patterns)
+    "SIM117", # nested with statements (refactor later)
+    "B017",   # blind exception in tests (acceptable for availability checks)
 ]  # Deferred: re-enable and fix in follow-up sprint
 
 [tool.ruff.lint.isort]

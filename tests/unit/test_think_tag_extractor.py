@@ -80,12 +80,8 @@ class TestStreamingPartialTags:
             chunks.extend(ext.feed(ch))
         chunks.extend(ext.flush())
 
-        thinking_text = "".join(
-            c.content for c in chunks if c.type == ChunkType.THINKING
-        )
-        visible_text = "".join(
-            c.content for c in chunks if c.type == ChunkType.TEXT
-        )
+        thinking_text = "".join(c.content for c in chunks if c.type == ChunkType.THINKING)
+        visible_text = "".join(c.content for c in chunks if c.type == ChunkType.TEXT)
         assert "step 1" in thinking_text
         assert "step 2" in thinking_text
         assert "The answer is 42" in visible_text

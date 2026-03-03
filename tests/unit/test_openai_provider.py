@@ -5,7 +5,6 @@ Uses ``respx`` to mock httpx requests — no real API calls are made.
 
 from __future__ import annotations
 
-import asyncio
 import json
 
 import httpx
@@ -17,7 +16,6 @@ from emily_chat.models.cost_tracker import estimate_cost, format_cost
 from emily_chat.models.providers.openai import OpenAIProvider, _is_reasoning_model
 from emily_chat.models.registry import (
     EMILY_MODEL_REGISTRY,
-    ModelSpec,
     get_model,
     get_models_for_provider,
 )
@@ -28,7 +26,6 @@ from emily_chat.models.streaming_engine import (
     StreamChunk,
     UsageStats,
 )
-
 
 # ------------------------------------------------------------------
 # Helpers
@@ -51,9 +48,7 @@ def _text_chunk(content: str, idx: int = 0) -> str:
             {
                 "id": "chatcmpl-test",
                 "object": "chat.completion.chunk",
-                "choices": [
-                    {"index": idx, "delta": {"content": content}, "finish_reason": None}
-                ],
+                "choices": [{"index": idx, "delta": {"content": content}, "finish_reason": None}],
             }
         )
     )
@@ -85,9 +80,7 @@ def _finish_chunk(reason: str = "stop") -> str:
             {
                 "id": "chatcmpl-test",
                 "object": "chat.completion.chunk",
-                "choices": [
-                    {"index": 0, "delta": {}, "finish_reason": reason}
-                ],
+                "choices": [{"index": 0, "delta": {}, "finish_reason": reason}],
             }
         )
     )
@@ -185,14 +178,14 @@ class TestSSEParsing:
     """Tests for OpenAIProvider._parse_sse_line."""
 
     def test_text_delta(self) -> None:
-        line = f'data: {json.dumps({"choices": [{"delta": {"content": "hi"}, "finish_reason": None}]})}'
+        line = f"data: {json.dumps({'choices': [{'delta': {'content': 'hi'}, 'finish_reason': None}]})}"
         chunk = OpenAIProvider._parse_sse_line(line, "gpt-5")
         assert chunk is not None
         assert chunk.type == ChunkType.TEXT
         assert chunk.content == "hi"
 
     def test_reasoning_delta(self) -> None:
-        line = f'data: {json.dumps({"choices": [{"delta": {"reasoning_content": "hmm"}, "finish_reason": None}]})}'
+        line = f"data: {json.dumps({'choices': [{'delta': {'reasoning_content': 'hmm'}, 'finish_reason': None}]})}"
         chunk = OpenAIProvider._parse_sse_line(line, "o3")
         assert chunk is not None
         assert chunk.type == ChunkType.THINKING
@@ -228,7 +221,7 @@ class TestSSEParsing:
         assert OpenAIProvider._parse_sse_line("data: {bad json", "gpt-5") is None
 
     def test_finish_reason_only(self) -> None:
-        line = f'data: {json.dumps({"choices": [{"delta": {}, "finish_reason": "stop"}]})}'
+        line = f"data: {json.dumps({'choices': [{'delta': {}, 'finish_reason': 'stop'}]})}"
         chunk = OpenAIProvider._parse_sse_line(line, "gpt-5")
         assert chunk is None
 
@@ -525,9 +518,7 @@ class TestCostTracker:
         assert abs(cost - expected) < 1e-9
 
     def test_o3_cost_includes_thinking(self) -> None:
-        cost = estimate_cost(
-            _O3_SPEC, tokens_in=100, tokens_out=50, tokens_thinking=200
-        )
+        cost = estimate_cost(_O3_SPEC, tokens_in=100, tokens_out=50, tokens_thinking=200)
         expected = (100 / 1e6) * 10.0 + ((50 + 200) / 1e6) * 40.0
         assert abs(cost - expected) < 1e-9
 

@@ -27,15 +27,23 @@ def _sse(payload: str) -> str:
 
 
 def _text_chunk(content: str) -> str:
-    return _sse(json.dumps({
-        "choices": [{"delta": {"content": content}, "finish_reason": None}],
-    }))
+    return _sse(
+        json.dumps(
+            {
+                "choices": [{"delta": {"content": content}, "finish_reason": None}],
+            }
+        )
+    )
 
 
 def _usage_chunk(prompt: int = 55, completion: int = 35) -> str:
-    return _sse(json.dumps({
-        "usage": {"prompt_tokens": prompt, "completion_tokens": completion},
-    }))
+    return _sse(
+        json.dumps(
+            {
+                "usage": {"prompt_tokens": prompt, "completion_tokens": completion},
+            }
+        )
+    )
 
 
 def _done_line() -> str:
@@ -43,9 +51,13 @@ def _done_line() -> str:
 
 
 def _finish_chunk() -> str:
-    return _sse(json.dumps({
-        "choices": [{"delta": {}, "finish_reason": "stop"}],
-    }))
+    return _sse(
+        json.dumps(
+            {
+                "choices": [{"delta": {}, "finish_reason": "stop"}],
+            }
+        )
+    )
 
 
 def _full_stream(text: str = "Mistral responds") -> str:
@@ -189,9 +201,7 @@ class TestMistralKeyValidation:
     @pytest.mark.asyncio
     async def test_valid_key(self) -> None:
         with respx.mock:
-            respx.get(_MISTRAL_MODELS_URL).mock(
-                return_value=httpx.Response(200, json={"data": []})
-            )
+            respx.get(_MISTRAL_MODELS_URL).mock(return_value=httpx.Response(200, json={"data": []}))
             provider = MistralProvider(api_key="mist-test")
             assert await provider.validate_key("mist-test") is True
             await provider.close()

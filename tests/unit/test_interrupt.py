@@ -15,13 +15,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 
-import pytest
 import numpy as np
+import pytest
 
 from conversation.interrupt_handler import (
     InterruptHandler,
     InterruptionType,
-    InterruptResponse,
 )
 
 
@@ -141,7 +140,7 @@ class TestGracefulStop:
         sr = 24000
         duration_s = 0.3
         audio = np.random.randn(int(sr * duration_s)).astype(np.float32) * 0.1
-        audio[int(sr * 0.15):int(sr * 0.18)] = 0.001  # low energy gap
+        audio[int(sr * 0.15) : int(sr * 0.18)] = 0.001  # low energy gap
 
         stop = handler.find_graceful_stop_point(audio, sr)
         assert 0 < stop <= len(audio)
@@ -153,7 +152,7 @@ class TestGracefulStop:
 
         result = handler.apply_fade_out(audio, stop)
         assert np.all(result[stop:] == 0)
-        assert np.all(result[:stop - 500] > 0)
+        assert np.all(result[: stop - 500] > 0)
 
 
 class TestContextPreservation:
@@ -189,7 +188,9 @@ class TestContextPreservation:
         )
         phrase = handler.get_resume_phrase()
         assert phrase is not None
-        assert "saying" in phrase or "continue" in phrase or "mentioned" in phrase or "was" in phrase
+        assert (
+            "saying" in phrase or "continue" in phrase or "mentioned" in phrase or "was" in phrase
+        )
 
     @pytest.mark.asyncio
     async def test_clear_preserved_context(self, handler: InterruptHandler) -> None:
@@ -230,7 +231,9 @@ class TestProsodyClassification:
         assert resp.interrupt_type == InterruptionType.URGENCY
 
     @pytest.mark.asyncio
-    async def test_emphatic_stress_with_negation_is_correction(self, handler: InterruptHandler) -> None:
+    async def test_emphatic_stress_with_negation_is_correction(
+        self, handler: InterruptHandler
+    ) -> None:
         """Strong stress pattern plus negation word should classify as CORRECTION."""
         prosody = MockProsodyFeatures(stress_pattern=[0.3, 0.9, 0.2])
         resp = await handler.handle_user_interrupt(
@@ -241,7 +244,9 @@ class TestProsodyClassification:
         assert resp.interrupt_type == InterruptionType.CORRECTION
 
     @pytest.mark.asyncio
-    async def test_falling_intensity_short_text_is_disengagement(self, handler: InterruptHandler) -> None:
+    async def test_falling_intensity_short_text_is_disengagement(
+        self, handler: InterruptHandler
+    ) -> None:
         """Falling intensity with short text should classify as DISENGAGEMENT."""
         prosody = MockProsodyFeatures(intensity_trajectory="falling")
         resp = await handler.handle_user_interrupt(
@@ -278,7 +283,9 @@ class TestEmotionClassification:
         assert resp.interrupt_type == InterruptionType.URGENCY
 
     @pytest.mark.asyncio
-    async def test_low_confidence_emotion_does_not_override(self, handler: InterruptHandler) -> None:
+    async def test_low_confidence_emotion_does_not_override(
+        self, handler: InterruptHandler
+    ) -> None:
         """Frustrated emotion with low confidence should not override text-based classification."""
         emotion = MockEmotionState(primary=_MockEmotion.FRUSTRATED, confidence=0.3)
         resp = await handler.handle_user_interrupt(
@@ -326,6 +333,7 @@ class TestConfigurableParameters:
     async def test_resume_expiry(self) -> None:
         """Resume phrase should return None after expiry."""
         import time
+
         h = InterruptHandler(resume_expiry_s=0.0)
         await h.handle_user_interrupt(
             sentence_so_far="explanation here",
