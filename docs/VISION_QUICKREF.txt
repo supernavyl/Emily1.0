@@ -1,0 +1,177 @@
+╔══════════════════════════════════════════════════════════════════════════╗
+║                                                                          ║
+║               📹 EMILY VISION SYSTEM - QUICK REFERENCE 🖥️                ║
+║                                                                          ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  STATUS: ✅ ENABLED                                                     ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+╭──────────────────────────────────────────────────────────────────────╮
+│  🚀 QUICK START                                                      │
+╰──────────────────────────────────────────────────────────────────────╯
+
+  1. Run setup:     ./scripts/setup-vision.sh
+  2. Test:          python scripts/test-vision.py
+  3. Start Emily:   ./scripts/start-emily.sh gui
+  4. Try commands:  "What's on my screen?"
+
+╭──────────────────────────────────────────────────────────────────────╮
+│  📋 WHAT WAS CHANGED                                                 │
+╰──────────────────────────────────────────────────────────────────────╯
+
+  ✅ config.yaml
+     • vision.enabled: true
+     • vision.emotion_detection: true
+
+  ✅ New Files
+     • scripts/setup-vision.sh       → Automated setup
+     • scripts/test-vision.py        → Test suite
+     • docs/VISION_SETUP.md          → Full guide
+
+  ✅ README.md
+     • Added vision setup section
+
+  ✅ MEMORY_LOG.md
+     • Documented changes
+
+╭──────────────────────────────────────────────────────────────────────╮
+│  🎯 CAPABILITIES ENABLED                                             │
+╰──────────────────────────────────────────────────────────────────────╯
+
+  📹 WEBCAM
+     • Presence detection
+     • Facial expression analysis (with DeepFace)
+     • Captures every 5 seconds
+
+  🖥️ SCREEN CAPTURE
+     • Screenshot understanding via MiniCPM-V
+     • Visual assistance for your work
+     • Captures every 5 seconds
+
+  💬 EXAMPLE QUERIES
+     • "What's on my screen?"
+     • "Can you see me?"
+     • "Describe what you see"
+     • "Read the text from my screen"
+
+╭──────────────────────────────────────────────────────────────────────╮
+│  📦 DEPENDENCIES                                                     │
+╰──────────────────────────────────────────────────────────────────────╯
+
+  Required (already in pyproject.toml):
+    ✅ opencv-python      → Camera access
+    ✅ mss                → Screen capture
+    ✅ Pillow             → Image processing
+
+  Optional:
+    ⭕ deepface           → Facial emotion detection
+    ⭕ tf-keras           → TensorFlow backend
+
+  Install optional:
+    pip install deepface tf-keras
+
+╭──────────────────────────────────────────────────────────────────────╮
+│  🔧 SYSTEM REQUIREMENTS                                              │
+╰──────────────────────────────────────────────────────────────────────╯
+
+  Linux Permissions:
+    • Must be in 'video' group for camera access
+    • X11 recommended (Wayland has limitations)
+    • Setup script handles permissions automatically
+
+  Performance:
+    • VRAM: +8 GB for MiniCPM-V (when active)
+    • CPU: Minimal overhead
+    • Privacy: 100% local, no cloud
+
+╭──────────────────────────────────────────────────────────────────────╮
+│  🛠️ COMMANDS                                                         │
+╰──────────────────────────────────────────────────────────────────────╯
+
+  Setup & Test:
+    chmod +x scripts/setup-vision.sh
+    ./scripts/setup-vision.sh
+    python scripts/test-vision.py
+
+  Check Permissions:
+    groups                           # Check video group
+    ls -la /dev/video*               # List cameras
+    echo $XDG_SESSION_TYPE           # Check X11/Wayland
+
+  Add to Video Group:
+    sudo usermod -a -G video $USER   # Then log out/in
+
+  Disable Vision:
+    # Edit config.yaml:
+    vision:
+      enabled: false
+
+╭──────────────────────────────────────────────────────────────────────╮
+│  📚 DOCUMENTATION                                                    │
+╰──────────────────────────────────────────────────────────────────────╯
+
+  📄 docs/VISION_SETUP.md              → Full setup guide
+  📄 VISION_ACTIVATION_SUMMARY.md      → This activation summary
+  📄 README.md                          → Main documentation
+
+╭──────────────────────────────────────────────────────────────────────╮
+│  🔒 PRIVACY & SECURITY                                               │
+╰──────────────────────────────────────────────────────────────────────╯
+
+  ✅ 100% local processing
+  ✅ No cloud APIs
+  ✅ Encrypted at rest (when security.encrypt_at_rest: true)
+  ✅ Configurable capture intervals
+  ✅ Can be disabled anytime
+
+╭──────────────────────────────────────────────────────────────────────╮
+│  ⚠️ IMPORTANT NOTES                                                  │
+╰──────────────────────────────────────────────────────────────────────╯
+
+  ⚡ After running setup script:
+     • If added to 'video' group → LOG OUT AND BACK IN
+     • Group changes don't take effect until re-login
+
+  ⚡ First run:
+     • MiniCPM-V will download (~5.5 GB)
+     • DeepFace will download models on first use (~1 GB)
+
+  ⚡ Wayland users:
+     • Screen capture may have limitations
+     • Consider X11 for best experience
+
+╭──────────────────────────────────────────────────────────────────────╮
+│  ✅ NEXT STEPS                                                       │
+╰──────────────────────────────────────────────────────────────────────╯
+
+  1. cd ~/Emily1.0
+  2. ./scripts/setup-vision.sh
+  3. Log out and back in (if added to video group)
+  4. python scripts/test-vision.py
+  5. ./scripts/start-emily.sh gui
+  6. Try: "What's on my screen?"
+
+╭──────────────────────────────────────────────────────────────────────╮
+│  🆘 TROUBLESHOOTING                                                  │
+╰──────────────────────────────────────────────────────────────────────╯
+
+  Camera not working:
+    → Check: ls -la /dev/video*
+    → Check: groups | grep video
+    → Try: Different webcam_device index in config
+
+  Screen capture failed:
+    → Check: echo $XDG_SESSION_TYPE
+    → X11 works best, Wayland has limitations
+
+  Permission denied:
+    → Add to group: sudo usermod -a -G video $USER
+    → LOG OUT AND BACK IN
+
+  More help: See docs/VISION_SETUP.md
+
+╔══════════════════════════════════════════════════════════════════════════╗
+║  Vision system configured! Run setup script to activate. 🎉              ║
+╚══════════════════════════════════════════════════════════════════════════╝
