@@ -7,12 +7,31 @@ import logging
 import re
 from typing import TYPE_CHECKING, Any
 
+from voice_engine.processing.anti_parrot import filter_voice_parroting
 from voice_engine.providers.base import LLMProvider
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
 logger = logging.getLogger(__name__)
+
+# Module-level lazy loader for autobiography (loaded once, updated by ReflectionAgent)
+_autobiography_text: str | None = None
+
+
+def _get_autobiography() -> str:
+    """Return Emily's living autobiography text, loading once on first call."""
+    global _autobiography_text
+    if _autobiography_text is None:
+        try:
+            from persona.autobiography import AutobiographyManager
+
+            mgr = AutobiographyManager()
+            mgr.load_sync()
+            _autobiography_text = mgr.get_for_prompt()
+        except Exception:
+            _autobiography_text = ""
+    return _autobiography_text
 
 # Same complexity gate as audio.py — 8B for simple voice, 27B for hard questions
 _COMPLEX_VOICE_RE = re.compile(
@@ -35,8 +54,8 @@ def _is_complex_voice_query(text: str) -> bool:
 class EmilyLLMProvider(LLMProvider):
     """Wraps Emily's LLMFleet behind the VoiceEngine LLMProvider interface.
 
-    Adds: model routing, persona-driven system prompt, RAG context, and
-    5-tier memory reads/writes on every voice turn.
+    Adds: model routing, persona-driven system prompt, RAG context,
+    5-tier memory reads/writes on every voice turn, and voice tool execution.
     """
 
     def __init__(
@@ -47,6 +66,7 @@ class EmilyLLMProvider(LLMProvider):
         persona: Any | None = None,
         emotional_state: Any | None = None,
         identity_manager: Any | None = None,
+        tool_orchestrator: Any | None = None,
     ) -> None:
         self._fleet = fleet
         self._memory = memory
@@ -54,7 +74,12 @@ class EmilyLLMProvider(LLMProvider):
         self._persona = persona
         self._emotional_state = emotional_state
         self._identity_manager = identity_manager
-        logger.info("EmilyLLMProvider initialised (fleet=%s)", type(fleet).__name__)
+        self._tool_orchestrator = tool_orchestrator
+        logger.info(
+            "EmilyLLMProvider initialised (fleet=%s, tools=%s)",
+            type(fleet).__name__,
+            "enabled" if tool_orchestrator else "disabled",
+        )
 
     async def stream_response(
         self,
@@ -81,6 +106,34 @@ class EmilyLLMProvider(LLMProvider):
 
         if not user_text:
             return
+
+        # 0. Voice tool interception — check before anything else
+        if self._tool_orchestrator and self._tool_orchestrator.matches_tool_intent(user_text):
+            tool_stream = await self._tool_orchestrator.handle_voice_tool(user_text, messages)
+            if tool_stream is not None:
+                # Write user turn to memory, then yield tool tokens
+                try:
+                    await self._memory.add_user_turn(user_text, importance=0.6)
+                except Exception as exc:
+                    logger.debug("memory_add_user_failed: %s", exc)
+
+                full_response: list[str] = []
+                async for token in tool_stream:
+                    full_response.append(token)
+                    yield token
+
+                # Write assistant turn to memory
+                response_text = "".join(full_response).strip()
+                if response_text:
+                    try:
+                        await self._memory.add_assistant_turn(
+                            response_text,
+                            importance=0.7,
+                            metadata={"source": "voice_tool"},
+                        )
+                    except Exception as exc:
+                        logger.debug("memory_add_assistant_failed: %s", exc)
+                return
 
         # 1. Write user turn to memory
         try:
@@ -117,8 +170,25 @@ class EmilyLLMProvider(LLMProvider):
             with contextlib.suppress(Exception):
                 ai_name = self._identity_manager.ai_name or "Emily"
 
+        # Inject the living autobiography — the real personality carrier
+        autobiography = _get_autobiography()
+        style_parts: list[str] = []
+        if autobiography:
+            style_parts.append(f"WHO I AM:\n{autobiography}")
+
+        # Inject persona traits if available
+        if self._persona:
+            try:
+                traits = self._persona.personality
+                style_parts.append(self._prompt_builder._format_persona_injection(traits))
+            except Exception:
+                pass
+
+        style_instructions = "\n\n".join(p for p in style_parts if p) or None
+
         voice_system = self._prompt_builder.build_voice_system_prompt(
             emotion_context=emotion_context,
+            style_instructions=style_instructions,
             memory_context=memory_context or None,
             ai_name=ai_name,
         )
@@ -158,7 +228,11 @@ class EmilyLLMProvider(LLMProvider):
                 yield token
 
         try:
-            async for token in strip_think_tags(_raw_stream()):
+            cleaned_stream = filter_voice_parroting(
+                strip_think_tags(_raw_stream()),
+                user_text=user_text,
+            )
+            async for token in cleaned_stream:
                 full_response.append(token)
                 yield token
         except Exception as exc:

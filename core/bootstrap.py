@@ -335,12 +335,30 @@ class Bootstrap:
                 min_silence_ms=s.voice_engine.min_silence_ms,
             )
 
+            # Voice tool orchestrator (non-critical — degrades to no-tools-in-voice)
+            voice_tool_orchestrator = None
+            try:
+                from plugins.registry import PluginRegistry
+                from voice_engine.processing.voice_tools import VoiceToolOrchestrator
+
+                voice_registry = PluginRegistry()
+                voice_registry.load_builtins()
+                voice_tool_orchestrator = VoiceToolOrchestrator(
+                    fleet=self.fleet,
+                    prompt_builder=PromptBuilder(),
+                    registry=voice_registry,
+                )
+                log.info("voice_tool_orchestrator_ready", n_tools=len(voice_registry))
+            except Exception as exc:
+                log.warning("voice_tool_orchestrator_failed", error=str(exc)[:200])
+
             # Adapter: routes voice LLM calls through Emily's fleet + memory
             emily_llm = EmilyLLMProvider(  # type: ignore[possibly-undefined]
                 fleet=self.fleet,
                 memory=self.memory,
                 prompt_builder=PromptBuilder(),
                 identity_manager=self.identity_manager,
+                tool_orchestrator=voice_tool_orchestrator,
             )
             self._emily_llm_provider = emily_llm
             # Adapter: reuses Emily's already-loaded Kokoro TTS instance
@@ -779,7 +797,7 @@ class Bootstrap:
         """
         log.info("perception_tts_bridge_started")
 
-        await asyncio.sleep(5)
+        await asyncio.sleep(0.5)
 
         async for event in self.perception_bus.iter_events():
             try:
