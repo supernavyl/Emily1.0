@@ -204,7 +204,9 @@ class ConversationAgent(BaseAgent):
         mode_engine = get_mode_engine()
         active_mode = mode_engine.get("voice" if voice_mode else mode_id)
 
-        routing = self._fleet.route(user_text, voice_mode=voice_mode)
+        # Derive urgency from emotional concern — high concern = prefer smarter model
+        urgency = min(1.0, emotions.state.concern * 1.5)
+        routing = self._fleet.route(user_text, voice_mode=voice_mode, urgency=urgency)
         skip_rag = voice_mode and routing.complexity_score < routing_cfg.voice_skip_rag_below
 
         if voice_mode and routing.complexity_score < routing_cfg.voice_fast_complexity_threshold:
@@ -243,14 +245,27 @@ class ConversationAgent(BaseAgent):
             "concern": emotions.state.concern,
             "enthusiasm": emotions.state.enthusiasm,
         }
+        # Inject live system profile so Emily knows the host hardware
+        _sys_excerpt: str | None = None
+        try:
+            from plugins.builtin.system_profiler import get_scheduler
+
+            _sched = get_scheduler()
+            if _sched is not None:
+                _sys_excerpt = _sched.get_summary_excerpt()
+        except Exception:
+            pass
+
         if effective_tier == ModelTier.REASONING:
             system_prompt = self._prompts.get_reasoning_system_prompt(  # noqa
                 user_profile=self._memory.procedural.user_profile,
+                system_profile_excerpt=_sys_excerpt,
             )
         else:
             system_prompt = self._prompts.get_system_prompt(  # noqa
                 user_profile=self._memory.procedural.user_profile,
                 emotional_state=emotional_state,
+                system_profile_excerpt=_sys_excerpt,
             )
 
         messages = self._prompts.build_messages(
