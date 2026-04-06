@@ -10,10 +10,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from pathlib import Path
+
 from agents.conversation import ConversationAgent
 from agents.memory_agent import MemoryAgent
-from agents.planner import PlannerAgent
 from agents.reflection import ReflectionAgent
+from core.loop_integration.loop_agent import LoopAgent
 from observability.logger import get_logger
 
 if TYPE_CHECKING:
@@ -59,15 +61,25 @@ class AgentRegistry:
 
     def _build_core_agents(self) -> list[BaseAgent]:
         """Instantiate all core agents."""
+        conversation = ConversationAgent(
+            self._bus,
+            self._fleet,
+            self._memory,
+            settings=self._settings,
+            self_improvement=self._self_improvement,
+        )
+        # LoopAgent replaces PlannerAgent — handles "planner.plan_request" + "loop.run"
+        data_dir = Path("~/.emily-loop").expanduser()
+        loop_agent = LoopAgent(
+            bus=self._bus,
+            fleet=self._fleet,
+            memory=self._memory,
+            plugin_registry=conversation._plugin_registry,
+            data_dir=data_dir,
+        )
         return [
-            ConversationAgent(
-                self._bus,
-                self._fleet,
-                self._memory,
-                settings=self._settings,
-                self_improvement=self._self_improvement,
-            ),
-            PlannerAgent(self._bus, self._fleet, self._memory),
+            conversation,
+            loop_agent,
             MemoryAgent(self._bus, self._fleet, self._memory),
             ReflectionAgent(self._bus, self._fleet, self._memory),
         ]

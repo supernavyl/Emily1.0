@@ -98,6 +98,7 @@ class ConversationAgent(BaseAgent):
             self._prompts,
             tool_executor=self._execute_tool,
             available_tools=self._plugin_registry.all_schemas(),
+            procedural_memory=memory.procedural if hasattr(memory, "procedural") else None,
         )
 
         # Reasoning orchestrator for non-direct strategies
@@ -175,6 +176,20 @@ class ConversationAgent(BaseAgent):
         text = message.payload.get("text", "").strip()
         if not text:
             return
+
+        # Route complex multi-step tasks to LoopAgent
+        routing = self._fleet.route(text, voice_mode=False)
+        if routing.complexity_score >= 7 and message.sender != "LoopAgent":
+            await self._bus.send_to(
+                recipient="LoopAgent",
+                msg_type="loop.run",
+                payload={"task": text},
+                sender=self.name,
+                priority=Priority.ACTIVE,
+                task_id=message.task_id,
+            )
+            return
+
         mode_id = message.payload.get("mode_id", "normal")
         await self._generate_response(text, message.task_id, voice_mode=False, mode_id=mode_id)
 
@@ -454,12 +469,15 @@ class ConversationAgent(BaseAgent):
         # Self-improvement: record LLM outcome + RAG quality
         elapsed_ms = (time.monotonic() - t0) * 1000
         if self._self_improvement is not None:
+            # Use actual prompt variant version instead of hardcoded "v1"
+            _variant = self._self_improvement.prompt_evolver.select_variant("conversation")
+            _prompt_version = _variant.version if _variant else "v1"
             self._self_improvement.record_llm_outcome(
                 model_tier=effective_tier.value,
                 latency_ms=elapsed_ms,
                 critic_score=critic_score,
                 prompt_slot="conversation",
-                prompt_version="v1",
+                prompt_version=_prompt_version,
             )
             for chunk in rag_chunks:
                 self._self_improvement.record_rag_retrieval(
