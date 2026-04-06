@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import contextlib
 import logging
 import re
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from voice_engine.processing.anti_parrot import filter_voice_parroting
@@ -15,40 +15,43 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Module-level lazy loader for autobiography (loaded once, updated by ReflectionAgent)
+# Autobiography cache with mtime-based invalidation.
+# ReflectionAgent writes to data/autobiography.md — we detect changes via file mtime.
 _autobiography_text: str | None = None
+_autobiography_mtime: float = 0.0
+_AUTOBIOGRAPHY_PATH = Path("data/autobiography.md")
 
 
 def _get_autobiography() -> str:
-    """Return Emily's living autobiography text, loading once on first call."""
-    global _autobiography_text
-    if _autobiography_text is None:
+    """Return Emily's living autobiography, reloading when the file changes on disk."""
+    global _autobiography_text, _autobiography_mtime
+    try:
+        current_mtime = _AUTOBIOGRAPHY_PATH.stat().st_mtime if _AUTOBIOGRAPHY_PATH.exists() else 0.0
+    except OSError:
+        current_mtime = 0.0
+
+    if _autobiography_text is None or current_mtime != _autobiography_mtime:
         try:
             from persona.autobiography import AutobiographyManager
 
             mgr = AutobiographyManager()
             mgr.load_sync()
             _autobiography_text = mgr.get_for_prompt()
+            _autobiography_mtime = current_mtime
         except Exception:
+            logger.warning("autobiography_load_failed", exc_info=True)
             _autobiography_text = ""
+            _autobiography_mtime = current_mtime
     return _autobiography_text
 
-# Same complexity gate as audio.py — 8B for simple voice, 27B for hard questions
-_COMPLEX_VOICE_RE = re.compile(
-    r"\b(explain|analyze|analyse|compare|difference|between|because|"
-    r"why|how does|how do|what causes|calculate|derive|prove|argue|"
-    r"evaluate|summarize|summarise|elaborate|break.?down|"
-    r"step.?by.?step|walk me through|pros.?and.?cons|"
-    r"advantages|disadvantages|trade.?off|in detail|"
-    r"code|program|function|algorithm|debug|refactor|"
-    r"math|integral|equation|probability|statistics)\b",
+
+# System query regex — moved to module level to avoid recompilation per call
+_SYS_QUERY_RE = re.compile(
+    r"\b(cpu|gpu|ram|memory|vram|disk|storage|temperature|temp|"
+    r"nvidia|rtx|cores?|threads?|utilization|hardware|system\s*info|"
+    r"how much memory|how much ram|what gpu|what cpu|specs?)\b",
     re.IGNORECASE,
 )
-
-
-def _is_complex_voice_query(text: str) -> bool:
-    """Return True if this voice turn should use the 27B smart model."""
-    return len(text.split()) > 25 or bool(_COMPLEX_VOICE_RE.search(text))
 
 
 class EmilyLLMProvider(LLMProvider):
@@ -113,9 +116,9 @@ class EmilyLLMProvider(LLMProvider):
             if tool_stream is not None:
                 # Write user turn to memory, then yield tool tokens
                 try:
-                    await self._memory.add_user_turn(user_text, importance=0.6)
+                    await self._memory.add_user_turn(user_text, importance=0.7)
                 except Exception as exc:
-                    logger.debug("memory_add_user_failed: %s", exc)
+                    logger.warning("memory_add_user_failed: %s", exc)
 
                 full_response: list[str] = []
                 async for token in tool_stream:
@@ -128,20 +131,20 @@ class EmilyLLMProvider(LLMProvider):
                     try:
                         await self._memory.add_assistant_turn(
                             response_text,
-                            importance=0.7,
+                            importance=0.8,
                             metadata={"source": "voice_tool"},
                         )
                     except Exception as exc:
-                        logger.debug("memory_add_assistant_failed: %s", exc)
+                        logger.warning("memory_add_assistant_failed: %s", exc)
                 return
 
         # 1. Write user turn to memory
         try:
-            await self._memory.add_user_turn(user_text, importance=0.6)
+            await self._memory.add_user_turn(user_text, importance=0.7)
         except Exception as exc:
-            logger.debug("memory_add_user_failed: %s", exc)
+            logger.warning("memory_add_user_failed: %s", exc)
 
-        # 2. Retrieve RAG context
+        # 2. Retrieve RAG context + cross-session recall
         memory_context = ""
         try:
             rag_chunks = await self._memory.retrieve_context(user_text, top_k=3)
@@ -149,7 +152,20 @@ class EmilyLLMProvider(LLMProvider):
                 context_lines = [f"- {c.get('content', '')[:200]}" for c in rag_chunks]
                 memory_context = "Relevant context from memory:\n" + "\n".join(context_lines)
         except Exception as exc:
-            logger.debug("memory_retrieve_failed: %s", exc)
+            logger.warning("memory_retrieve_failed: %s", exc)
+
+        # Cross-session recall — search past conversations when user asks
+        try:
+            if self._memory.has_recall_intent(user_text):
+                recall_chunks = await self._memory.recall_cross_session(user_text)
+                if recall_chunks:
+                    recall_lines = [f"- {c.get('content', '')[:300]}" for c in recall_chunks]
+                    recall_block = "From past conversations:\n" + "\n".join(recall_lines)
+                    memory_context = (
+                        (memory_context + "\n\n" + recall_block) if memory_context else recall_block
+                    )
+        except Exception as exc:
+            logger.warning("cross_session_recall_failed: %s", exc)
 
         # 3. Build Emily's persona-aware voice system prompt
         emotion_context = None
@@ -163,12 +179,14 @@ class EmilyLLMProvider(LLMProvider):
                     f"enthusiasm: {state.enthusiasm:.1f}."
                 )
             except Exception:
-                pass
+                logger.warning("emotional_state_load_failed", exc_info=True)
 
         ai_name = "Emily"
         if self._identity_manager is not None:
-            with contextlib.suppress(Exception):
+            try:
                 ai_name = self._identity_manager.ai_name or "Emily"
+            except Exception:
+                logger.warning("identity_manager_failed", exc_info=True)
 
         # Inject the living autobiography — the real personality carrier
         autobiography = _get_autobiography()
@@ -182,41 +200,112 @@ class EmilyLLMProvider(LLMProvider):
                 traits = self._persona.personality
                 style_parts.append(self._prompt_builder._format_persona_injection(traits))
             except Exception:
-                pass
+                logger.warning("persona_traits_load_failed", exc_info=True)
 
         style_instructions = "\n\n".join(p for p in style_parts if p) or None
+
+        # Inject user profile so Emily knows who she's talking to
+        user_profile = None
+        try:
+            profile = self._memory.procedural.user_profile
+            if profile and profile.get("name"):
+                user_profile = profile
+        except Exception:
+            logger.warning("user_profile_load_failed", exc_info=True)
+
+        # Inject live system profile ONLY when the user is asking about hardware/system
+        _sys_excerpt: str | None = None
+        if _SYS_QUERY_RE.search(user_text):
+            try:
+                from plugins.builtin.system_profiler import get_scheduler
+
+                _sched = get_scheduler()
+                if _sched is not None:
+                    _sys_excerpt = _sched.get_summary_excerpt()
+            except Exception:
+                logger.warning("system_profiler_load_failed", exc_info=True)
+
+        # 3.5 Route through ModelRouter — unified routing for all paths
+        from llm.router import ModelTier, RoutingDecision
+
+        # Derive urgency from emotional state concern dimension
+        urgency = 0.5
+        if self._emotional_state:
+            try:
+                urgency = min(1.0, self._emotional_state.state.concern * 1.5)
+            except Exception:
+                pass
+
+        routing: RoutingDecision = self._fleet.route(
+            user_text, voice_mode=True, urgency=urgency,
+        )
+        tier = routing.tier
+        is_heavy = tier in (ModelTier.SMART, ModelTier.REASONING, ModelTier.DEEP_THINK)
+
+        # Inject config intelligence — Emily's knowledge of her own config
+        _config_excerpt: str | None = None
+        if routing.complexity_score >= 5:
+            try:
+                from perception.system.config_store import get_config_store
+
+                _cstore = get_config_store()
+                if _cstore is not None:
+                    _config_excerpt = _cstore.get_excerpt() or None
+            except Exception:
+                logger.warning("config_store_load_failed", exc_info=True)
 
         voice_system = self._prompt_builder.build_voice_system_prompt(
             emotion_context=emotion_context,
             style_instructions=style_instructions,
             memory_context=memory_context or None,
             ai_name=ai_name,
+            user_profile=user_profile,
+            system_profile_excerpt=_sys_excerpt,
+            config_excerpt=_config_excerpt,
         )
 
-        # 4. Convert message history to ChatMessage objects
+        # 4. Convert message history to ChatMessage objects, enforcing context budget
+        from voice_engine.processing.think_filter import strip_think_tags
+
+        max_tok = 1200 if is_heavy else 800
+
+        # Context window budget: 8B=8192, 27B=32768. Reserve for system + max_tokens.
+        ctx_limit = 32768 if is_heavy else 8192
+        system_tokens = len(voice_system) // 4
+        budget = ctx_limit - system_tokens - max_tok
+
         chat_messages: list[ChatMessage] = [
             ChatMessage(role="system", content=voice_system),
         ]
-        # Include recent conversation history (skip system messages from voice engine)
-        for msg in messages:
-            role = msg.get("role", "")
+        # Collect non-system messages, then trim oldest if over budget
+        history_msgs: list[dict[str, str]] = [m for m in messages if m.get("role") != "system"]
+        # Walk backwards (newest first) and keep messages that fit
+        kept: list[ChatMessage] = []
+        used_tokens = 0
+        for msg in reversed(history_msgs):
             content = msg.get("content", "")
-            if role == "system":
-                continue
-            chat_messages.append(ChatMessage(role=role, content=content))
+            msg_tokens = len(content) // 4 + 4  # +4 for role/framing overhead
+            if used_tokens + msg_tokens > budget:
+                break
+            kept.append(ChatMessage(role=msg.get("role", "user"), content=content))
+            used_tokens += msg_tokens
+        kept.reverse()
+        chat_messages.extend(kept)
+
+        if len(kept) < len(history_msgs):
+            logger.debug(
+                "context_trim: kept %d/%d messages (%d est tokens, budget %d)",
+                len(kept),
+                len(history_msgs),
+                used_tokens,
+                budget,
+            )
 
         # 5. Stream via LLMFleet — simple questions use the 8B voice_fast model;
         # hard questions escalate to the 27B smart model (already VRAM-resident).
         # The 14B fast tier is deliberately skipped — it can't coexist with the
         # 27B on a 24 GB card without triggering Ollama 500 errors.
-        from llm.router import ModelTier
-        from voice_engine.processing.think_filter import strip_think_tags
-
         full_response: list[str] = []
-
-        complex_query = _is_complex_voice_query(user_text)
-        tier = ModelTier.SMART if complex_query else ModelTier.VOICE_FAST
-        max_tok = 1200 if complex_query else 800
 
         async def _raw_stream() -> AsyncIterator[str]:
             async for token in self._fleet.chat_stream(
@@ -237,6 +326,7 @@ class EmilyLLMProvider(LLMProvider):
                 yield token
         except Exception as exc:
             logger.error("fleet_stream_error: %s", exc)
+            yield "Sorry, I had trouble processing that. Could you say that again?"
 
         # 6. Write assistant turn to memory
         response_text = "".join(full_response).strip()
@@ -244,8 +334,8 @@ class EmilyLLMProvider(LLMProvider):
             try:
                 await self._memory.add_assistant_turn(
                     response_text,
-                    importance=0.7,
+                    importance=0.8,
                     metadata={"source": "voice_engine"},
                 )
             except Exception as exc:
-                logger.debug("memory_add_assistant_failed: %s", exc)
+                logger.warning("memory_add_assistant_failed: %s", exc)
