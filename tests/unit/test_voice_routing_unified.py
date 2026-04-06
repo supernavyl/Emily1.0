@@ -121,6 +121,34 @@ async def test_voice_urgency_from_emotional_state(
     assert urgency > 0.5, f"Expected urgency > 0.5 from high concern, got {urgency}"
 
 
+async def test_voice_records_routing_metadata(
+    fleet: MagicMock,
+    memory: MagicMock,
+    prompt_builder: MagicMock,
+) -> None:
+    """Voice path must record tier and latency in assistant turn metadata."""
+    from voice_engine.providers.llm.emily_llm import EmilyLLMProvider
+
+    provider = EmilyLLMProvider(
+        fleet=fleet,
+        memory=memory,
+        prompt_builder=prompt_builder,
+    )
+
+    messages = [{"role": "user", "content": "hello"}]
+    tokens = []
+    async for tok in provider.stream_response(messages):
+        tokens.append(tok)
+
+    # Check that add_assistant_turn was called with routing metadata
+    memory.add_assistant_turn.assert_called_once()
+    call_kwargs = memory.add_assistant_turn.call_args
+    metadata = call_kwargs.kwargs.get("metadata") or call_kwargs[1].get("metadata", {})
+    assert "tier" in metadata, f"Expected 'tier' in metadata, got {metadata}"
+    assert "latency_ms" in metadata, f"Expected 'latency_ms' in metadata, got {metadata}"
+    assert metadata["source"] == "voice_engine"
+
+
 async def test_voice_no_complex_voice_re_dependency() -> None:
     """Verify _COMPLEX_VOICE_RE and _is_complex_voice_query are removed."""
     import voice_engine.providers.llm.emily_llm as mod

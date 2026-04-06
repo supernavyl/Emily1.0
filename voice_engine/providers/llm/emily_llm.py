@@ -241,6 +241,8 @@ class EmilyLLMProvider(LLMProvider):
         )
         tier = routing.tier
         is_heavy = tier in (ModelTier.SMART, ModelTier.REASONING, ModelTier.DEEP_THINK)
+        import time as _time
+        _t0 = _time.monotonic()
 
         # Inject config intelligence — Emily's knowledge of her own config
         _config_excerpt: str | None = None
@@ -335,7 +337,13 @@ class EmilyLLMProvider(LLMProvider):
                 await self._memory.add_assistant_turn(
                     response_text,
                     importance=0.8,
-                    metadata={"source": "voice_engine"},
+                    metadata={
+                        "source": "voice_engine",
+                        "tier": routing.tier.value,
+                        "model": routing.model_name,
+                        "complexity": routing.complexity_score,
+                        "latency_ms": round((_time.monotonic() - _t0) * 1000),
+                    },
                 )
             except Exception as exc:
                 logger.warning("memory_add_assistant_failed: %s", exc)
