@@ -5,25 +5,24 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from agents.base import BaseAgent
 from core.bus import AgentBus, Message, Priority
 from emily_loop.failures import FailureDB
 from emily_loop.loop import Loop, LoopConfig
 from emily_loop.models import PlanStatus, StepStatus
-from observability.logger import get_logger
 
 from core.loop_integration.fleet_adapter import FleetAdapter
 from core.loop_integration.memory_bridge import MemoryBridge
 from core.loop_integration.tool_bridge import ToolBridgeAdapter
 
-log = get_logger(__name__)
 
-
-class LoopAgent:
+class LoopAgent(BaseAgent):
     """Agent that runs emily-loop for multi-step tasks.
 
-    Handles two message types:
+    Handles three message types:
     - "loop.run" — explicit trigger from any agent or API
     - "planner.plan_request" — backward-compatible drop-in for PlannerAgent
+    - "planner.subtask_result" — subtask results from ResearchAgent/CodeAgent
     """
 
     name = "LoopAgent"
@@ -38,9 +37,7 @@ class LoopAgent:
         data_dir: Path,
         loop_config: LoopConfig | None = None,
     ) -> None:
-        self._bus = bus
-        self._fleet = fleet
-        self._memory = memory
+        super().__init__(bus, fleet, memory)
         self._plugin_registry = plugin_registry
         self._data_dir = data_dir
         self._loop_config = loop_config
@@ -49,27 +46,28 @@ class LoopAgent:
         self._initialized = False
 
     async def start(self) -> None:
-        """Register handlers on the bus and initialize the failure DB."""
+        """Register handlers on the bus, initialize failure DB, start heartbeat."""
         if not self._initialized:
             self._data_dir.mkdir(parents=True, exist_ok=True)
             await self._failure_db.initialize()
             self._initialized = True
 
-        self._bus.register_handler(self.name, self._dispatch)
-        log.info("loop_agent_started")
+        await super().start()
 
     async def stop(self) -> None:
         """Shut down the agent."""
-        log.info("loop_agent_stopped")
-
-    async def _dispatch(self, message: Message) -> None:
-        """Route messages to the appropriate handler."""
-        await self.handle(message)
+        await super().stop()
 
     async def handle(self, message: Message) -> None:
-        """Handle loop.run and planner.plan_request messages."""
+        """Handle loop.run, planner.plan_request, and planner.subtask_result messages."""
         if message.type in ("loop.run", "planner.plan_request"):
             await self._handle_loop_run(message)
+        elif message.type == "planner.subtask_result":
+            self._log.info(
+                "subtask_result_received",
+                plan_id=message.payload.get("plan_id"),
+                step_index=message.payload.get("step_index"),
+            )
 
     async def _handle_loop_run(self, message: Message) -> None:
         """Execute a goal through the emily-loop kernel."""
@@ -119,7 +117,7 @@ class LoopAgent:
             await self._memory_bridge.sync_failures()
 
         except Exception as exc:
-            log.error("loop_agent_error", error=str(exc), exc_info=True)
+            self._log.error("loop_agent_error", error=str(exc), exc_info=True)
             # Fall back to ConversationAgent with original task
             await self._bus.send_to(
                 recipient="ConversationAgent",

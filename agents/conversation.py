@@ -7,7 +7,7 @@ Responsibilities:
 - Stream LLM response via the fast or smart model
 - Emit TTS events for audio playback
 - Coordinate with MemoryAgent for memory reads/writes
-- Coordinate with PlannerAgent for complex multi-step tasks
+- Route complex tasks (complexity >= 7) to LoopAgent for multi-step execution
 """
 
 from __future__ import annotations

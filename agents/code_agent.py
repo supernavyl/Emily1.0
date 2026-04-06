@@ -114,7 +114,7 @@ class CodeAgent(BaseAgent):
 
         if plan_id:
             await self.send(
-                "PlannerAgent",
+                "LoopAgent",
                 "planner.subtask_result",
                 {
                     "plan_id": plan_id,
