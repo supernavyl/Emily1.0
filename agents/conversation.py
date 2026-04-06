@@ -103,6 +103,28 @@ class ConversationAgent(BaseAgent):
         # Reasoning orchestrator for non-direct strategies
         self._orchestrator = ReasoningOrchestrator(fleet, self._prompts)
 
+        # Knowledge extraction pipeline — wires conversation to KnowledgeStore
+        self._extraction_pipeline: Any | None = None
+
+    def _get_extraction_pipeline(self) -> Any | None:
+        """Lazily initialize the extraction pipeline on first use."""
+        if self._extraction_pipeline is not None:
+            return self._extraction_pipeline
+        try:
+            from extraction.pipeline import ExtractionPipeline
+            from memory.knowledge_store import KnowledgeStore
+
+            store = KnowledgeStore()
+            self._extraction_pipeline = ExtractionPipeline(
+                llm_client=self._fleet._ollama,
+                store=store,
+                model=self._fleet._config.models.nano,
+            )
+            return self._extraction_pipeline
+        except Exception as exc:
+            self._log.debug("extraction_pipeline_init_failed", error=str(exc))
+            return None
+
     async def handle(self, message: Message) -> None:
         """
         Dispatch message to the appropriate handler based on type.
@@ -448,10 +470,10 @@ class ConversationAgent(BaseAgent):
                     used=True,
                 )
 
-        # Fact extraction every 5th turn (background, non-blocking)
+        # Knowledge extraction every 5th turn (background, non-blocking)
         self._turn_count += 1
-        if self._turn_count % 5 == 0 and not voice_mode:
-            asyncio.create_task(self._extract_user_facts(user_text, final_response))
+        if self._turn_count % 5 == 0:
+            asyncio.create_task(self._extract_knowledge(user_text, final_response))
 
         self._log.info(
             "response_complete",
@@ -586,55 +608,33 @@ class ConversationAgent(BaseAgent):
             self._pending_approval["approved"] = approved
             self._pending_approval["event"].set()
 
-    async def _extract_user_facts(self, user_text: str, response_text: str) -> None:
-        """Extract factual information about the user and store in procedural memory.
+    async def _extract_knowledge(self, user_text: str, response_text: str) -> None:
+        """Extract entities, facts, and relationships via ExtractionPipeline.
 
-        Runs in background via the NANO tier to minimize overhead.
+        Runs in background via the NANO tier. Writes to KnowledgeStore (not
+        procedural JSON). Deduplication handled by the pipeline's Deduplicator.
         """
+        pipeline = self._get_extraction_pipeline()
+        if pipeline is None:
+            return
         try:
-            from llm.client import ChatMessage
-
-            messages = [
-                ChatMessage(
-                    role="system",
-                    content=(
-                        "Extract any NEW factual information about the user from this "
-                        "conversation exchange. Return a JSON object where keys are fact "
-                        "categories (name, location, job, preference, hobby, goal, etc.) "
-                        "and values are the extracted facts. If no new facts are present, "
-                        "return an empty JSON object: {}"
-                    ),
-                ),
-                ChatMessage(
-                    role="user",
-                    content=f"User said: {user_text}\n\nAssistant replied: {response_text[:500]}",
-                ),
-            ]
-
-            result = await self._fleet.chat(
-                user_message="extract user facts",
-                messages=messages,
-                force_tier=ModelTier.NANO,
-                max_tokens=256,
+            text = f"User said: {user_text}\n\nAssistant replied: {response_text[:500]}"
+            session_id = self._memory.working.session_id
+            result = await pipeline.process(
+                text,
+                session_id=session_id,
+                auto_confirm_low_confidence=True,
             )
-
-            import json
-
-            try:
-                facts = json.loads(result.content)
-            except json.JSONDecodeError:
-                return
-
-            if not isinstance(facts, dict) or not facts:
-                return
-
-            for key, value in facts.items():
-                if isinstance(key, str) and value:
-                    await self._memory.procedural.set_user_fact(key, value)
-
-            self._log.info("user_facts_extracted", n_facts=len(facts))
+            if result.entities_created or result.facts_created:
+                self._log.info(
+                    "knowledge_extracted",
+                    entities=result.entities_created,
+                    merged=result.entities_merged,
+                    facts=result.facts_created,
+                    relationships=result.relationships_created,
+                )
         except Exception as exc:
-            self._log.debug("fact_extraction_failed", error=str(exc))
+            self._log.debug("knowledge_extraction_failed", error=str(exc))
 
     async def _run_web_search(
         self,
