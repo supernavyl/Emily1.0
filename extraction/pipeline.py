@@ -204,6 +204,9 @@ class ExtractionPipeline:
         Skips attributes that are already handled by the people schema
         (occupation, employer, relationship_to_user) to avoid duplication.
 
+        When a fact of the same type already exists for this entity,
+        supersedes the old fact instead of creating a duplicate.
+
         Args:
             entity: The canonical entity to attach facts to.
             extracted: Source of attribute data.
@@ -218,15 +221,34 @@ class ExtractionPipeline:
         for key, value in extracted.attributes.items():
             if key in _SCHEMA_ATTRS or not value:
                 continue
-            fact = FactRecord(
+
+            new_fact = FactRecord(
                 entity_id=entity.id,
                 fact_type=key,
                 fact_text=f"{key}: {value}",
                 confidence=extracted.confidence,
                 source_id=session_id,
             )
+
+            # Check for existing facts of the same type for this entity
             try:
-                await self._store.add_fact(fact)
+                existing = await self._store.get_facts_for_entity(
+                    entity.id, fact_type=key,
+                )
+                if existing:
+                    # Supersede the most recent existing fact
+                    old = existing[0]  # sorted by timestamp DESC
+                    if old.fact_text != new_fact.fact_text:
+                        await self._store.supersede_fact(old.id, new_fact)
+                        count += 1
+                        continue
+                    else:
+                        continue  # Same fact, skip
+            except Exception as exc:
+                log.debug("contradiction_check_failed", error=str(exc))
+
+            try:
+                await self._store.add_fact(new_fact)
                 count += 1
             except ValueError:
                 pass  # Below confidence threshold — already logged in store
