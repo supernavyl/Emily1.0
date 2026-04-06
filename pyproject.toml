@@ -17,6 +17,8 @@ dependencies = [
     "pydantic-settings>=2.3.0",
     "pyyaml>=6.0.1",
     "python-dotenv>=1.0.1",
+    # AGI kernel
+    "emily-loop",
     # Async & concurrency
     "anyio>=4.4.0",
     "aiomqtt>=2.0.0",
@@ -227,3 +229,9 @@ source = [
 omit = ["tests/*", "scripts/*", "ui/web/*"]
 
 [tool.uv.sources]
+emily-loop = { path = "../emily-loop", editable = true }
+
+[dependency-groups]
+dev = [
+    "pytest-cov>=7.0.0",
+]
