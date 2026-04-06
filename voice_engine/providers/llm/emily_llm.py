@@ -234,7 +234,7 @@ class EmilyLLMProvider(LLMProvider):
             try:
                 urgency = min(1.0, self._emotional_state.state.concern * 1.5)
             except Exception:
-                pass
+                logger.debug("urgency_derivation_failed", exc_info=True)
 
         routing: RoutingDecision = self._fleet.route(
             user_text, voice_mode=True, urgency=urgency,
