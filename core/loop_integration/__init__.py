@@ -1,7 +1,8 @@
 """Emily Loop integration — adapters bridging emily-loop kernel to Emily's subsystems."""
 
 from core.loop_integration.fleet_adapter import FleetAdapter
+from core.loop_integration.loop_agent import LoopAgent
 from core.loop_integration.memory_bridge import MemoryBridge
 from core.loop_integration.tool_bridge import ToolBridgeAdapter
 
-__all__ = ["FleetAdapter", "MemoryBridge", "ToolBridgeAdapter"]
+__all__ = ["FleetAdapter", "LoopAgent", "MemoryBridge", "ToolBridgeAdapter"]
