@@ -1,11 +1,20 @@
-import type { Component } from 'solid-js'
+import { onMount } from 'solid-js'
+import { MainLayout } from './components/layout/MainLayout'
+import { ErrorBoundary } from './components/common/ErrorBoundary'
+import { loadConversations } from './stores/chat'
+import { loadModels, loadSkills, loadModes } from './stores/models'
 
-const App: Component = () => {
+export default function App() {
+  onMount(() => {
+    void loadConversations()
+    void loadModels()
+    void loadSkills()
+    void loadModes()
+  })
+
   return (
-    <div class="min-h-screen bg-neutral-950 text-neutral-100 flex items-center justify-center">
-      <h1 class="text-2xl font-bold font-[Syne]">Emily — SolidJS</h1>
-    </div>
+    <ErrorBoundary>
+      <MainLayout />
+    </ErrorBoundary>
   )
 }
-
-export default App
