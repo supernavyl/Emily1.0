@@ -1,0 +1,966 @@
+@import "tailwindcss";
+
+/* ── Animated custom properties ─────────────────────────────────────────────── */
+
+@property --glow-hue {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 162;
+}
+
+@property --pulse-intensity {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 0.12;
+}
+
+@property --respiratory-scale {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 1;
+}
+
+/* ── Design tokens ───────────────────────────────────────────────────────────── */
+
+@theme {
+  /* Color palette — OKLCH jewel tones */
+  --color-surface:          oklch(0.18 0.02 185);
+  --color-surface-raised:   oklch(0.22 0.025 185);
+  --color-surface-hover:    oklch(0.26 0.03 185);
+  --color-text-primary:     oklch(0.93 0.01 90);
+  --color-text-secondary:   oklch(0.65 0.03 185);
+  --color-text-muted:       oklch(0.60 0.04 185);
+  --color-accent:           oklch(0.72 0.17 162);
+  --color-accent-hover:     oklch(0.78 0.14 162);
+  --color-border:           oklch(0.30 0.03 185);
+  --color-warning:          oklch(0.75 0.16 85);
+  --color-warning-amber:    oklch(0.75 0.16 85);
+  --color-error:            oklch(0.65 0.20 25);
+  --color-error-red:        oklch(0.65 0.20 25);
+  --color-success:          oklch(0.72 0.15 145);
+  --color-cost-green:       oklch(0.72 0.15 145);
+
+  /* Semantic derivations */
+  --color-user-bubble:      oklch(0.24 0.03 185);
+  --color-emily-bubble:     oklch(0.20 0.02 185);
+  --color-thinking-bg:      oklch(0.19 0.025 200);
+  --color-thinking-border:  oklch(0.32 0.05 200);
+  --color-code-bg:          oklch(0.16 0.02 185);
+  --color-code-border:      oklch(0.28 0.03 185);
+  --color-link:             oklch(0.75 0.14 200);
+
+  /* Phase indicator colors — teal-family only */
+  --color-phase-analyzing:  oklch(0.72 0.17 162);
+  --color-phase-considering: oklch(0.75 0.16 85);
+  --color-phase-comparing:  oklch(0.65 0.12 200);
+  --color-phase-concluding: oklch(0.72 0.15 145);
+  --color-phase-uncertain:  oklch(0.75 0.16 85);
+
+  /* Typography */
+  --font-display: "Syne", system-ui, sans-serif;
+  --font-sans:    "Literata", Georgia, "Times New Roman", serif;
+  --font-body:    "Literata", Georgia, "Times New Roman", serif;
+  --font-mono:    "JetBrains Mono", ui-monospace, monospace;
+
+  /* Type scale — clamp-based fluid */
+  --text-h1:    clamp(1.75rem, 2vw + 1rem, 2.25rem);
+  --text-h2:    clamp(1.25rem, 1.5vw + 0.5rem, 1.5rem);
+  --text-h3:    1.125rem;
+  --text-body:  0.9375rem;
+  --text-small: 0.8125rem;
+
+  /* Spacing scale */
+  --space-xs:  0.25rem;
+  --space-sm:  0.5rem;
+  --space-md:  1rem;
+  --space-lg:  2rem;
+  --space-xl:  4rem;
+  --space-2xl: 8rem;
+
+  /* Animation */
+  --duration-respiratory: 3.5s;
+  --duration-tidal:       6s;
+  --duration-synaptic:    1.2s;
+}
+
+/* ── Reset & base ─────────────────────────────────────────────────────────── */
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--color-surface);
+  color: var(--color-text-primary);
+  font-family: var(--font-body);
+  font-size: var(--text-body);
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Reduced motion — defined FIRST, before any animation ────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ── Typography hierarchy ─────────────────────────────────────────────────── */
+
+h1 {
+  font-family: var(--font-display);
+  font-size: var(--text-h1);
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+h2 {
+  font-family: var(--font-display);
+  font-size: var(--text-h2);
+  line-height: 1.2;
+  font-weight: 600;
+}
+
+h3 {
+  font-family: var(--font-display);
+  font-size: var(--text-h3);
+  line-height: 1.3;
+  font-weight: 600;
+}
+
+/* ── Scrollbar ───────────────────────────────────────────────────────────── */
+
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
+}
+
+/* ── Selection ───────────────────────────────────────────────────────────── */
+
+::selection {
+  background: oklch(0.72 0.17 162 / 0.35);
+  color: var(--color-text-primary);
+}
+
+/* ── Focus visible ───────────────────────────────────────────────────────── */
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* ── @property animations ────────────────────────────────────────────────── */
+
+@keyframes respiratory-glow {
+  0%, 100% {
+    --pulse-intensity: 0.08;
+    --respiratory-scale: 1;
+  }
+  50% {
+    --pulse-intensity: 0.22;
+    --respiratory-scale: 1.04;
+  }
+}
+
+@keyframes tidal-drift {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    transform: translate(24px, -16px) scale(1.06);
+  }
+  66% {
+    transform: translate(-18px, 12px) scale(0.95);
+  }
+}
+
+
+@keyframes dendritic-emerge {
+  0% {
+    opacity: 0;
+    transform: scale(0.96) translateY(6px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes axon-fire {
+  0%, 100% {
+    opacity: 0.3;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+}
+
+@keyframes cortical-breathe {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow:
+      0 0 28px oklch(0.72 0.17 162 / 0.18),
+      0 0 60px oklch(0.72 0.17 162 / 0.06);
+  }
+  50% {
+    transform: scale(1.05);
+    box-shadow:
+      0 0 48px oklch(0.72 0.17 162 / 0.38),
+      0 0 100px oklch(0.72 0.17 162 / 0.14);
+  }
+}
+
+@keyframes cortical-speak {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow:
+      0 0 36px oklch(0.72 0.17 162 / 0.40),
+      0 0 72px oklch(0.72 0.17 162 / 0.16);
+  }
+  25% {
+    transform: scale(1.08);
+    box-shadow:
+      0 0 56px oklch(0.72 0.17 162 / 0.60),
+      0 0 112px oklch(0.72 0.17 162 / 0.24);
+  }
+  75% {
+    transform: scale(1.03);
+    box-shadow:
+      0 0 32px oklch(0.72 0.17 162 / 0.32),
+      0 0 64px oklch(0.72 0.17 162 / 0.12);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-up-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slide-in-from-top {
+  from {
+    opacity: 0;
+    transform: translateY(-14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* ── Brain dashboard animations ─────────────────────────────────────────── */
+
+@keyframes synaptic-ring {
+  0%, 100% {
+    box-shadow: 0 0 0 0 oklch(0.72 0.17 162 / 0.30);
+  }
+  50% {
+    box-shadow: 0 0 0 10px oklch(0.72 0.17 162 / 0);
+  }
+}
+
+@keyframes dendrite-glow {
+  0%, 100% {
+    filter: drop-shadow(0 0 3px oklch(0.72 0.17 162 / 0.25));
+  }
+  50% {
+    filter: drop-shadow(0 0 12px oklch(0.72 0.17 162 / 0.65));
+  }
+}
+
+@keyframes wave-bar {
+  0%, 100% {
+    transform: scaleY(0.2);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes cardiac-rhythm {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.12);
+  }
+}
+
+@keyframes orbit-path {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes signal-flow {
+  0% {
+    opacity: 0;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-18px);
+  }
+}
+
+/* ── Memory & log animations ─────────────────────────────────────────────── */
+
+@keyframes memory-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes log-row-in {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes tidal-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.82);
+  }
+}
+
+@keyframes shimmer-pass {
+  0% {
+    background-position: -200% center;
+  }
+  100% {
+    background-position: 200% center;
+  }
+}
+
+@keyframes film-scroll {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 0 40px;
+  }
+}
+
+/* ── Onboarding: Awakening ───────────────────────────────────────────────── */
+
+@keyframes particle-drift {
+  0%, 100% {
+    opacity: var(--star-o, 0.4);
+  }
+  50% {
+    opacity: calc(var(--star-o, 0.4) * 0.1);
+  }
+}
+
+@keyframes cortex-materialize {
+  0% {
+    opacity: 0;
+    transform: scale(0.35);
+    filter: blur(10px);
+  }
+  60% {
+    opacity: 0.85;
+    transform: scale(1.04);
+    filter: blur(1px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes neural-ignite {
+  0% {
+    opacity: 0;
+    transform: scale(0);
+    filter: drop-shadow(0 0 0 oklch(0.72 0.17 162 / 0));
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.3);
+    filter: drop-shadow(0 0 10px oklch(0.72 0.17 162 / 0.75));
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+    filter: drop-shadow(0 0 5px oklch(0.72 0.17 162 / 0.40));
+  }
+}
+
+@keyframes phase-fade-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-7px);
+  }
+}
+
+@keyframes phase-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes ambient-glow {
+  0%, 100% {
+    opacity: var(--glow-base, 0.07);
+  }
+  50% {
+    opacity: calc(var(--glow-base, 0.07) * 2.8);
+  }
+}
+
+@keyframes ripple-expand {
+  0% {
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+
+@keyframes membrane-pulse {
+  0%, 100% {
+    opacity: 0.25;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(1.07);
+  }
+}
+
+@keyframes float-ascend {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-18px) scale(1.12);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-56px) scale(1.28);
+  }
+}
+
+/* ── Data lab: instrument-grade indicator tokens ─────────────────────────── */
+
+@theme {
+  --color-grid-line:      oklch(0.24 0.015 185);
+  --color-scan-trace:     oklch(0.55 0.09 162 / 0.6);
+  --color-readout-dim:    oklch(0.62 0.04 185);
+  --color-alert-warm:     oklch(0.70 0.12 65);
+  --color-phosphor-green: oklch(0.68 0.14 155);
+  --color-specimen-blue:  oklch(0.60 0.10 230);
+  --color-threshold-red:  oklch(0.58 0.16 25 / 0.8);
+}
+
+/* ── Data lab: keyframe animations ──────────────────────────────────────── */
+
+@keyframes scope-trace {
+  0% {
+    transform: scaleX(0);
+    transform-origin: left center;
+    opacity: 0.7;
+  }
+  70% {
+    transform: scaleX(1);
+    transform-origin: left center;
+    opacity: 0.7;
+  }
+  85% {
+    transform: scaleX(1);
+    transform-origin: left center;
+    opacity: 0;
+  }
+  100% {
+    transform: scaleX(0);
+    transform-origin: left center;
+    opacity: 0;
+  }
+}
+
+@keyframes ticker-step {
+  from {
+    opacity: 0;
+    transform: translateX(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes needle-sweep {
+  from {
+    transform: rotate(-90deg);
+  }
+  to {
+    transform: rotate(var(--needle-angle, 0deg));
+  }
+}
+
+@keyframes rec-blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.2; }
+}
+
+@keyframes number-flash {
+  0%   { color: var(--color-accent); }
+  100% { color: inherit; }
+}
+
+@keyframes cursor-blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+
+/* ── Data lab: utility classes ───────────────────────────────────────────── */
+
+.data-lab-grid {
+  background-image:
+    linear-gradient(var(--color-grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--color-grid-line) 1px, transparent 1px);
+  background-size: 32px 32px;
+  background-position: 0 0;
+  /* opacity applied by the element itself via Tailwind */
+}
+
+.scan-overlay {
+  position: relative;
+}
+
+.scan-overlay::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 3px,
+    oklch(0.68 0.14 155 / 0.04) 3px,
+    oklch(0.68 0.14 155 / 0.04) 4px
+  );
+  z-index: 1;
+}
+
+.animate-scope-trace::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--color-scan-trace);
+  animation: scope-trace 4s linear infinite;
+}
+
+.animate-ticker-step {
+  animation: ticker-step 120ms steps(1, end) both;
+}
+
+.animate-needle-sweep {
+  animation: needle-sweep 600ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.animate-rec-blink {
+  animation: rec-blink 1.2s ease-in-out infinite;
+}
+
+.animate-cursor-blink {
+  animation: cursor-blink 1s step-end infinite;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* ── Mode selector animations ────────────────────────────────────────────── */
+
+@keyframes mode-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes mode-overlay-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes mode-glow-border {
+  0%, 100% {
+    box-shadow: 0 0 6px var(--color-mode-glow, oklch(0.72 0.17 162 / 0.25));
+  }
+  50% {
+    box-shadow: 0 0 18px var(--color-mode-glow, oklch(0.72 0.17 162 / 0.45));
+  }
+}
+
+/* ── Vision HUD animations ───────────────────────────────────────────────── */
+
+@keyframes scan-line {
+  0% {
+    top: 0%;
+    opacity: 0.45;
+  }
+  100% {
+    top: 100%;
+    opacity: 0;
+  }
+}
+
+@keyframes bracket-pulse {
+  0%, 100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 0.75;
+  }
+}
+
+@keyframes hud-flicker {
+  0%, 100% { opacity: 1; }
+  92%       { opacity: 1; }
+  93%       { opacity: 0.35; }
+  94%       { opacity: 1; }
+  96%       { opacity: 0.55; }
+  97%       { opacity: 1; }
+}
+
+@keyframes data-scroll {
+  0%   { transform: translateY(0); }
+  100% { transform: translateY(-100%); }
+}
+
+@keyframes radar-sweep {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* ── Draw / path animations ──────────────────────────────────────────────── */
+
+@keyframes draw-path {
+  from { stroke-dashoffset: 1000; }
+  to   { stroke-dashoffset: 0; }
+}
+
+/* ── Animation utility classes ───────────────────────────────────────────── */
+
+.animate-in {
+  animation: fade-in 0.25s ease-out;
+}
+
+.animate-slide-in-top {
+  animation: slide-in-from-top 0.22s ease-out;
+}
+
+.animate-fade-up {
+  animation: fade-up-in 0.32s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-scale-in {
+  animation: scale-in 0.18s ease-out;
+}
+
+.animate-memory-card {
+  animation: memory-card-in 0.32s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-log-row {
+  animation: log-row-in 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-live-pulse {
+  animation: tidal-pulse 1.4s ease-in-out infinite;
+}
+
+.animate-shimmer {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    oklch(0.72 0.17 162 / 0.12) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer-pass 2.2s linear infinite;
+}
+
+.animate-film-scroll {
+  animation: film-scroll 0.8s linear infinite;
+}
+
+.animate-pulse-ring {
+  animation: synaptic-ring 2.2s ease-in-out infinite;
+}
+
+.animate-glow-node {
+  animation: dendrite-glow 2.2s ease-in-out infinite;
+}
+
+.animate-heartbeat {
+  animation: cardiac-rhythm 1.6s ease-in-out infinite;
+}
+
+.animate-orbit {
+  animation: orbit-path 9s linear infinite;
+}
+
+.animate-data-flow {
+  animation: signal-flow 2.2s ease-in-out infinite;
+}
+
+/* Awakening / onboarding */
+.animate-spark {
+  animation: neural-ignite 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-orb-materialize {
+  animation: cortex-materialize 1.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-float-up {
+  animation: float-ascend 2.2s ease-out forwards;
+}
+
+.animate-star-ignite {
+  animation: neural-ignite 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-aurora {
+  animation: cortical-breathe var(--duration-respiratory) ease-in-out infinite;
+}
+
+.animate-phase-out {
+  animation: phase-fade-out 0.28s ease-out forwards;
+}
+
+.animate-phase-in {
+  animation: phase-fade-in 0.32s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-glow-pulse {
+  animation: ambient-glow 4.5s ease-in-out infinite;
+}
+
+.animate-ripple {
+  animation: ripple-expand 0.75s ease-out forwards;
+}
+
+.animate-shield-pulse {
+  animation: membrane-pulse 2.2s ease-in-out infinite;
+}
+
+/* Mode selector */
+.animate-mode-card {
+  animation: mode-card-in 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-mode-overlay {
+  animation: mode-overlay-in 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-mode-glow-border {
+  animation: mode-glow-border 3.5s ease-in-out infinite;
+}
+
+/* Cortical (orb / speaking) */
+.animate-cortical-breathe {
+  animation: cortical-breathe var(--duration-respiratory) ease-in-out infinite;
+}
+
+.animate-cortical-speak {
+  animation: cortical-speak 1.8s ease-in-out infinite;
+}
+
+/* Vision HUD */
+.animate-scan-line {
+  animation: scan-line 3s linear infinite;
+}
+
+.animate-bracket-pulse {
+  animation: bracket-pulse 2.2s ease-in-out infinite;
+}
+
+.animate-hud-flicker {
+  animation: hud-flicker 6s linear infinite;
+}
+
+.animate-radar-sweep {
+  animation: radar-sweep 4s linear infinite;
+}
+
+/* ── Mode input border focus ──────────────────────────────────────────────── */
+
+.input-mode-border:focus {
+  border-color: var(--color-mode-accent, var(--color-accent));
+  box-shadow:
+    0 0 0 1px var(--color-mode-accent, var(--color-accent)),
+    0 0 18px color-mix(in oklch, var(--color-mode-glow, var(--color-accent)) 28%, transparent);
+  outline: none;
+}
+
+/* ── Prose styles (chat messages, body text) ─────────────────────────────── */
+
+.prose-emily strong {
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.prose-emily em {
+  color: var(--color-text-secondary);
+  font-style: italic;
+}
+
+mark {
+  background: oklch(0.75 0.16 85 / 0.28);
+  color: oklch(0.75 0.16 85);
+  border-radius: 2px;
+  padding: 0 2px;
+}
+
+/* ── Bento grid utilities ─────────────────────────────────────────────────── */
+
+.bento-cell {
+  container-type: inline-size;
+  container-name: bento-cell;
+}
+
+/* bento-cell-inset removed — decorative depth shadow contradicts flat-instrument brief */
+
+/* ── Utility classes ──────────────────────────────────────────────────────── */
+
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.line-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.scrollbar-hide {
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* ── Font display class ───────────────────────────────────────────────────── */
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+/* ── Tauri drag region passthrough ───────────────────────────────────────── */
+
+[data-tauri-drag-region] * {
+  -webkit-user-select: none;
+  user-select: none;
+}
