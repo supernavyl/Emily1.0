@@ -6,6 +6,7 @@ import { InputPanel } from '../chat/InputPanel'
 import { EmptyState } from '../chat/EmptyState'
 import { ErrorBoundary } from '../common/ErrorBoundary'
 import { BrainPage } from '../../pages/BrainPage'
+import { SettingsPage } from '../../pages/SettingsPage'
 import {
   uiState, setAuthenticated, setRightPanelVisible, setReasoningPanelSize,
 } from '../../stores/ui'
@@ -112,7 +113,7 @@ export function MainLayout() {
             </Match>
             <Match when={uiState.activePage === 'settings'}>
               <ErrorBoundary>
-                <PagePlaceholder name="Settings" />
+                <SettingsPage />
               </ErrorBoundary>
             </Match>
           </Switch>
