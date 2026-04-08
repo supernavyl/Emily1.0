@@ -117,12 +117,16 @@ export function ReasoningPanelV2() {
 
         <div class="flex items-center gap-1">
           <button
-            onClick={() => cycleReasoningPanel()}
+            onClick={() => setReasoningPanelSize(
+              uiState.reasoningPanelSize === 'fullscreen' ? 'sidebar' : 'fullscreen'
+            )}
             class="p-1 rounded transition-colors"
             style={{ color: 'oklch(0.50 0.04 185)', background: 'transparent', border: 'none', cursor: 'pointer' }}
-            title={`Panel: ${uiState.reasoningPanelSize} (Ctrl+Shift+R)`}
+            title={uiState.reasoningPanelSize === 'fullscreen' ? 'Exit fullscreen' : 'Fullscreen'}
           >
-            {(() => { const Icon = SizeIcon(); return <Icon size={14} /> })()}
+            {uiState.reasoningPanelSize === 'fullscreen'
+              ? <Minimize2 size={14} />
+              : <Maximize2 size={14} />}
           </button>
           <button
             onClick={() => setReasoningPanelSize('hidden')}

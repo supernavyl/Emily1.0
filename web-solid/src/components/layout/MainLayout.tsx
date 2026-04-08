@@ -1,4 +1,4 @@
-import { createEffect, onMount, Show, Switch, Match } from 'solid-js'
+import { createEffect, createSignal, onMount, onCleanup, Show, Switch, Match } from 'solid-js'
 import { Sidebar } from './Sidebar'
 import { TopBar } from './TopBar'
 import { MessageList } from '../chat/MessageList'
@@ -26,6 +26,37 @@ import { API_RAW } from '../../lib/env'
 export function MainLayout() {
   createModeAccent()
   createKeyboard()
+
+  // Drag-resizable reasoning panel
+  const [panelWidth, setPanelWidth] = createSignal(380)
+  let isResizing = false
+
+  function startResize(e: MouseEvent): void {
+    e.preventDefault()
+    isResizing = true
+    const startX = e.clientX
+    const startWidth = panelWidth()
+
+    function onMove(ev: MouseEvent): void {
+      if (!isResizing) return
+      const delta = startX - ev.clientX
+      const newWidth = Math.max(280, Math.min(startWidth + delta, window.innerWidth * 0.7))
+      setPanelWidth(newWidth)
+    }
+
+    function onUp(): void {
+      isResizing = false
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+  }
 
   let prevThinking = ''
 
@@ -86,17 +117,31 @@ export function MainLayout() {
                   </Show>
                 </div>
                 <Show when={uiState.rightPanelVisible && uiState.reasoningPanelSize !== 'hidden'}>
-                  <aside
-                    class="flex-shrink-0 overflow-hidden"
-                    style={{
-                      width: uiState.reasoningPanelSize === 'fullscreen' ? '100%'
-                        : uiState.reasoningPanelSize === 'half' ? '50%'
-                        : '340px',
-                      'border-left': '1px solid oklch(0.30 0.03 185)',
-                    }}
-                  >
-                    <ReasoningPanelV2 />
-                  </aside>
+                  {(() => {
+                    const isFullscreen = () => uiState.reasoningPanelSize === 'fullscreen'
+                    return (
+                      <Show when={!isFullscreen()} fallback={
+                        <div class="fixed inset-0 z-50 flex flex-col" style={{ background: 'oklch(0.18 0.02 185 / 0.96)' }}>
+                          <ReasoningPanelV2 />
+                        </div>
+                      }>
+                        <div
+                          class="flex flex-shrink-0 h-full"
+                          style={{ width: `${panelWidth()}px` }}
+                        >
+                          {/* Drag handle */}
+                          <div
+                            class="w-1 cursor-col-resize hover:bg-accent/30 active:bg-accent/50 transition-colors flex-shrink-0"
+                            style={{ 'border-left': '1px solid oklch(0.30 0.03 185)' }}
+                            onMouseDown={startResize}
+                          />
+                          <div class="flex-1 overflow-hidden">
+                            <ReasoningPanelV2 />
+                          </div>
+                        </div>
+                      </Show>
+                    )
+                  })()}
                 </Show>
               </div>
             </Match>
