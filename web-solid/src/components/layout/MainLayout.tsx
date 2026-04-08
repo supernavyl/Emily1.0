@@ -8,7 +8,7 @@ import { ErrorBoundary } from '../common/ErrorBoundary'
 import { LoginScreen } from '../auth/LoginScreen'
 import { SearchOverlay } from '../search/SearchOverlay'
 import { ModeSelector } from '../chat/ModeSelector'
-import { ReasoningPanelV2 } from '../reasoning/ReasoningPanelV2'
+import { ReasoningPanelLab } from '../reasoning/ReasoningPanelLab'
 import { BrainPage } from '../../pages/BrainPage'
 import { SettingsPage } from '../../pages/SettingsPage'
 import { VoicePage } from '../../pages/VoicePage'
@@ -122,7 +122,7 @@ export function MainLayout() {
                     return (
                       <Show when={!isFullscreen()} fallback={
                         <div class="fixed inset-0 z-50 flex flex-col" style={{ background: 'oklch(0.18 0.02 185 / 0.96)' }}>
-                          <ReasoningPanelV2 />
+                          <ReasoningPanelLab />
                         </div>
                       }>
                         <div
@@ -136,7 +136,7 @@ export function MainLayout() {
                             onMouseDown={startResize}
                           />
                           <div class="flex-1 overflow-hidden">
-                            <ReasoningPanelV2 />
+                            <ReasoningPanelLab />
                           </div>
                         </div>
                       </Show>

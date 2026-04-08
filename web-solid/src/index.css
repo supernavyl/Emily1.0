@@ -605,6 +605,10 @@ h3 {
 
 /* ── Data lab: utility classes ───────────────────────────────────────────── */
 
+.lab-grid-bg {
+  background-image: repeating-linear-gradient(0deg, oklch(0.25 0.02 185) 0px, oklch(0.25 0.02 185) 1px, transparent 1px, transparent 20px);
+}
+
 .data-lab-grid {
   background-image:
     linear-gradient(var(--color-grid-line) 1px, transparent 1px),
