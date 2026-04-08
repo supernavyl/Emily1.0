@@ -5,6 +5,7 @@ import { MessageList } from '../chat/MessageList'
 import { InputPanel } from '../chat/InputPanel'
 import { EmptyState } from '../chat/EmptyState'
 import { ErrorBoundary } from '../common/ErrorBoundary'
+import { BrainPage } from '../../pages/BrainPage'
 import {
   uiState, setAuthenticated, setRightPanelVisible, setReasoningPanelSize,
 } from '../../stores/ui'
@@ -101,7 +102,7 @@ export function MainLayout() {
             </Match>
             <Match when={uiState.activePage === 'brain'}>
               <ErrorBoundary>
-                <PagePlaceholder name="Brain" />
+                <BrainPage />
               </ErrorBoundary>
             </Match>
             <Match when={uiState.activePage === 'terminal'}>
