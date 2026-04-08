@@ -2,6 +2,12 @@ import { createSignal, Switch, Match } from 'solid-js'
 import { BrainTabs, type BrainTab } from '../components/brain/BrainTabs'
 import { NeuralOverview } from '../components/brain/NeuralOverview'
 import { EventStream } from '../components/brain/EventStream'
+import { EmotionalCortex } from '../components/brain/EmotionalCortex'
+import { CognitiveProcesses } from '../components/brain/CognitiveProcesses'
+import { MemoryArchitecture } from '../components/brain/MemoryArchitecture'
+import { ModelFleet } from '../components/brain/ModelFleet'
+import { PersonalityMatrix } from '../components/brain/PersonalityMatrix'
+import { BrainChat } from '../components/brain/BrainChat'
 import { createBrainWS } from '../primitives/createBrainWS'
 import { createPolling } from '../primitives/createPolling'
 import {
@@ -63,8 +69,26 @@ export function BrainPage() {
           <Match when={activeTab() === 'neural'}>
             <NeuralOverview />
           </Match>
+          <Match when={activeTab() === 'emotional'}>
+            <EmotionalCortex />
+          </Match>
+          <Match when={activeTab() === 'cognitive'}>
+            <CognitiveProcesses />
+          </Match>
+          <Match when={activeTab() === 'memory'}>
+            <MemoryArchitecture />
+          </Match>
+          <Match when={activeTab() === 'fleet'}>
+            <ModelFleet />
+          </Match>
+          <Match when={activeTab() === 'personality'}>
+            <PersonalityMatrix />
+          </Match>
           <Match when={activeTab() === 'stream'}>
             <EventStream />
+          </Match>
+          <Match when={activeTab() === 'chat'}>
+            <BrainChat />
           </Match>
         </Switch>
       </div>

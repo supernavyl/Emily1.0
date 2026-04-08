@@ -8,6 +8,7 @@ import { ErrorBoundary } from '../common/ErrorBoundary'
 import { LoginScreen } from '../auth/LoginScreen'
 import { SearchOverlay } from '../search/SearchOverlay'
 import { ModeSelector } from '../chat/ModeSelector'
+import { ReasoningPanelV2 } from '../reasoning/ReasoningPanelV2'
 import { BrainPage } from '../../pages/BrainPage'
 import { SettingsPage } from '../../pages/SettingsPage'
 import { VoicePage } from '../../pages/VoicePage'
@@ -84,6 +85,19 @@ export function MainLayout() {
                     <InputPanel />
                   </Show>
                 </div>
+                <Show when={uiState.rightPanelVisible && uiState.reasoningPanelSize !== 'hidden'}>
+                  <aside
+                    class="flex-shrink-0 overflow-hidden"
+                    style={{
+                      width: uiState.reasoningPanelSize === 'fullscreen' ? '100%'
+                        : uiState.reasoningPanelSize === 'half' ? '50%'
+                        : '340px',
+                      'border-left': '1px solid oklch(0.30 0.03 185)',
+                    }}
+                  >
+                    <ReasoningPanelV2 />
+                  </aside>
+                </Show>
               </div>
             </Match>
             <Match when={uiState.activePage === 'voice'}>
