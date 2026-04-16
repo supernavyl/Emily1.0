@@ -13,17 +13,16 @@ llm:
   tabbyapi_base_url: "http://localhost:5000" # TabbyAPI ExLlamaV2 inference server (optional)
   tabbyapi_api_key: "" # set if auth enabled in TabbyAPI config.yml
   models:
-    # ── Ollama abliterated models ────────────────────────────────────────────────────
-    # JOSIEFIED: abliterated + fine-tuned to preserve tool-use & instruction-following
-    # Qwen 3.5: latest generation, multimodal, 256K context
-    nano: "goekdenizguelmez/JOSIEFIED-Qwen3:8b" # Routing & classification
-    voice_fast: "goekdenizguelmez/JOSIEFIED-Qwen3:8b" # Fast voice responses (<1s)
-    fast: "goekdenizguelmez/JOSIEFIED-Qwen3:14b" # Standard conversation + voice escalation
-    smart: "huihui_ai/qwen3.5-abliterated:27b" # Complex reasoning & text chat + translation
-    reasoning: "huihui_ai/deepseek-r1-abliterated:14b-qwen-distill" # Analyst, research, debate
-    deep_think: "huihui_ai/deepseek-r1-abliterated:32b" # Deep Think skill — full R1 32B
-    code: "huihui_ai/qwen3-coder-abliterated:30b" # Code skill — dedicated coder
-    vision: "minicpm-v:latest" # Ollama - vision only (not abliterated)
+    # ── Dual-GPU config: 27B on 4090 (all tiers), perception on 3060 ─────────────────
+    # Single 27B for all local tiers — no model swapping, ~35 tok/s, ~600ms first token
+    nano: "huihui_ai/qwen3.5-abliterated:27b" # Routing & classification (same model, no swap)
+    voice_fast: "huihui_ai/qwen3.5-abliterated:27b" # Voice responses (~600ms first token)
+    fast: "huihui_ai/qwen3.5-abliterated:27b" # Standard conversation
+    smart: "huihui_ai/qwen3.5-abliterated:27b" # Complex reasoning & text chat
+    reasoning: "huihui_ai/qwen3.5-abliterated:27b" # Deep reasoning with thinking
+    deep_think: "huihui_ai/qwen3.5-abliterated:27b" # Deep Think skill
+    code: "huihui_ai/qwen3.5-abliterated:27b" # Code tasks
+    vision: "huihui_ai/qwen3-vl-abliterated:8b" # Ollama - Qwen3-VL vision-language
     embedding: "bge-m3" # Ollama - embeddings (not abliterated)
     cloud_best: "claude-opus-4-6" # Anthropic - deep reasoning, reflection, planning
     cloud_fast: "claude-sonnet-4-6" # Anthropic - fast cloud with thinking
@@ -87,16 +86,6 @@ llm:
     escalation_threshold: 0.6     # confidence below this triggers escalation
     max_critic_loops: 3
     tree_branches: 3              # branches for tree-of-thought
-
-# ── Modes ────────────────────────────────────────────────────────────────
-modes:
-  default: "normal"
-  custom_path: "~/.emily-chat/custom_modes.json"
-
-# ── Rules ────────────────────────────────────────────────────────────────
-rules:
-  enabled: true
-  custom_path: "~/.emily-chat/custom_rules.json"
   llamacpp:
     enabled: false
     models_dir: "models" # ignored while disabled
@@ -110,15 +99,25 @@ rules:
       voice_fast:
         alias_of: "nano"
   tier_backend:
-    nano: "ollama" # JOSIEFIED-Qwen3 8B — fast routing
-    voice_fast: "ollama" # JOSIEFIED-Qwen3 8B — fast voice responses
-    fast: "ollama" # Qwen3.5-abliterated 27B — standard chat
-    smart: "ollama" # Qwen3.5-abliterated 27B — complex reasoning
-    reasoning: "ollama" # Qwen3.5-abliterated 27B — deep reasoning with thinking
-    vision: "ollama" # MiniCPM-V (not abliterated)
+    nano: "ollama" # Qwen3.5-27B on 4090 — single model, no swap
+    voice_fast: "ollama" # Qwen3.5-27B on 4090
+    fast: "ollama" # Qwen3.5-27B on 4090
+    smart: "ollama" # Qwen3.5-27B on 4090
+    reasoning: "ollama" # Qwen3.5-27B on 4090
+    vision: "ollama" # Qwen3-VL 8B (on-demand, swaps with 27B)
     embedding: "ollama" # BGE-M3 embeddings
     cloud_best: "anthropic" # Claude Opus 4.6 — agents, reflection, planning
     cloud_fast: "anthropic" # Claude Sonnet 4.6 — fast cloud inference
+
+# ── Modes ────────────────────────────────────────────────────────────────
+modes:
+  default: "normal"
+  custom_path: "~/.emily-chat/custom_modes.json"
+
+# ── Rules ────────────────────────────────────────────────────────────────
+rules:
+  enabled: true
+  custom_path: "~/.emily-chat/custom_rules.json"
 
 audio:
   sample_rate: 44100
@@ -127,7 +126,7 @@ audio:
   # ── AUDIO DEVICE CONFIGURATION ──
   # [10] Yeti Nano: USB Audio (input, 44100Hz)
   # [42] USB Audio Speakers (output, 48000Hz)
-  input_device: "auto"
+  input_device: "yourfriend Echo-Cancelled Mic"
   output_device: "auto"
 
 wake_word:
@@ -147,7 +146,8 @@ vad:
 stt:
   profile: "accurate" # fast | accurate
   model: "distil-large-v3"
-  device: "cuda"
+  device: "cuda"         # CTranslate2 device: "cuda" or "cpu" (NOT "cuda:N")
+  device_index: 0        # GPU index: 0=4090 (27B auto-splits, no room on 3060)
   compute_type: "float16"
   language: "en"
   word_timestamps: true
@@ -173,7 +173,7 @@ stt:
 
 tts:
   primary: "kokoro"
-  fallback: "csm"
+  fallback: "none"
   voice_preset: "en_US_female_1"
   xtts:
     model_name: "tts_models/multilingual/multi-dataset/xtts_v2"
@@ -181,7 +181,7 @@ tts:
     language: "en"
     speed: 1.0
   kokoro:
-    voice: "af_heart"
+    voice: "af_nicole"
     speed: 0.88
   chatterbox:
     exaggeration: 0.5
@@ -227,6 +227,13 @@ voice_engine:
   vad_threshold: 0.5
   min_speech_ms: 200
   min_silence_ms: 800
+  breath_injector:
+    enabled: true
+    density: 0.5
+    min_silence_ms: 30
+    max_breath_ms: 400
+    respect_llm_tokens: true
+    emotional_modulation: true
 
 memory:
   sensory_buffer_size: 1000
@@ -252,6 +259,7 @@ memory:
     idle_trigger_minutes: 10
     max_episodes_per_run: 20
     reflection_model: "smart"
+    reflection_episode_window: 20
 
 rag:
   watch_dirs:
@@ -280,6 +288,10 @@ tools:
   home_assistant:
     url: "http://localhost:8123"
     token: null # set in .env
+  browser:
+    headless: true
+    idle_timeout_s: 300
+    max_pages_before_restart: 100
 
 integrations:
   discord:
@@ -293,9 +305,13 @@ integrations:
 
 vision:
   enabled: true
+  ambient_analysis: false  # Periodic VLM screen analysis (causes model thrashing on 24GB)
   screen_capture_interval_s: 5
   webcam_device: 0
   emotion_detection: true
+  vram_swap_enabled: true
+  visual_context_ttl_s: 300
+  visual_context_max_entries: 3
 
 persona:
   profile_path: "persona/profile.json"
@@ -337,7 +353,7 @@ self_improvement:
 
 api:
   host: "127.0.0.1"
-  port: 8000
+  port: 8001
   reload: false
   secret_key: null # set in .env
   rate_limit_requests: 2000  # increased for local desktop app polling

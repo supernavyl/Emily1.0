@@ -30,7 +30,7 @@ class LLMModels(BaseModel):
     reasoning: str = "qwq-32b-abliterated"
     deep_think: str = ""
     code: str = ""
-    vision: str = "minicpm-v:latest"
+    vision: str = "huihui_ai/qwen3-vl-abliterated:8b"
     embedding: str = "bge-m3"
     cloud_best: str = "claude-opus-4-6"
     cloud_fast: str = "claude-sonnet-4-6"
@@ -146,11 +146,11 @@ class LlamaCppConfig(BaseModel):
 class TierBackend(BaseModel):
     """Which inference backend to use for each model tier."""
 
-    nano: str = "llamacpp"
-    voice_fast: str = "llamacpp"
-    fast: str = "tabbyapi"
-    smart: str = "tabbyapi"
-    reasoning: str = "tabbyapi"
+    nano: str = "ollama"
+    voice_fast: str = "ollama"
+    fast: str = "ollama"
+    smart: str = "ollama"
+    reasoning: str = "ollama"
     deep_think: str = "ollama"
     code: str = "ollama"
     vision: str = "ollama"
@@ -175,7 +175,7 @@ class LLMCacheConfig(BaseModel):
 
 
 class LLMConfig(BaseModel):
-    backend: str = "tabbyapi"
+    backend: str = "ollama"
     ollama_base_url: str = "http://localhost:11434"
     tabbyapi_base_url: str = "http://localhost:5000"
     tabbyapi_api_key: str = ""
@@ -197,6 +197,17 @@ class AudioConfig(BaseModel):
     output_device: str | int | None = None
 
 
+class BreathInjectorConfig(BaseModel):
+    """Configuration for inter/intra-sentence breath injection."""
+
+    enabled: bool = True
+    density: float = Field(default=0.5, ge=0.0, le=1.0)
+    min_silence_ms: int = Field(default=30, ge=0)
+    max_breath_ms: int = Field(default=400, ge=50)
+    respect_llm_tokens: bool = True
+    emotional_modulation: bool = True
+
+
 class VoiceEngineConfig(BaseModel):
     """VoiceEngine 1.3 — provider-agnostic voice conversation engine.
 
@@ -211,6 +222,7 @@ class VoiceEngineConfig(BaseModel):
     vad_threshold: float = 0.5
     min_speech_ms: int = 200
     min_silence_ms: int = 800
+    breath_injector: BreathInjectorConfig = Field(default_factory=BreathInjectorConfig)
 
 
 class WakeWordConfig(BaseModel):
@@ -233,6 +245,7 @@ class STTConfig(BaseModel):
     profile: Literal["fast", "accurate"] = "fast"
     model: str = "large-v3-turbo"
     device: str = "cuda"
+    device_index: int = 0
     compute_type: str = "float16"
     language: str | None = "en"
     word_timestamps: bool = True
@@ -265,7 +278,7 @@ class XTTSConfig(BaseModel):
 
 
 class KokoroConfig(BaseModel):
-    voice: str = "af_heart"
+    voice: str = "af_nicole"
     speed: float = 1.0
 
 
@@ -318,6 +331,7 @@ class ConsolidationConfig(BaseModel):
     idle_trigger_minutes: int = 10
     max_episodes_per_run: int = 20
     reflection_model: str = "smart"
+    reflection_episode_window: int = 20
 
 
 class MemoryConfig(BaseModel):
@@ -353,20 +367,47 @@ class HomeAssistantConfig(BaseModel):
     token: str | None = None
 
 
+class BrowserConfig(BaseModel):
+    """Playwright Firefox browser tool configuration."""
+
+    headless: bool = True
+    idle_timeout_s: int = 300
+    max_pages_before_restart: int = 100
+
+
 class ToolsConfig(BaseModel):
     sandbox: str = "bubblewrap"
     allowed_paths: list[str] = Field(default_factory=list)
     web_search_url: str = "http://localhost:8888"
     home_assistant: HomeAssistantConfig = Field(default_factory=HomeAssistantConfig)
+    browser: BrowserConfig = Field(default_factory=BrowserConfig)
+
+
+class ForecasterConfig(BaseModel):
+    """System state forecaster configuration (CPU-only GRU predictor)."""
+
+    enabled: bool = True
+    seq_length: int = 128
+    hidden_size: int = 64
+    train_interval_snapshots: int = 60
+    anomaly_threshold_sigma: float = 3.0
+    min_history: int = 32
+    model_dir: str = "data/forecaster"
+    telemetry_db: str = "data/telemetry.db"
+    telemetry_retention_days: int = 30
 
 
 class VisionConfig(BaseModel):
     enabled: bool = False
+    ambient_analysis: bool = False  # Periodic VLM screen/webcam analysis (VRAM-heavy)
     screen_capture_interval_s: float = 5.0
     webcam_capture_interval_s: float = 5.0
     webcam_device: int = 0
     emotion_detection: bool = False
     presence_idle_threshold_s: float = 120.0
+    vram_swap_enabled: bool = True
+    visual_context_ttl_s: float = 300.0
+    visual_context_max_entries: int = 3
 
 
 class RVCConfig(BaseModel):
@@ -504,15 +545,15 @@ class SelfImprovementConfig(BaseModel):
 
 class APIConfig(BaseModel):
     host: str = "127.0.0.1"
-    port: int = 8000
+    port: int = 8001
     reload: bool = False
     secret_key: str | None = None
     cors_origins: list[str] = Field(
         default_factory=lambda: [
-            "http://127.0.0.1:8000",
-            "http://localhost:8000",
-            "http://127.0.0.1:3000",
-            "http://localhost:3000",
+            "http://127.0.0.1:8001",
+            "http://localhost:8001",
+            "http://127.0.0.1:1420",
+            "http://localhost:1420",
         ]
     )
     rate_limit_requests: int = 100
@@ -538,6 +579,7 @@ class EmilySettings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="EMILY_",
         env_nested_delimiter="__",
+        env_file=".env",
         case_sensitive=False,
         extra="ignore",
     )
@@ -565,6 +607,7 @@ class EmilySettings(BaseSettings):
     agents: AgentsConfig = Field(default_factory=AgentsConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
     vision: VisionConfig = Field(default_factory=VisionConfig)
+    forecaster: ForecasterConfig = Field(default_factory=ForecasterConfig)
     persona: PersonaConfig = Field(default_factory=PersonaConfig)
     security: SecurityConfig = Field(default_factory=SecurityConfig)
     owner: OwnerConfig = Field(default_factory=OwnerConfig)
@@ -610,6 +653,7 @@ class EmilySettings(BaseSettings):
                 "agents",
                 "tools",
                 "vision",
+                "forecaster",
                 "persona",
                 "security",
                 "owner",
