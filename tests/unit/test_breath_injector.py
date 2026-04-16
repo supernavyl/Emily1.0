@@ -230,3 +230,47 @@ def test_sentence_collector_preserves_pause_token() -> None:
     sentences = c.feed("Wait here.<pause:300ms> Then go. ")
     combined = " ".join(sentences)
     assert "<pause:300ms>" in combined
+
+
+# ── Task 10: Integration Test ────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_pipeline_with_breath_injector(tmp_path: Path) -> None:
+    """End-to-end: breath segments appear in pipeline output."""
+    from scipy.io import wavfile
+
+    from voice_engine.processing.breath_injector import BreathInjector
+
+    # Create a sample WAV
+    sample = np.random.randn(2400).astype(np.float32) * 0.1
+    wavfile.write(str(tmp_path / "inhale_medium_1.wav"), 24000, sample)
+
+    # Mock config
+    from unittest.mock import MagicMock
+
+    config = MagicMock()
+    config.enabled = True
+    config.density = 1.0  # always insert breath
+    config.min_silence_ms = 10
+    config.max_breath_ms = 400
+    config.respect_llm_tokens = True
+    config.emotional_modulation = False
+
+    injector = BreathInjector(config, sample_dir=tmp_path)
+
+    # Process two consecutive sentences
+    seg1 = injector.process("First sentence.", prev_sentence_len=0, cumulative_speech_s=0.0)
+    seg2 = injector.process("Second sentence.", prev_sentence_len=15, cumulative_speech_s=1.0)
+
+    from voice_engine.processing.breath_injector import BreathSegment, SpeechSegment
+
+    # First sentence: no breath (first sentence)
+    assert all(isinstance(s, SpeechSegment) for s in seg1)
+
+    # Second sentence: should have breath before it (density=1.0)
+    assert isinstance(seg2[0], BreathSegment)
+    assert isinstance(seg2[-1], SpeechSegment)
+    assert seg2[-1].text == "Second sentence."
+    # Breath audio should be non-empty
+    assert len(seg2[0].audio) > 0
