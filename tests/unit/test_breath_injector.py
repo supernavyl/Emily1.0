@@ -209,3 +209,24 @@ def test_process_first_sentence_no_breath() -> None:
     segments = inj.process("Hello!", prev_sentence_len=0, cumulative_speech_s=0.0)
     assert len(segments) == 1
     assert isinstance(segments[0], SpeechSegment)
+
+
+# ── Task 6: SentenceCollector preserves breath/pause tokens ─────
+
+
+def test_sentence_collector_preserves_breath_token() -> None:
+    from voice_engine.processing.sentence_collector import SentenceCollector
+
+    c = SentenceCollector()
+    sentences = c.feed("Hello world. <breath>How are you? ")
+    combined = " ".join(sentences)
+    assert "<breath>" in combined
+
+
+def test_sentence_collector_preserves_pause_token() -> None:
+    from voice_engine.processing.sentence_collector import SentenceCollector
+
+    c = SentenceCollector()
+    sentences = c.feed("Wait here.<pause:300ms> Then go. ")
+    combined = " ".join(sentences)
+    assert "<pause:300ms>" in combined

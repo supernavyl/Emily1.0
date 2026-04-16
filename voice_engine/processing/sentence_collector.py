@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import logging
 import re
 
-logger = logging.getLogger(__name__)
+from observability.logger import get_logger
 
+logger = get_logger(__name__)
 # Matches sentence-ending punctuation followed by whitespace or end-of-string.
 _SENTENCE_END_RE = re.compile(r"(?<=[.!?])\s+|(?<=\.\.\.)\s+")
 
@@ -18,7 +18,9 @@ _ABBREVIATIONS_RE = re.compile(
 )
 
 # Maximum buffer length before we force a split on secondary delimiters.
-_LONG_BUFFER_THRESHOLD = 80
+# 150 chars gives the LLM room for complete thoughts without choppy mid-sentence
+# splits. At ~150 WPM TTS rate, 150 chars ≈ 4-5 seconds of speech — natural.
+_LONG_BUFFER_THRESHOLD = 150
 
 
 class SentenceCollector:
