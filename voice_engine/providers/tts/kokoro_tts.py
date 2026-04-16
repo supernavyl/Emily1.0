@@ -3,25 +3,32 @@
 from __future__ import annotations
 
 import asyncio
-import logging
+import re
 from typing import TYPE_CHECKING
 
 import numpy as np
 
+from observability.logger import get_logger
 from voice_engine.providers.base import TTSProvider
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
-logger = logging.getLogger(__name__)
-
+logger = get_logger(__name__)
 KOKORO_SAMPLE_RATE = 24000
+
+# Strip paralinguistic markers that Kokoro can't render (e.g. Nicole voice)
+_PARALINGUISTIC_RE = re.compile(
+    r"\[(?:laughs?|sighs?|gasps?|whispers?|cries|yawns?|groans?|hums?"
+    r"|chuckles?|giggles?|clears?\s*throat)\]",
+    re.IGNORECASE,
+)
 
 
 class KokoroTTS(TTSProvider):
     """Text-to-speech via the ``kokoro`` package (local inference)."""
 
-    def __init__(self, voice: str = "af_heart", lang_code: str = "a") -> None:
+    def __init__(self, voice: str = "af_nicole", lang_code: str = "a") -> None:
         self._voice = voice
         self._lang_code = lang_code
         self._pipeline: object | None = None
@@ -32,9 +39,9 @@ class KokoroTTS(TTSProvider):
         if self._pipeline is None:
             from kokoro import KPipeline  # type: ignore[import-untyped]
 
-            logger.info("Loading Kokoro pipeline (lang_code=%s) ...", self._lang_code)
-            self._pipeline = KPipeline(lang_code=self._lang_code)
-            logger.info("Kokoro pipeline loaded.")
+            logger.info("Loading Kokoro pipeline (lang_code=%s, device=cpu) ...", self._lang_code)
+            self._pipeline = KPipeline(lang_code=self._lang_code, device="cpu")
+            logger.info("Kokoro pipeline loaded on CPU.")
         return self._pipeline
 
     def set_voice(self, voice: str) -> None:
@@ -55,6 +62,10 @@ class KokoroTTS(TTSProvider):
 
     def _synthesize_sync(self, text: str) -> np.ndarray:
         """Blocking synthesis — run in an executor."""
+        text = _PARALINGUISTIC_RE.sub("", text).strip()
+        if not text:
+            return np.empty(0, dtype=np.float32)
+
         pipeline = self._get_pipeline()
         speed = self._get_emotional_speed()
         audio_parts: list[np.ndarray] = []
