@@ -2,11 +2,20 @@
 
 from __future__ import annotations
 
-import logging
+import re
 from typing import TYPE_CHECKING
 
 import numpy as np
 
+from observability.logger import get_logger
+from voice_engine.processing.breath_injector import (
+    SAMPLE_RATE as BREATH_SAMPLE_RATE,
+)
+from voice_engine.processing.breath_injector import (
+    BreathInjector,
+    BreathSegment,
+    SpeechSegment,
+)
 from voice_engine.processing.sentence_collector import SentenceCollector
 
 if TYPE_CHECKING:
@@ -15,7 +24,25 @@ if TYPE_CHECKING:
     from voice_engine.processing.interruption import InterruptionHandler
     from voice_engine.providers.base import LLMProvider, STTProvider, TTSProvider
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
+# Inline voice switch tag: <voice:nicole>, <voice:sky>, etc.
+_VOICE_TAG_RE = re.compile(r"<voice:(\w+)>", re.IGNORECASE)
+
+# Strip paralinguistic stage directions the LLM likes to insert.
+# Catches: [laughs], *laughs*, (laughs), *sighing*, [soft chuckle], etc.
+_STAGE_DIRECTION_RE = re.compile(
+    r"[\[\(*]"
+    r"(?:laughs?|laughing|laughter|chuckles?|chuckling|giggles?|giggling"
+    r"|sighs?|sighing|gasps?|gasping|groans?|groaning"
+    r"|whispers?|whispering|hums?|humming|yawns?|yawning"
+    r"|cries|crying|sniffles?|sniffling|coughs?|coughing"
+    r"|clears?\s*throat|breaths?|breathing|inhales?|exhales?"
+    r"|pauses?|pausing|beats?|silence|softly|gently|quietly"
+    r"|smiles?|smiling|grins?|grinning|nods?|nodding"
+    r"|soft\s+\w+|nervous\s+\w+|sad\s+\w+|happy\s+\w+)"
+    r"[\]\)*]",
+    re.IGNORECASE,
+)
 
 
 class VoicePipeline:
@@ -32,11 +59,15 @@ class VoicePipeline:
         llm: LLMProvider,
         tts: TTSProvider,
         interruption: InterruptionHandler,
+        breath_injector: BreathInjector | None = None,
     ) -> None:
         self._stt = stt
         self._llm = llm
         self._tts = tts
         self._interruption = interruption
+        self._breath = breath_injector
+        self._prev_sentence_len = 0
+        self._cumulative_speech_s = 0.0
         logger.info("VoicePipeline initialised.")
 
     async def process(
@@ -60,6 +91,9 @@ class VoicePipeline:
         Raises:
             asyncio.CancelledError: If the interruption handler fires mid-stream.
         """
+        self._prev_sentence_len = 0
+        self._cumulative_speech_s = 0.0
+
         # ── Step 1: Speech-to-Text ────────────────────────────────
         logger.info("Pipeline: transcribing audio (%d samples) ...", len(audio))
         transcript = await self._stt.transcribe(audio, sample_rate=16000)
@@ -94,17 +128,35 @@ class VoicePipeline:
 
             sentences = collector.feed(token)
             for sentence in sentences:
-                audio_chunk = await self._synthesize_sentence(sentence)
-                if len(audio_chunk) > 0:
-                    audio_parts.append(audio_chunk)
+                if self._breath is not None:
+                    segments = self._breath.process(
+                        sentence,
+                        prev_sentence_len=self._prev_sentence_len,
+                        cumulative_speech_s=self._cumulative_speech_s,
+                    )
+                    parts = await self._synthesize_segments(segments)
+                    audio_parts.extend(parts)
+                    self._prev_sentence_len = len(sentence)
+                else:
+                    audio_chunk = await self._synthesize_sentence(sentence)
+                    if len(audio_chunk) > 0:
+                        audio_parts.append(audio_chunk)
 
         # Flush remaining text in the collector
         remainder = collector.flush()
         if remainder:
-            "".join(full_response)
-            audio_chunk = await self._synthesize_sentence(remainder)
-            if len(audio_chunk) > 0:
-                audio_parts.append(audio_chunk)
+            if self._breath is not None:
+                segments = self._breath.process(
+                    remainder,
+                    prev_sentence_len=self._prev_sentence_len,
+                    cumulative_speech_s=self._cumulative_speech_s,
+                )
+                parts = await self._synthesize_segments(segments)
+                audio_parts.extend(parts)
+            else:
+                audio_chunk = await self._synthesize_sentence(remainder)
+                if len(audio_chunk) > 0:
+                    audio_parts.append(audio_chunk)
 
         response_text = "".join(full_response)
         logger.info("Pipeline: assistant response: %s", response_text[:120])
@@ -118,9 +170,42 @@ class VoicePipeline:
 
         return (response_text, combined_audio)
 
+    async def _synthesize_segments(
+        self,
+        segments: list[SpeechSegment | BreathSegment],
+    ) -> list[np.ndarray]:
+        """Synthesize a list of audio segments, returning audio arrays."""
+        parts: list[np.ndarray] = []
+        for seg in segments:
+            if isinstance(seg, BreathSegment):
+                parts.append(seg.audio)
+            elif isinstance(seg, SpeechSegment):
+                audio = await self._synthesize_sentence(seg.text)
+                if len(audio) > 0:
+                    parts.append(audio)
+                    self._cumulative_speech_s += len(audio) / BREATH_SAMPLE_RATE
+        return parts
+
+    def _clean_for_tts(self, sentence: str) -> str:
+        """Strip voice tags and stage directions before TTS."""
+        # Apply voice switch tags
+        match = _VOICE_TAG_RE.search(sentence)
+        if match:
+            voice_name = match.group(1).lower()
+            voice_id = f"af_{voice_name}"
+            self._tts.set_voice(voice_id)
+            logger.info("LLM triggered voice switch to %s", voice_id)
+            sentence = _VOICE_TAG_RE.sub("", sentence)
+        # Strip stage directions: [laughs], *sighs*, (chuckles), etc.
+        sentence = _STAGE_DIRECTION_RE.sub("", sentence)
+        return sentence.strip()
+
     async def _synthesize_sentence(self, sentence: str) -> np.ndarray:
         """Synthesize a single sentence, returning float32 audio."""
         try:
+            sentence = self._clean_for_tts(sentence)
+            if not sentence:
+                return np.empty(0, dtype=np.float32)
             audio = await self._tts.synthesize(sentence)
             logger.debug("Synthesized %d samples for: %s", len(audio), sentence[:60])
             return audio
@@ -157,6 +242,9 @@ class VoicePipeline:
         conversation_history.append({"role": "user", "content": transcript})
 
         # ── LLM + TTS ─────────────────────────────────────────────
+        self._prev_sentence_len = 0
+        self._cumulative_speech_s = 0.0
+
         collector = SentenceCollector()
         full_response: list[str] = []
 
@@ -176,15 +264,45 @@ class VoicePipeline:
 
             sentences = collector.feed(token)
             for sentence in sentences:
-                audio_chunk = await self._synthesize_sentence(sentence)
-                if len(audio_chunk) > 0:
-                    yield (sentence, audio_chunk)
+                if self._breath is not None:
+                    segments = self._breath.process(
+                        sentence,
+                        prev_sentence_len=self._prev_sentence_len,
+                        cumulative_speech_s=self._cumulative_speech_s,
+                    )
+                    for seg in segments:
+                        if isinstance(seg, BreathSegment):
+                            yield ("", seg.audio)
+                        elif isinstance(seg, SpeechSegment):
+                            audio_chunk = await self._synthesize_sentence(seg.text)
+                            if len(audio_chunk) > 0:
+                                self._cumulative_speech_s += len(audio_chunk) / BREATH_SAMPLE_RATE
+                                yield (seg.text, audio_chunk)
+                    self._prev_sentence_len = len(sentence)
+                else:
+                    audio_chunk = await self._synthesize_sentence(sentence)
+                    if len(audio_chunk) > 0:
+                        yield (sentence, audio_chunk)
 
         remainder = collector.flush()
         if remainder:
-            audio_chunk = await self._synthesize_sentence(remainder)
-            if len(audio_chunk) > 0:
-                yield (remainder, audio_chunk)
+            if self._breath is not None:
+                segments = self._breath.process(
+                    remainder,
+                    prev_sentence_len=self._prev_sentence_len,
+                    cumulative_speech_s=self._cumulative_speech_s,
+                )
+                for seg in segments:
+                    if isinstance(seg, BreathSegment):
+                        yield ("", seg.audio)
+                    elif isinstance(seg, SpeechSegment):
+                        audio_chunk = await self._synthesize_sentence(seg.text)
+                        if len(audio_chunk) > 0:
+                            yield (seg.text, audio_chunk)
+            else:
+                audio_chunk = await self._synthesize_sentence(remainder)
+                if len(audio_chunk) > 0:
+                    yield (remainder, audio_chunk)
 
         # Always commit whatever was generated to history, even if interrupted
         response_text = "".join(full_response)
