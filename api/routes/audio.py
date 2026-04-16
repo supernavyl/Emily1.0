@@ -100,7 +100,7 @@ _audio_state: dict[str, Any] = {
     "audio_pipeline": None,
     "tts_manager": None,
     "voice_engine": None,
-    "tts_voice": "af_heart",
+    "tts_voice": "af_nicole",
     "tts_provider": "kokoro",
     # Managed by start/stop endpoints
     "_listening": False,
@@ -110,6 +110,7 @@ _audio_state: dict[str, Any] = {
     "_last_llm_tier": None,  # updated each LLM call: "voice_fast" | "smart"
     "_last_llm_model": None,  # short model name used in last response
     "emily_llm_provider": None,  # EmilyLLMProvider instance (full brain)
+    "breath_injector": None,  # BreathInjector instance (optional)
 }
 
 
@@ -199,6 +200,7 @@ def set_audio_state(
     tts_manager: Any = None,
     voice_engine: Any = None,
     emily_llm: Any = None,
+    breath_injector: Any = None,
 ) -> None:
     """Inject runtime audio state from app lifespan or bootstrap."""
     if input_device is not None:
@@ -227,6 +229,9 @@ def set_audio_state(
         _audio_state["voice_engine"] = voice_engine
     if emily_llm is not None:
         _audio_state["emily_llm_provider"] = emily_llm
+    if breath_injector is not None:
+        _audio_state["breath_injector"] = breath_injector
+        log.info("breath_injector_wired")
 
 
 def _persist_audio_device(env_key: str, value: int | None) -> None:
@@ -429,7 +434,7 @@ def _pipeline_model_info() -> dict:
         "llm_tier": llm_tier,
         "llm_model": llm_mdl,
         "tts_engine": _audio_state.get("tts_provider", "kokoro"),
-        "tts_voice": _audio_state.get("tts_voice", "af_heart"),
+        "tts_voice": _audio_state.get("tts_voice", "af_nicole"),
         "vad_threshold": vad_thr,
     }
 
@@ -602,8 +607,25 @@ async def test_tts(req: TTSTestRequest) -> dict[str, str]:
 
         output = AudioOutputStream(output_device=_audio_state.get("output_device"))
         clean_text = _EMOJI_RE.sub("", req.text).strip() or req.text
-        chunks = tts_mgr.speak(text=clean_text, force_engine=engine)
-        await output.play_stream(chunks)
+        breath_inj = _audio_state.get("breath_injector")
+        if breath_inj is not None and clean_text:
+            from voice_engine.processing.breath_injector import BreathSegment, SpeechSegment
+
+            segments = breath_inj.process(
+                clean_text,
+                prev_sentence_len=getattr(breath_inj, "_api_prev_len", 0),
+                cumulative_speech_s=0.0,
+            )
+            for seg in segments:
+                if isinstance(seg, BreathSegment):
+                    await output.play_stream(iter([seg.audio]))
+                elif isinstance(seg, SpeechSegment):
+                    chunks = tts_mgr.speak(text=seg.text, force_engine=engine)
+                    await output.play_stream(chunks)
+            breath_inj._api_prev_len = len(clean_text)
+        else:
+            chunks = tts_mgr.speak(text=clean_text, force_engine=engine)
+            await output.play_stream(chunks)
         return {"status": "ok", "text": clean_text}
     except Exception as exc:
         log.error("tts_test_failed", error=str(exc))

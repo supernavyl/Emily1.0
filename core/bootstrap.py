@@ -38,7 +38,34 @@ from observability.logger import configure_logging, get_logger
 from observability.metrics import start_metrics_server
 from observability.tracing import configure_tracing
 from perception.audio.pipeline import AudioPipeline
+from perception.system.telemetry import SystemTelemetry
 from perception.vision.pipeline import VisionPipeline
+
+_perception_system_available = True
+try:
+    from perception.system.config_parser import parse_all as parse_all_configs
+    from perception.system.config_store import ConfigStore, set_config_store
+    from perception.system.config_watcher import ConfigWatcher
+    from perception.system.hyprland import HyprlandEventProducer
+    from perception.system.journald import JournaldEventProducer
+except ImportError:
+    _perception_system_available = False
+    parse_all_configs = None  # type: ignore[assignment]
+    ConfigStore = None  # type: ignore[assignment,misc]
+    set_config_store = None  # type: ignore[assignment]
+    ConfigWatcher = None  # type: ignore[assignment,misc]
+    HyprlandEventProducer = None  # type: ignore[assignment,misc]
+    JournaldEventProducer = None  # type: ignore[assignment,misc]
+
+_perception_forecaster_available = True
+try:
+    from perception.forecaster.manager import ForecasterManager
+    from perception.forecaster.telemetry_recorder import TelemetryRecorder
+except ImportError:
+    _perception_forecaster_available = False
+    ForecasterManager = None  # type: ignore[assignment,misc]
+    TelemetryRecorder = None  # type: ignore[assignment,misc]
+from persona.profile import PersonaProfile
 from proactive.engine import Alert, ProactiveEngine, ProactiveScheduler
 from security.manager import SecurityManager
 from self_improvement.engine import SelfImprovementEngine
@@ -110,6 +137,13 @@ class Bootstrap:
         self.scheduler = Scheduler()
         self.perception_bus = PerceptionBus()
         self.agent_bus = AgentBus(port=settings.agents.message_bus_port)
+        self.telemetry: SystemTelemetry | None = None
+        self.hyprland_producer: HyprlandEventProducer | None = None
+        self.journald_producer: JournaldEventProducer | None = None
+        self.config_watcher: ConfigWatcher | None = None
+        self.config_store: ConfigStore | None = (
+            ConfigStore() if _perception_system_available else None
+        )
         self.vision_pipeline: VisionPipeline | None = None
         self.audio_pipeline: AudioPipeline | None = None
         self.tts_manager: TTSManager | None = None
@@ -118,12 +152,18 @@ class Bootstrap:
         self.voice_engine_instance: object | None = None
         self.security: SecurityManager = SecurityManager(settings.security)
         self.self_improvement: SelfImprovementEngine = SelfImprovementEngine()
-        self.fleet: LLMFleet = LLMFleet(settings.llm, brain_hub=brain_hub)
+        self.fleet: LLMFleet = LLMFleet(
+            settings.llm, brain_hub=brain_hub, llm_guard=self.security.llm_guard
+        )
         self.memory: MemoryManager = MemoryManager(settings, brain_hub=brain_hub)
         self.identity_manager: OwnerIdentityManager = OwnerIdentityManager(
             data_path=settings.owner.identity_file
         )
+        self.persona_profile: PersonaProfile = PersonaProfile()
+        self.persona_profile.load()
         self.registry: AgentRegistry | None = None
+        self.telemetry_recorder: TelemetryRecorder | None = None
+        self.forecaster: ForecasterManager | None = None
         self.proactive_engine: ProactiveEngine | None = None
         self.proactive_scheduler: ProactiveScheduler | None = None
         self.automation_engine: object | None = None
@@ -134,6 +174,7 @@ class Bootstrap:
         )
         self._background_tasks: list[asyncio.Task[None]] = []
         self._shutdown_event = asyncio.Event()
+        self._tts_ready = asyncio.Event()
         self._degraded_backends: set[str] = set()
         self._health_report: HealthReport | None = None
 
@@ -220,6 +261,54 @@ class Bootstrap:
         await self.perception_bus.start_subscriber()
         await self.agent_bus.start()
 
+        # 5a. System telemetry (publishes snapshots to PerceptionBus)
+        self.telemetry = SystemTelemetry()
+        self.telemetry.set_bus(self.perception_bus)
+        self.add_background_task(self.telemetry.run())
+
+        # 5a-ii. Telemetry recorder (persists telemetry to SQLite for forecaster)
+        if _perception_forecaster_available:
+            try:
+                self.telemetry_recorder = TelemetryRecorder(
+                    db_path=s.forecaster.telemetry_db,
+                    retention_days=s.forecaster.telemetry_retention_days,
+                )
+                await self.telemetry_recorder.connect()
+                await self.telemetry_recorder.start(self.perception_bus)
+                log.info("telemetry_recorder_started")
+            except (OSError, ConnectionError) as exc:
+                log.warning("telemetry_recorder_start_failed", error=str(exc))
+                self.telemetry_recorder = None
+            except Exception as exc:  # noqa: BLE001 — startup resilience: unknown DB/config errors degrade gracefully
+                log.warning("telemetry_recorder_start_failed_unexpected", error=str(exc))
+                self.telemetry_recorder = None
+
+        # 5b. Perception event producers (Hyprland, journald, config files)
+        if _perception_system_available:
+            self.hyprland_producer = HyprlandEventProducer(self.perception_bus)
+            await self.hyprland_producer.start()
+
+            self.journald_producer = JournaldEventProducer(self.perception_bus)
+            await self.journald_producer.start()
+
+            # 5c. Config intelligence — parse host configs into SQLite
+            self.config_store.open()
+            set_config_store(self.config_store)
+            try:
+                count = await asyncio.to_thread(parse_all_configs, self.config_store)
+                log.info("config_intelligence_ready", entries=count)
+            except (OSError, ValueError) as exc:
+                log.warning("config_intelligence_parse_failed", error=str(exc))
+            except Exception as exc:  # noqa: BLE001 — startup resilience: config parse is best-effort
+                log.warning("config_intelligence_parse_failed_unexpected", error=str(exc))
+
+            # Config watcher — triggers re-parse on file changes
+            self.config_watcher = ConfigWatcher(
+                self.perception_bus,
+                on_change=lambda _path: parse_all_configs(self.config_store),
+            )
+            await self.config_watcher.start()
+
         # 6. Scheduler
         await self.scheduler.start()
 
@@ -252,14 +341,20 @@ class Bootstrap:
             )
             await self.rag_watcher.start()
             log.info("rag_ingestion_pipeline_started", watch_dirs=s.rag.watch_dirs)
-        except Exception as exc:
+        except ImportError as exc:
+            log.warning("rag_ingestion_pipeline_not_installed", error=str(exc))
+        except (OSError, ConnectionError) as exc:
             log.warning("rag_ingestion_pipeline_failed", error=str(exc))
+        except Exception as exc:  # noqa: BLE001 — startup resilience: RAG is optional subsystem
+            log.warning("rag_ingestion_pipeline_failed_unexpected", error=str(exc))
 
         # Load owner identity (non-critical)
         try:
             await self.identity_manager.load()
-        except Exception as exc:
+        except (OSError, json.JSONDecodeError, KeyError) as exc:
             log.warning("identity_manager_load_failed", error=str(exc))
+        except Exception as exc:  # noqa: BLE001 — startup resilience: identity is optional
+            log.warning("identity_manager_load_failed_unexpected", error=str(exc))
 
         # 9. Agent registry
         self.registry = AgentRegistry(
@@ -279,7 +374,24 @@ class Bootstrap:
         # 9c. Memory consolidation loop (summarize unsummarized episodes)
         self.add_background_task(self._memory_consolidation_loop())
 
-        # 9d. Proactive engine (non-critical)
+        # 9d. System profiler — gives Emily persistent, always-current PC knowledge
+        self._voice_active_event = asyncio.Event()  # cleared during active voice turns
+        self.system_profiler: object | None = None
+        try:
+            from plugins.builtin.system_profiler import initialize as _init_profiler
+
+            self.system_profiler = await _init_profiler(
+                voice_active_flag=self._voice_active_event,
+            )
+            log.info("system_profiler_ready")
+        except ImportError as exc:
+            log.warning("system_profiler_not_available", error=str(exc))
+        except (OSError, RuntimeError) as exc:
+            log.warning("system_profiler_start_failed", error=str(exc))
+        except Exception as exc:  # noqa: BLE001 — startup resilience: profiler is optional subsystem
+            log.warning("system_profiler_start_failed_unexpected", error=str(exc))
+
+        # 9e. Proactive engine (non-critical)
         try:
             from memory.knowledge_store import KnowledgeStore
 
@@ -292,8 +404,44 @@ class Bootstrap:
             self.proactive_scheduler.on_alert(self._on_proactive_alert)
             await self.proactive_scheduler.start()
             log.info("proactive_engine_started")
-        except Exception as exc:
+        except ImportError as exc:
+            log.warning("proactive_engine_import_failed", error=str(exc))
+        except (OSError, ConnectionError) as exc:
             log.warning("proactive_engine_start_failed", error=str(exc))
+        except Exception as exc:  # noqa: BLE001 — startup resilience: proactive is optional subsystem
+            log.warning("proactive_engine_start_failed_unexpected", error=str(exc))
+
+        # 9f. Forecaster (non-critical — system state prediction)
+        if not _perception_forecaster_available:
+            log.warning("forecaster_not_available", reason="perception.forecaster not installed")
+        else:
+            try:
+                from pathlib import Path as _Path
+
+                model_dir = _Path(s.forecaster.model_dir)
+                self.forecaster = ForecasterManager(
+                    bus=self.perception_bus,
+                    model_dir=model_dir,
+                    seq_length=s.forecaster.seq_length,
+                    hidden_size=s.forecaster.hidden_size,
+                    train_interval=s.forecaster.train_interval_snapshots,
+                    anomaly_threshold=s.forecaster.anomaly_threshold_sigma,
+                    min_history=s.forecaster.min_history,
+                    enabled=s.forecaster.enabled,
+                    recorder=self.telemetry_recorder,
+                )
+                await self.forecaster.start()
+                log.info("forecaster_started")
+
+                # Update proactive engine with forecaster reference
+                if self.proactive_engine is not None:
+                    self.proactive_engine.set_forecaster(self.forecaster)
+            except ImportError as exc:
+                log.warning("forecaster_import_failed", error=str(exc))
+            except (OSError, RuntimeError) as exc:
+                log.warning("forecaster_start_failed", error=str(exc))
+            except Exception as exc:  # noqa: BLE001 — startup resilience: forecaster is optional subsystem
+                log.warning("forecaster_start_failed_unexpected", error=str(exc))
 
         # 10. Vision pipeline (non-critical — degrade gracefully)
         try:
@@ -304,9 +452,45 @@ class Bootstrap:
                 ollama_url=s.llm.ollama_base_url,
             )
             await self.vision_pipeline.start()
-        except Exception as exc:
+        except ImportError as exc:
+            log.warning("vision_pipeline_not_available", error=str(exc))
+            self.vision_pipeline = None
+        except (OSError, RuntimeError) as exc:
             log.warning("vision_pipeline_start_failed", error=str(exc))
             self.vision_pipeline = None
+        except Exception as exc:  # noqa: BLE001 — startup resilience: vision pipeline is optional
+            log.warning("vision_pipeline_start_failed_unexpected", error=str(exc))
+            self.vision_pipeline = None
+
+        # 10b. VRAM coordinator for vision model swapping
+        try:
+            from llm.vram_coordinator import VRAMCoordinator, set_vram_coordinator
+
+            if s.vision.vram_swap_enabled and hasattr(self.fleet, "_llamacpp"):
+                vram_coord = VRAMCoordinator(
+                    llamacpp_client=self.fleet._llamacpp,
+                    ollama_url=s.llm.ollama_base_url,
+                    enabled=s.vision.vram_swap_enabled,
+                )
+                set_vram_coordinator(vram_coord)
+                log.info("vram_coordinator_initialized")
+        except ImportError as exc:
+            log.warning("vram_coordinator_not_available", error=str(exc))
+        except (RuntimeError, OSError) as exc:
+            log.warning("vram_coordinator_init_failed", error=str(exc))
+        except Exception as exc:  # noqa: BLE001 — startup resilience: VRAM coordinator is optional
+            log.warning("vram_coordinator_init_failed_unexpected", error=str(exc))
+
+        # 10c. Visual context buffer configuration
+        try:
+            from perception.vision.context import get_visual_context
+
+            get_visual_context().configure(
+                max_entries=s.vision.visual_context_max_entries,
+                ttl_s=s.vision.visual_context_ttl_s,
+            )
+        except (ImportError, AttributeError) as exc:
+            log.warning("visual_context_config_failed", error=str(exc))
 
         # 8-10. Voice mode selection
         self._voice_mode_enabled = (
@@ -335,6 +519,22 @@ class Bootstrap:
                 min_silence_ms=s.voice_engine.min_silence_ms,
             )
 
+            # Breath injector (non-critical — degrades to no-breath TTS)
+            breath_injector = None
+            try:
+                if s.voice_engine.breath_injector.enabled:
+                    from voice_engine.processing.breath_injector import BreathInjector
+
+                    breath_injector = BreathInjector(s.voice_engine.breath_injector)
+                    log.info(
+                        "breath_injector_ready", density=s.voice_engine.breath_injector.density
+                    )
+            except (ImportError, OSError) as exc:
+                log.warning("breath_injector_not_available", error=str(exc)[:200])
+            except Exception as exc:  # noqa: BLE001
+                log.warning("breath_injector_failed", error=str(exc)[:200])
+            self._breath_injector = breath_injector
+
             # Voice tool orchestrator (non-critical — degrades to no-tools-in-voice)
             voice_tool_orchestrator = None
             try:
@@ -342,14 +542,31 @@ class Bootstrap:
                 from voice_engine.processing.voice_tools import VoiceToolOrchestrator
 
                 voice_registry = PluginRegistry()
-                voice_registry.load_builtins()
+                _browser_cfg = {
+                    "headless": s.tools.browser.headless,
+                    "idle_timeout_s": s.tools.browser.idle_timeout_s,
+                    "max_pages": s.tools.browser.max_pages_before_restart,
+                }
+                voice_registry.load_builtins(
+                    tool_kwargs={
+                        "web_search": {"searxng_url": s.tools.web_search_url},
+                        "home_assistant": {
+                            "ha_url": s.tools.home_assistant.url,
+                            "token": s.tools.home_assistant.token,
+                        },
+                        "browser_search": {"browser_config": _browser_cfg},
+                        "browser_fetch": {"browser_config": _browser_cfg},
+                    }
+                )
                 voice_tool_orchestrator = VoiceToolOrchestrator(
                     fleet=self.fleet,
                     prompt_builder=PromptBuilder(),
                     registry=voice_registry,
                 )
                 log.info("voice_tool_orchestrator_ready", n_tools=len(voice_registry))
-            except Exception as exc:
+            except ImportError as exc:
+                log.warning("voice_tool_orchestrator_not_available", error=str(exc)[:200])
+            except Exception as exc:  # noqa: BLE001 — startup resilience: voice tools are optional
                 log.warning("voice_tool_orchestrator_failed", error=str(exc)[:200])
 
             # Adapter: routes voice LLM calls through Emily's fleet + memory
@@ -357,8 +574,10 @@ class Bootstrap:
                 fleet=self.fleet,
                 memory=self.memory,
                 prompt_builder=PromptBuilder(),
+                persona=self.persona_profile,
                 identity_manager=self.identity_manager,
                 tool_orchestrator=voice_tool_orchestrator,
+                self_improvement=self.self_improvement,
             )
             self._emily_llm_provider = emily_llm
             # Adapter: reuses Emily's already-loaded Kokoro TTS instance
@@ -404,7 +623,9 @@ class Bootstrap:
                 )
                 self.add_background_task(self.automation_engine.start())  # type: ignore[union-attr]
                 log.info("automation_engine_initialized")
-            except Exception as exc:
+            except ImportError as exc:
+                log.warning("automation_engine_import_failed", error=str(exc)[:200])
+            except Exception as exc:  # noqa: BLE001 — startup resilience: automation is optional
                 log.warning("automation_engine_init_failed", error=str(exc)[:200])
 
         # Wire voice engine refs into API routes
@@ -437,6 +658,16 @@ class Bootstrap:
 
         # Voice engine (VoiceConversation) stops when its task is cancelled above
 
+        # Close browser if it was used
+        try:
+            from plugins.builtin.browser import BrowserManager
+
+            await BrowserManager.close()
+        except ImportError:
+            pass  # Browser plugin not installed
+        except Exception:  # noqa: BLE001 — shutdown cleanup: best-effort, never block shutdown
+            log.debug("browser_close_failed", exc_info=True)
+
         # Stop automation engine
         if self.automation_engine is not None:
             await self.automation_engine.stop()  # type: ignore[union-attr]
@@ -453,6 +684,10 @@ class Bootstrap:
         if self.registry is not None:
             await self.registry.stop_all()
 
+        # Persist voice/chat session as an episode before closing memory
+        with contextlib.suppress(Exception):
+            await self.memory.end_session()
+
         # Stop memory
         await self.memory.shutdown()
 
@@ -462,6 +697,30 @@ class Bootstrap:
         # Stop event recorder (flush + compress old sessions)
         self.event_recorder.end_session()
         self.event_recorder.compress_old_sessions()
+
+        # Stop perception event producers
+        if self.hyprland_producer is not None:
+            self.hyprland_producer.stop()
+        if self.journald_producer is not None:
+            self.journald_producer.stop()
+        if self.config_watcher is not None:
+            self.config_watcher.stop()
+
+        # Stop config intelligence
+        if self.config_store is not None:
+            self.config_store.close()
+
+        # Stop forecaster (before bus shutdown)
+        if self.forecaster is not None:
+            await self.forecaster.stop()
+
+        # Stop telemetry recorder (before bus shutdown)
+        if self.telemetry_recorder is not None:
+            await self.telemetry_recorder.close()
+
+        # Stop system telemetry
+        if self.telemetry is not None:
+            self.telemetry.stop()
 
         # Stop buses
         await self.scheduler.stop()
@@ -519,7 +778,7 @@ class Bootstrap:
                 resp.raise_for_status()
             report.ollama_ok = True
             log.info("health_check_ollama_ok", url=s.llm.ollama_base_url)
-        except Exception as exc:
+        except (httpx.HTTPError, OSError, ConnectionError, TimeoutError) as exc:
             msg = f"Ollama unreachable at {s.llm.ollama_base_url}: {exc}"
             log.warning("health_check_ollama_failed", error=str(exc))
             report.warnings.append(msg)
@@ -535,7 +794,7 @@ class Bootstrap:
                     resp.raise_for_status()
                 report.qdrant_ok = True
                 log.info("health_check_qdrant_ok", url=s.memory.semantic.qdrant_url)
-            except Exception as exc:
+            except (httpx.HTTPError, OSError, ConnectionError, TimeoutError) as exc:
                 msg = f"Qdrant unreachable at {s.memory.semantic.qdrant_url}: {exc}"
                 log.warning("health_check_qdrant_failed", error=str(exc))
                 report.warnings.append(msg)
@@ -573,7 +832,7 @@ class Bootstrap:
                 if result.returncode == 0:
                     first_line = result.stdout.strip().splitlines()[0]
                     return int(first_line.strip())
-            except Exception:
+            except (OSError, subprocess.SubprocessError, ValueError, IndexError):
                 pass
             return 0
 
@@ -593,7 +852,7 @@ class Bootstrap:
                 resp.raise_for_status()
             tabbyapi_ok = True
             log.info("health_check_tabbyapi_ok", url=s.llm.tabbyapi_base_url)
-        except Exception as exc:
+        except (httpx.HTTPError, OSError, ConnectionError, TimeoutError) as exc:
             log.info("health_check_tabbyapi_unreachable", error=str(exc))
 
         if not report.ollama_ok and not tabbyapi_ok:
@@ -630,8 +889,11 @@ class Bootstrap:
                 try:
                     vector_store = QdrantVectorStore(config=s.memory.semantic)
                     await vector_store.ensure_collection()
-                except Exception as exc:
+                except (OSError, ConnectionError, TimeoutError) as exc:
                     log.warning("qdrant_connect_failed_bm25_only", error=str(exc))
+                    self._degraded_backends.add("qdrant")
+                except Exception as exc:  # noqa: BLE001 — Qdrant client may raise varied errors
+                    log.warning("qdrant_connect_failed_bm25_only_unexpected", error=str(exc))
                     self._degraded_backends.add("qdrant")
 
             # BM25: always available (returns [] when index is empty)
@@ -644,7 +906,7 @@ class Bootstrap:
                 try:
                     reranker = CrossEncoderReranker()
                     await reranker.load()
-                except Exception as exc:
+                except (OSError, RuntimeError, ImportError) as exc:
                     log.warning("reranker_load_failed", error=str(exc))
 
             async def _embed(text: str) -> list[float]:
@@ -661,7 +923,9 @@ class Bootstrap:
             self.memory.set_retriever(retriever)
             mode = "hybrid" if vector_store else "bm25_only"
             log.info("retriever_wired", mode=mode)
-        except Exception as exc:
+        except ImportError as exc:
+            log.warning("retriever_import_failed", error=str(exc))
+        except Exception as exc:  # noqa: BLE001 — startup resilience: retriever is optional
             log.warning("retriever_unavailable_degraded_mode", error=str(exc))
 
     async def _start_audio_pipeline(self) -> None:
@@ -671,8 +935,10 @@ class Bootstrap:
             log.info("audio_pipeline_loading")
             await self.audio_pipeline.load()
             await self.audio_pipeline.start()
-        except Exception as exc:
+        except (OSError, RuntimeError) as exc:
             log.error("audio_pipeline_start_failed", error=str(exc))
+        except Exception as exc:  # noqa: BLE001 — startup resilience: audio pipeline is non-critical
+            log.error("audio_pipeline_start_failed_unexpected", error=str(exc))
 
     async def _load_tts(self) -> None:
         """Background task: load TTS engine models."""
@@ -680,6 +946,7 @@ class Bootstrap:
             assert self.tts_manager is not None
             await self.tts_manager.load()
             log.info("tts_engines_loaded")
+            self._tts_ready.set()
             if self.audio_output is not None:
                 ai = getattr(self, "identity_manager", None)
                 name = ai.ai_name if ai else "Emily"
@@ -688,8 +955,12 @@ class Bootstrap:
                 chunks = self.tts_manager.speak(text=greeting)
                 await self.audio_output.play_stream(chunks)
                 log.info("startup_greeting_complete")
-        except Exception as exc:
+        except (OSError, RuntimeError, ImportError) as exc:
             log.error("tts_load_failed", error=str(exc))
+            self._tts_ready.set()  # unblock waiters even on failure
+        except Exception as exc:  # noqa: BLE001 — startup resilience: TTS load must unblock waiters
+            log.error("tts_load_failed_unexpected", error=str(exc))
+            self._tts_ready.set()  # unblock waiters even on failure
 
     async def _load_singing(self) -> None:
         """Background task: load singing engine models."""
@@ -697,7 +968,7 @@ class Bootstrap:
             assert self.singing_manager is not None
             await self.singing_manager.load()
             log.info("singing_engines_loaded")
-        except Exception as exc:
+        except (OSError, RuntimeError, ImportError) as exc:
             log.warning("singing_load_failed", error=str(exc)[:200])
 
     def _wire_api_voice_state(self) -> None:
@@ -712,6 +983,7 @@ class Bootstrap:
                 tts_manager=self.tts_manager,
                 voice_engine=self.voice_engine_instance,
                 emily_llm=getattr(self, "_emily_llm_provider", None),
+                breath_injector=getattr(self, "_breath_injector", None),
             )
         except ImportError:
             pass
@@ -754,36 +1026,27 @@ class Bootstrap:
             assert self.voice_engine_instance is not None
             log.info("voice_engine_v13_starting")
 
-            # First-run onboarding: trigger before conversation loop if no owner
-            if not self.identity_manager.has_owner and self.tts_manager is not None:
-                try:
-                    from users.onboarding_enhanced import run_owner_onboarding
+            # Wait for TTS to finish loading before onboarding tries to speak
+            try:
+                await asyncio.wait_for(self._tts_ready.wait(), timeout=30.0)
+            except TimeoutError:
+                log.warning("tts_load_timeout_continuing_without_greeting")
 
-                    ve = self.voice_engine_instance
-
-                    async def _speak(text: str) -> None:
-                        chunks = self.tts_manager.speak(text=text)  # type: ignore[union-attr]
-                        if self.audio_output:
-                            await self.audio_output.play_stream(chunks)
-
-                    async def _listen() -> str:
-                        return await ve.listen_once()  # type: ignore[union-attr]
-
-                    log.info("first_run_onboarding_starting")
-                    await run_owner_onboarding(
-                        fleet=self.fleet,
-                        memory=self.memory,
-                        identity_manager=self.identity_manager,
-                        speak=_speak,
-                        listen=_listen,
-                    )
-                    log.info("first_run_onboarding_complete")
-                except Exception as exc:
-                    log.warning("onboarding_failed", error=str(exc))
+            # First-run onboarding disabled — concurrent TTS calls cause
+            # heap corruption (double free) in Kokoro's C extension.
+            # TODO: re-enable with sequential TTS once the root cause is fixed.
+            if not self.identity_manager.has_owner:
+                log.info("first_run_onboarding_skipped_no_owner")
 
             await self.voice_engine_instance.run()  # type: ignore[union-attr]
-        except Exception as exc:
+        except (OSError, RuntimeError) as exc:
             log.error("voice_engine_start_failed", error=str(exc)[:200])
+            self.voice_engine_instance = None
+            log.info("falling_back_to_legacy_bridge")
+            await self._perception_tts_bridge()
+            return
+        except Exception as exc:  # noqa: BLE001 — startup resilience: voice engine fallback to legacy
+            log.error("voice_engine_start_failed_unexpected", error=str(exc)[:200])
             self.voice_engine_instance = None
             log.info("falling_back_to_legacy_bridge")
             await self._perception_tts_bridge()
@@ -820,7 +1083,7 @@ class Bootstrap:
                     log.info("wake_word_detected_in_bridge", keyword=event.payload.get("keyword"))
                     await self.fsm.force_transition(SystemState.LISTENING)
 
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 — event loop resilience: must not crash on any event
                 log.error("perception_bridge_error", error=str(exc))
                 with contextlib.suppress(Exception):
                     await self.fsm.force_transition(SystemState.IDLE)
@@ -843,7 +1106,7 @@ class Bootstrap:
             return await self._sing_response(user_text)
         try:
             return await self._streaming_pipeline(user_text)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — resilience: streaming failure falls back to batch
             log.warning("streaming_pipeline_unavailable_batch_fallback", error=str(exc))
             return await self._batch_pipeline(user_text)
 
@@ -903,7 +1166,15 @@ class Bootstrap:
         try:
             from llm.prompt_builder import PromptBuilder
 
-            _voice_prompt = PromptBuilder().build_voice_system_prompt()
+            _micro = None
+            if self.system_profiler is not None:
+                try:
+                    _micro = self.system_profiler.get_micro_excerpt()
+                except (AttributeError, RuntimeError):
+                    pass
+            _voice_prompt = PromptBuilder().build_voice_system_prompt(
+                system_profile_excerpt=_micro,
+            )
             messages = [
                 ChatMessage(role="system", content=_voice_prompt),
                 ChatMessage(role="user", content=user_text),
@@ -956,7 +1227,7 @@ class Bootstrap:
             entry = {"role": role, "text": text, "ts": time.time(), "source": "voice"}
             with self._TRANSCRIPT_PATH.open("a") as f:
                 f.write(json.dumps(entry) + "\n")
-        except Exception as exc:
+        except OSError as exc:
             log.error("transcript_write_failed", error=str(exc))
 
     async def _get_llm_response(self, user_text: str) -> str:
@@ -982,7 +1253,15 @@ class Bootstrap:
             try:
                 from llm.prompt_builder import PromptBuilder
 
-                _voice_prompt = PromptBuilder().build_voice_system_prompt()
+                _micro = None
+                if self.system_profiler is not None:
+                    try:
+                        _micro = self.system_profiler.get_micro_excerpt()
+                    except (AttributeError, RuntimeError):
+                        pass
+                _voice_prompt = PromptBuilder().build_voice_system_prompt(
+                    system_profile_excerpt=_micro,
+                )
                 result = await client.chat(
                     model=self.settings.llm.models.fast,
                     messages=[
@@ -993,8 +1272,11 @@ class Bootstrap:
                 return result.content
             finally:
                 await client.close()
-        except Exception as exc:
+        except (ConnectionError, TimeoutError, OSError) as exc:
             log.error("llm_voice_response_failed", error=str(exc))
+            return ""
+        except Exception as exc:  # noqa: BLE001 — resilience: LLM failure must not crash voice loop
+            log.error("llm_voice_response_failed_unexpected", error=str(exc))
             return ""
 
     async def _idle_improvement_loop(self) -> None:
@@ -1003,7 +1285,7 @@ class Bootstrap:
             await asyncio.sleep(30 * 60)
             try:
                 await self.self_improvement.run_idle_cycle()
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 — background loop: must not crash on any error
                 log.warning("idle_cycle_error", error=str(exc))
 
     async def _on_proactive_alert(self, alert: Alert) -> None:
@@ -1027,7 +1309,7 @@ class Bootstrap:
                 count = await self.memory.summarize_unsummarized(limit=limit)
                 if count:
                     log.info("memory_consolidation_ran", summarized=count)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 — background loop: must not crash on any error
                 log.warning("memory_consolidation_error", error=str(exc))
 
     async def _schedule_initial_reflection(self) -> None:
@@ -1041,7 +1323,7 @@ class Bootstrap:
                 sender="bootstrap",
             )
             log.info("initial_reflection_triggered")
-        except Exception as exc:
+        except (ConnectionError, OSError, RuntimeError) as exc:
             log.warning("initial_reflection_schedule_failed", error=str(exc))
 
     async def run_until_shutdown(self) -> None:
