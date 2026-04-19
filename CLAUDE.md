@@ -100,8 +100,9 @@ Global state machine: `IDLE → LISTENING → PROCESSING → RESPONDING → TOOL
 
 | Tier | Current Model | Backend | VRAM | Use |
 |------|--------------|---------|------|-----|
-| `nano` / `voice_fast` | Qwen3.5-abliterated 9B | Ollama | ~8 GB | Routing, classification, voice fast-path (pinned, 30m keep_alive) |
-| `fast` | JOSIEFIED-Qwen3 14B | Ollama | ~11 GB | Standard conversation (co-resident with 9B on 4090) |
+| `nano` | Qwen3.5-abliterated 9B | Ollama | ~8 GB | Routing, classification, tool intent |
+| `voice_fast` | **Qwen3-30B-A3B-abliterated (MoE Q4_K_M)** | Ollama | ~18 GB | Voice LLM (2026-04-19) — 3B active, ~120 tok/s, pinned 30m keep_alive on 4090 |
+| `fast` | JOSIEFIED-Qwen3 14B | Ollama | ~11 GB | Text chat (swap, evicts voice LLM on use — ~2s cold start) |
 | `smart` | Qwen3.5-abliterated 27B | Ollama | ~18 GB | Complex reasoning, text chat (swap, splits both GPUs) |
 | `reasoning` / `deep_think` | DeepSeek-R1-abliterated 32B | Ollama | ~20 GB | Deep reasoning with thinking chains (swap, text only) |
 | `code` | Qwen3-Coder-abliterated 30B | Ollama | ~19 GB | Dedicated coder with FIM, 256K ctx (swap, text only) |
@@ -110,7 +111,7 @@ Global state machine: `IDLE → LISTENING → PROCESSING → RESPONDING → TOOL
 | `cloud_best` | Claude Opus 4.6 | Anthropic API | 0 | Deep reasoning, reflection, planning |
 | `cloud_fast` | Claude Sonnet 4.6 | Anthropic API | 0 | Fast cloud with extended thinking |
 
-**VRAM layout**: Dual-GPU, 36 GB total. Voice-resident: 9B (8GB) + 14B (11GB) + STT (1.5GB) = 20.5GB on 4090, 3.5GB headroom. Embedding: qwen3-embedding 8B Q4 (~5GB) always resident on 3060. Heavy models (27B/30B/32B) swap in for text-only tasks — evict 9B+14B, 15-30s cold start. Kokoro TTS runs on CPU. Do NOT pin Ollama to a single GPU — the 27B exceeds 24GB with KV cache.
+**VRAM layout** (2026-04-19): Dual-GPU, 36 GB total. **4090**: voice LLM Qwen3-30B-A3B-abliterated MoE (~18GB) resident — 14B `fast` tier swaps in on text-chat demand, ~2s cold start. **3060**: qwen3-embedding 8B (~5GB) always resident + Orpheus-3B Q4 (~3.5GB) + Faster-Whisper int8 (~2GB) = ~10.5GB, ~1.5GB headroom. Heavy tiers (27B/30B-code/32B/vision-31B) swap and evict the voice LLM. Do NOT pin Ollama to a single GPU — heavy tiers span both GPUs with KV cache.
 
 ### Four Backends
 
@@ -254,7 +255,7 @@ Dangerous actions blocked from voice: `process_manager kill/terminate/stop`.
 
 ### STT/TTS Providers
 
-STT: `FasterWhisperSTT` (CTranslate2, CUDA float16, distil-large-v3, ~150ms on GPU). TTS: Kokoro (primary, af_nicole voice), `OrpheusEngine` (3B GGUF + SNAC decoder, emotional tags — available but not primary), Qwen3-TTS (1.7B, 10 languages). Sample rate: 24000 Hz across all TTS providers.
+STT: `FasterWhisperSTT` (CTranslate2, CUDA:1 int8, distil-large-v3, ~180ms on 3060). TTS: **Orpheus-3B via llama-cpp-python + SNAC** on CUDA:1 (primary as of 2026-04-19 — `tara` voice default, emotional tags `[laugh]` `[sigh]`, sample rate 24 kHz), Kokoro af_nicole on CPU (fallback via `EMILY_VOICE_TTS=kokoro`). Sample rate: 24000 Hz across all TTS providers.
 
 ---
 
@@ -476,7 +477,7 @@ Emily runs bare-metal for GPU access. Docker Compose manages supporting services
 12. **Never commit** `.env`, secrets, model weights, or `data/`
 13. **Self-improvement prompt changes** → archive old version in `prompts/archive/` before overwriting
 14. **Credential secrets NEVER in** LLM context, TTS output, or query results — metadata only
-15. **VRAM budget**: 36 GB total (4090 24GB + 3060 12GB). Voice-resident: 9B+14B+STT = 20.5GB on 4090. Embedding: qwen3-embedding 8B ~5GB on 3060. Heavy models (27B/30B/32B) swap in and evict voice models. Kokoro TTS on CPU. Check `nvidia-smi` before adding GPU-resident models. Do NOT set `CUDA_VISIBLE_DEVICES=0` on Ollama — the 27B needs both GPUs.
+15. **VRAM budget** (updated 2026-04-19): 36 GB total (4090 24GB + 3060 12GB). **4090**: voice LLM Qwen3-30B-A3B-abliterated Q4_K_M MoE ~18 GB resident — 14B `fast` tier cannot co-reside, swaps in/out on text-chat demand (~2 s cold start). **3060**: qwen3-embedding 8B ~5 GB always resident + Orpheus-3B Q4 ~3.5 GB + Faster-Whisper int8 ~2 GB = ~10.5 GB (~1.5 GB headroom). Heavy tiers (27B/30B-code/32B-reasoning/vision-31B) evict the voice LLM on use. Do NOT set `CUDA_VISIBLE_DEVICES=0` on Ollama — heavy tiers still need both GPUs. Kokoro stays on CPU (fallback only). Rollback: `EMILY_VOICE_TTS=kokoro`.
 
 ### Latency Budgets
 
