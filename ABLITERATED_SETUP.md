@@ -15,13 +15,27 @@ Abliterated models have safety filters removed, allowing:
 
 | Tier | Model | Backend | VRAM | Use |
 |------|-------|---------|------|-----|
-| **nano** | Qwen3-4B abliterated | TabbyAPI | ~3 GB | Routing, classification (fast) |
-| **voice_fast** | Qwen3-8B abliterated | TabbyAPI | ~5 GB | Voice responses (<1s latency) |
-| **fast** | Qwen2.5-14B abliterated | TabbyAPI | ~8.5 GB | Standard conversation |
-| **smart** | QwQ-32B abliterated | TabbyAPI | ~17 GB | Complex reasoning & analysis |
-| **reasoning** | QwQ-32B abliterated | TabbyAPI | ~17 GB | Deep multi-step reasoning with thinking |
-| **vision** | MiniCPM-V 2.6 | Ollama | ~8 GB | Screen + webcam (not abliterated) |
-| **embedding** | BGE-M3 | Ollama | ~2 GB | All embeddings (not abliterated) |
+| **nano** | Qwen3-4B abliterated | Ollama | ~3 GB | Routing, classification (fast) |
+| **voice_fast** | Qwen3-30B-A3B abliterated (MoE) | Ollama | ~18 GB | Voice LLM — ~120 tok/s (3B active), on 4090 (2026-04-19) |
+| **fast** | JOSIEFIED-Qwen3-14B | Ollama | ~11 GB | Text chat (swaps in/out — cannot co-reside with voice_fast MoE) |
+| **smart** | Qwen3.5-27B abliterated | Ollama | ~17 GB | Complex reasoning |
+| **reasoning** | DeepSeek-R1-32B abliterated | Ollama | ~19 GB | Deep reasoning with thinking |
+| **code** | Qwen3-Coder-30B abliterated | Ollama | ~18 GB | Dedicated coder, FIM, 256K ctx |
+| **vision** | Gemma4-31B uncensored-heretic | Ollama | ~22 GB | Screen + webcam |
+| **embedding** | qwen3-embedding-8B | Ollama | ~5 GB | All embeddings — always resident on 3060 |
+
+## Voice Output — Orpheus TTS (primary, 2026-04-19)
+
+Emily's primary TTS is **Orpheus-3B-0.1-ft** via `llama-cpp-python` + SNAC
+in-process on CUDA:1 (RTX 3060) alongside the embedding model. Kokoro
+remains as fallback.
+
+- Model: `models/orpheus-3b-0.1-ft-q4_k_m.gguf` (~2.4 GB on disk, ~3.5 GB VRAM)
+- Voices: `tara` (default), `leah`, `jess`, `leo`, `dan`, `mia`, `zac`, `zoe`
+- Emotional prosody via tags: `[laugh]`, `[sigh]`, `[gasp]`, `[chuckle]`
+- Sample rate: 24 kHz
+- SNAC codec via `snac 1.2.1` on CUDA:1
+- Rollback: `EMILY_VOICE_TTS=kokoro` → restart `emily.service`
 
 ## Setup Instructions
 
