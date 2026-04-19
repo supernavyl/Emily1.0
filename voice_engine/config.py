@@ -76,8 +76,8 @@ class VoiceEngineConfig(BaseSettings):
         default=1, description="CUDA device index for Orpheus GGUF (1 = 3060)"
     )
     orpheus_snac_device: str = Field(
-        default="cuda:1",
-        description="Torch device for SNAC decoding ('cuda:1' or 'cpu')",
+        default="cpu",
+        description="Torch device for SNAC decoding — CPU default (cuDNN conv1d backend fails on some setups)",
     )
 
     # ── Audio I/O ─────────────────────────────────

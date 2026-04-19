@@ -193,8 +193,8 @@ tts:
   orpheus:
     model_path: "models/orpheus-3b-0.1-ft-q4_k_m.gguf"
     voice: "tara"        # tara/leah/jess/leo/dan/mia/zac/zoe
-    main_gpu: 1          # CUDA:1 = RTX 3060
-    snac_device: "cuda:1"
+    main_gpu: 1          # CUDA:1 = RTX 3060 (Orpheus LLM part)
+    snac_device: "cpu"   # CPU SNAC decode — CUDA conv1d backend issue, CPU is fast enough for a 50MB model
   chatterbox:
     exaggeration: 0.5
     ref_audio: null  # path to reference audio for voice cloning

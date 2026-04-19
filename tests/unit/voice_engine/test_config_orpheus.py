@@ -26,7 +26,7 @@ def test_default_orpheus_model_path_points_to_shipped_gguf() -> None:
 
     assert cfg.orpheus_model_path.endswith("orpheus-3b-0.1-ft-q4_k_m.gguf")
     assert cfg.orpheus_main_gpu == 1
-    assert cfg.orpheus_snac_device == "cuda:1"
+    assert cfg.orpheus_snac_device == "cpu"
 
 
 def test_stt_defaults_pin_whisper_to_cuda1_int8() -> None:
