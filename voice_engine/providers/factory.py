@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
+
+from observability.logger import get_logger
 
 if TYPE_CHECKING:
     from voice_engine.config import VoiceEngineConfig
     from voice_engine.providers.base import LLMProvider, STTProvider, TTSProvider
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ProviderFactory:
@@ -24,7 +25,12 @@ class ProviderFactory:
         if name == "faster_whisper":
             from voice_engine.providers.stt.faster_whisper import FasterWhisperSTT
 
-            return FasterWhisperSTT(model_size=config.stt_model)
+            return FasterWhisperSTT(
+                model_size=config.stt_model,
+                device=config.stt_device,
+                device_index=config.stt_device_index,
+                compute_type=config.stt_compute_type,
+            )
 
         if name == "openai":
             from voice_engine.providers.stt.openai_stt import OpenAISTT
@@ -93,43 +99,31 @@ class ProviderFactory:
         name = config.tts_provider.lower().strip()
         logger.info("Creating TTS provider: %s (voice=%s)", name, config.tts_voice)
 
-        if name == "kokoro":
+        if name == "orpheus":
+            from voice_engine.providers.tts.orpheus_tts import OrpheusTTS
+
+            try:
+                return OrpheusTTS(
+                    model_path=config.orpheus_model_path,
+                    voice=config.tts_voice,
+                    main_gpu=config.orpheus_main_gpu,
+                    snac_device=config.orpheus_snac_device,
+                )
+            except Exception:
+                logger.exception(
+                    "OrpheusTTS failed to initialize; falling back to %s",
+                    config.tts_fallback,
+                )
+                if config.tts_fallback == "kokoro":
+                    from voice_engine.providers.tts.kokoro_tts import KokoroTTS
+
+                    return KokoroTTS(voice="af_nicole")
+                raise
+
+        if name in ("kokoro", "tiered"):
             from voice_engine.providers.tts.kokoro_tts import KokoroTTS
 
-            return KokoroTTS(voice=config.tts_voice)
+            voice = config.tts_voice if config.tts_voice.startswith("af_") else "af_nicole"
+            return KokoroTTS(voice=voice)
 
-        if name == "chatterbox":
-            from voice_engine.providers.tts.chatterbox_tts import ChatterboxTTS
-
-            return ChatterboxTTS(
-                exaggeration=config.chatterbox_exaggeration,
-                ref_audio_path=config.chatterbox_ref_audio or None,
-            )
-
-        if name == "tiered":
-            from voice_engine.providers.tts.chatterbox_tts import ChatterboxTTS
-            from voice_engine.providers.tts.kokoro_tts import KokoroTTS
-            from voice_engine.providers.tts.tiered_tts import TieredTTS
-
-            fast = KokoroTTS(voice=config.tts_voice)
-            expressive = ChatterboxTTS(
-                exaggeration=config.chatterbox_exaggeration,
-                ref_audio_path=config.chatterbox_ref_audio or None,
-            )
-            return TieredTTS(
-                fast=fast,
-                expressive=expressive,
-                emotion_threshold=config.emotion_threshold,
-            )
-
-        if name == "edge_tts":
-            from voice_engine.providers.tts.edge_tts_provider import EdgeTTSProvider
-
-            return EdgeTTSProvider(voice=config.tts_voice)
-
-        if name == "elevenlabs":
-            from voice_engine.providers.tts.elevenlabs_tts import ElevenLabsTTS
-
-            return ElevenLabsTTS(api_key=config.elevenlabs_api_key, voice=config.tts_voice)
-
-        raise ValueError(f"Unknown TTS provider: {name!r}")
+        raise ValueError(f"Unknown TTS provider: {name!r}. Supported: 'orpheus', 'kokoro'.")
