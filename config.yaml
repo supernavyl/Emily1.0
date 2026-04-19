@@ -13,18 +13,20 @@ llm:
   tabbyapi_base_url: "http://localhost:5000" # TabbyAPI ExLlamaV2 inference server (optional)
   tabbyapi_api_key: "" # set if auth enabled in TabbyAPI config.yml
   models:
-    # ── Dual-GPU config: 27B on 4090 (all tiers), perception on 3060 ─────────────────
-    # Single 27B for all local tiers — no model swapping, ~35 tok/s, ~600ms first token
-    nano: "huihui_ai/qwen3.5-abliterated:27b" # Routing & classification (same model, no swap)
-    voice_fast: "huihui_ai/qwen3.5-abliterated:27b" # Voice responses (~600ms first token)
-    fast: "huihui_ai/qwen3.5-abliterated:27b" # Standard conversation
-    smart: "huihui_ai/qwen3.5-abliterated:27b" # Complex reasoning & text chat
-    reasoning: "huihui_ai/qwen3.5-abliterated:27b" # Deep reasoning with thinking
-    deep_think: "huihui_ai/qwen3.5-abliterated:27b" # Deep Think skill
-    code: "huihui_ai/qwen3.5-abliterated:27b" # Code tasks
-    vision: "huihui_ai/qwen3-vl-abliterated:8b" # Ollama - Qwen3-VL vision-language
-    embedding: "bge-m3" # Ollama - embeddings (not abliterated)
-    cloud_best: "claude-opus-4-6" # Anthropic - deep reasoning, reflection, planning
+    # ── Tiered fleet: 9B voice-resident, 14B co-resident, heavy models swap in ──────
+    # Voice path: 9B (8GB) + 14B (11GB) + STT (1.5GB) = 20.5GB on 4090, 3.5GB headroom
+    # Embedding: qwen3-embedding 8B Q4 (~5GB) on 3060, always resident
+    # Heavy models (27B/30B/32B): swap in for text-only tasks, 15-30s cold start
+    nano: "huihui_ai/qwen3.5-abliterated:9b" # Routing & classification (~8GB, pinned)
+    voice_fast: "huihui_ai/qwen3.5-abliterated:9b" # Voice fast-path (<200ms first token)
+    fast: "goekdenizguelmez/JOSIEFIED-Qwen3:14b" # Standard chat (~11GB, co-resident with 9B)
+    smart: "huihui_ai/qwen3.5-abliterated:27b" # Complex reasoning (~18GB, splits both GPUs)
+    reasoning: "huihui_ai/deepseek-r1-abliterated:32b" # Deep reasoning with thinking chains (~20GB)
+    deep_think: "huihui_ai/deepseek-r1-abliterated:32b" # Deep Think skill (~20GB)
+    code: "huihui_ai/qwen3-coder-abliterated:30b" # Dedicated coder (~19GB, FIM + 256K ctx)
+    vision: "juilpark/gemma-4-31B-it-uncensored-heretic:q4_K_M" # Vision-language SOTA, uncensored (~22GB)
+    embedding: "qwen3-embedding:8b" # MTEB #1 (70.58), flexible dims, ~5GB on 3060
+    cloud_best: "claude-opus-4-7" # Anthropic - deep reasoning, reflection, planning
     cloud_fast: "claude-sonnet-4-6" # Anthropic - fast cloud with thinking
   routing:
     complexity_threshold_fast: 3
@@ -59,9 +61,13 @@ llm:
       max_tokens: 8192
       enable_thinking: true
     reasoning:
-      temperature: 0.6 # Slightly lower for more precise reasoning
-      max_tokens: 16384 # QwQ-32B needs room to think
-      enable_thinking: true # ALWAYS enable thinking for QwQ-32B
+      temperature: 0.6 # DeepSeek-R1 uses <think> tags for chain-of-thought
+      max_tokens: 16384
+      enable_thinking: true # ALWAYS enable thinking for DeepSeek-R1
+    code:
+      temperature: 0.3 # Low temp for deterministic code generation
+      max_tokens: 8192
+      enable_thinking: true # Qwen3-Coder thinking improves code quality
     cloud_best:
       temperature: 1.0 # Anthropic requires temp=1 for extended thinking
       max_tokens: 16384
@@ -99,13 +105,14 @@ llm:
       voice_fast:
         alias_of: "nano"
   tier_backend:
-    nano: "ollama" # Qwen3.5-27B on 4090 — single model, no swap
-    voice_fast: "ollama" # Qwen3.5-27B on 4090
-    fast: "ollama" # Qwen3.5-27B on 4090
-    smart: "ollama" # Qwen3.5-27B on 4090
-    reasoning: "ollama" # Qwen3.5-27B on 4090
-    vision: "ollama" # Qwen3-VL 8B (on-demand, swaps with 27B)
-    embedding: "ollama" # BGE-M3 embeddings
+    nano: "ollama" # Qwen3.5-9B on 4090 (pinned, 30m keep_alive)
+    voice_fast: "ollama" # Qwen3.5-9B on 4090 (same as nano)
+    fast: "ollama" # JOSIEFIED-Qwen3-14B on 4090 (co-resident with 9B)
+    smart: "ollama" # Qwen3.5-27B splits 4090+3060
+    reasoning: "ollama" # DeepSeek-R1-32B (swap in, text-only)
+    code: "ollama" # Qwen3-Coder-30B (swap in, text-only)
+    vision: "ollama" # Gemma4-31B (swap in, on-demand)
+    embedding: "ollama" # qwen3-embedding-8B on 3060 (always resident)
     cloud_best: "anthropic" # Claude Opus 4.6 — agents, reflection, planning
     cloud_fast: "anthropic" # Claude Sonnet 4.6 — fast cloud inference
 
@@ -223,7 +230,7 @@ voice_engine:
   # Provider selection (detailed config in .env — see voice_engine/config.py)
   stt_provider: "faster_whisper"
   llm_provider: "ollama" # uses TabbyAPI (ExLlamaV2)
-  tts_provider: "tiered"
+  tts_provider: "orpheus"  # primary: Orpheus 3B on 3060 (CUDA:1). Fallback: kokoro via EMILY_VOICE_TTS env flag.
   vad_threshold: 0.5
   min_speech_ms: 200
   min_silence_ms: 800
@@ -238,7 +245,7 @@ voice_engine:
 memory:
   sensory_buffer_size: 1000
   working:
-    max_tokens: 4096
+    max_tokens: 8192
     pin_important_threshold: 0.8
   episodic:
     db_path: "data/episodes.db"

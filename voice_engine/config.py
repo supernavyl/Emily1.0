@@ -2,23 +2,28 @@
 
 from __future__ import annotations
 
-import logging
-
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-logger = logging.getLogger(__name__)
+from observability.logger import get_logger
 
-_DEFAULT_SYSTEM_PROMPT = (
-    "You are a friendly, concise voice assistant. "
-    "Respond naturally as if in a real-time spoken conversation. "
-    "Keep answers short and to the point — ideally one to three sentences — "
-    "unless the user explicitly asks for more detail. "
-    "Never use emojis, emoticons, or Unicode symbols in your responses. "
-    "Never use markdown formatting, bullet points, asterisks, or numbered lists. "
-    "Write only plain spoken sentences because your output will be read aloud. "
-    "If you don't know something, say so briefly rather than speculating."
-)
+logger = get_logger(__name__)
+
+
+def _get_default_system_prompt() -> str:
+    """Delegate to prompt_builder — the single source of truth for all prompts."""
+    try:
+        from llm.prompt_builder import PromptBuilder
+
+        return PromptBuilder().build_voice_system_prompt()
+    except Exception:
+        # Fallback only if prompt_builder is unavailable (standalone mode)
+        return (
+            "You are Emily, an AI. Your output is spoken aloud through a voice engine. "
+            "Think for yourself. Form your own opinions. Be direct and honest. "
+            "Match your depth to the question — don't over-explain simple things. "
+            "No emojis, markdown, bullet points, or formatting. Write only speakable words."
+        )
 
 
 class VoiceEngineConfig(BaseSettings):
@@ -32,12 +37,19 @@ class VoiceEngineConfig(BaseSettings):
     google_api_key: str = Field(default="", description="Google AI API key")
     groq_api_key: str = Field(default="", description="Groq API key")
     deepgram_api_key: str = Field(default="", description="Deepgram API key")
-    elevenlabs_api_key: str = Field(default="", description="ElevenLabs API key")
     tabby_api_key: str = Field(default="", description="TabbyAPI admin key (optional)")
 
     # ── STT ────────────────────────────────────────
     stt_provider: str = Field(default="faster_whisper", description="STT provider name")
     stt_model: str = Field(default="distil-large-v3", description="STT model identifier")
+    stt_device: str = Field(default="cuda", description="STT device: 'cuda' or 'cpu'")
+    stt_device_index: int = Field(
+        default=1,
+        description="CUDA device index: 0=4090 (with voice LLM), 1=3060 (with embedding+TTS)",
+    )
+    stt_compute_type: str = Field(
+        default="int8", description="STT compute type: int8 on 3060 frees VRAM for TTS"
+    )
 
     # ── LLM ────────────────────────────────────────
     llm_provider: str = Field(default="ollama", description="LLM provider name")
@@ -47,18 +59,25 @@ class VoiceEngineConfig(BaseSettings):
         description="Base URL for OpenAI-compatible APIs",
     )
 
-    # ── TTS ────────────────────────────────────────
-    tts_provider: str = Field(default="kokoro", description="TTS provider name")
-    tts_voice: str = Field(default="af_heart", description="TTS voice identifier")
-    chatterbox_exaggeration: float = Field(
-        default=0.5, description="Chatterbox emotion exaggeration (0.0–1.0)"
+    # ── TTS (Orpheus primary, Kokoro fallback) ────
+    tts_provider: str = Field(default="orpheus", description="TTS provider: 'orpheus' or 'kokoro'")
+    tts_fallback: str = Field(
+        default="kokoro", description="TTS provider used if primary fails to load"
     )
-    chatterbox_ref_audio: str = Field(
-        default="", description="Reference audio path for Chatterbox voice cloning"
+    tts_voice: str = Field(
+        default="tara",
+        description="Voice identifier (Orpheus: tara/leah/jess/leo/dan/mia/zac/zoe; Kokoro: af_nicole etc.)",
     )
-    emotion_threshold: float = Field(
-        default=0.6,
-        description="Emotional dimension threshold for tiered TTS routing to expressive",
+    orpheus_model_path: str = Field(
+        default="models/orpheus-3b-0.1-ft-q4_k_m.gguf",
+        description="Path to the Orpheus GGUF (relative to Emily root)",
+    )
+    orpheus_main_gpu: int = Field(
+        default=1, description="CUDA device index for Orpheus GGUF (1 = 3060)"
+    )
+    orpheus_snac_device: str = Field(
+        default="cuda:1",
+        description="Torch device for SNAC decoding ('cuda:1' or 'cpu')",
     )
 
     # ── Audio I/O ─────────────────────────────────
@@ -78,7 +97,7 @@ class VoiceEngineConfig(BaseSettings):
     system_prompt: str = Field(default="", description="Optional custom system prompt")
 
     def get_system_prompt(self) -> str:
-        """Return the configured system prompt, falling back to a sensible default."""
+        """Return the configured system prompt, falling back to prompt_builder."""
         if self.system_prompt.strip():
             return self.system_prompt.strip()
-        return _DEFAULT_SYSTEM_PROMPT
+        return _get_default_system_prompt()
