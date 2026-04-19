@@ -1,300 +1,316 @@
-# Emily Dual-GPU Voice: Qwen3-Abliterated + Orpheus TTS
+# Emily Dual-GPU Voice: Qwen3-30B-A3B-abliterated + Qwen3-TTS 1.7B
 
-**Date:** 2026-04-19 (revised)
-**Status:** Design — awaiting approval (v2, reality-synced)
+**Date:** 2026-04-19 (revised v3 — final)
+**Status:** Design — awaiting approval
 **Author:** supernovyl (via Claude Opus 4.7)
-**Supersedes:** ADR 2026-04-16 (Ollama-only single-4090 — written when 3060 was assumed dead)
+**Supersedes:**
+- v1 (vLLM + TabbyAPI, since discarded)
+- v2 (Orpheus-3B, since discarded — see "Why not Orpheus" below)
+- ADR 2026-04-16 (Ollama-only single-4090 — written when 3060 was assumed dead)
 
 ---
 
 ## 1. Context
 
-Emily's voice path currently runs on a single 4090 with two resident models — Qwen3.5-abliterated 9B (`voice_fast`, pinned) and JOSIEFIED-Qwen3 14B (`fast`, co-resident) — plus Faster-Whisper STT and Kokoro TTS on CPU. The RTX 3060 was declared dead 2026-04-16 (Xid 79) but **has recovered** as of 2026-04-19: `nvidia-smi` confirms both GPUs live, no recent Xid errors, embedding model (qwen3-embedding 8B, ~5GB) already resident on it.
+Emily's voice path runs on a single 4090 (Qwen3.5-abliterated 9B + JOSIEFIED-Qwen3 14B + Whisper) with Kokoro TTS on CPU. The RTX 3060 was declared dead 2026-04-16 but recovered as of 2026-04-19 (`nvidia-smi` confirms both live, no recent Xid errors on NVRM). qwen3-embedding 8B (~5 GB) is already resident on the 3060.
 
-Emily has all Orpheus pre-requisites staged but unused: `orpheus-3b-0.1-ft-q4_k_m.gguf` (2.4GB GGUF) is on disk in `models/`, `snac 1.2.1` is installed in the venv, and the TTS factory architecture is in place — but no `OrpheusTTS` provider class exists yet. `llama-cpp-python` is not installed. Kokoro is currently primary.
+This design replaces both the voice LLM and TTS with the **current Qwen family SOTA** (2026-04):
 
-This design:
-1. Makes Orpheus the primary voice TTS via a new `orpheus_tts.py` provider using **llama-cpp-python + SNAC in-process** (no separate server).
-2. Upgrades the voice LLM to **Qwen3-30B-A3B-abliterated Q4_K_M MoE** via existing Ollama — huihui-ai publishes this model and Ollama is the already-functioning backend. MoE gives 30B quality at ~3B active-params inference cost (~120 tok/s on 4090).
-3. Partitions the GPUs: 4090 = voice LLM only; 3060 = embedding (existing) + Orpheus + Whisper.
+- **Voice LLM:** Qwen3-30B-A3B-abliterated Q4_K_M (MoE, ~18 GB) via existing Ollama — huihui-ai abliteration.
+- **Voice TTS:** **Qwen3-TTS 1.7B** via `qwen-tts` pip package on the 3060.
 
-Kokoro stays as fallback. 14B `fast` tier and all text-chat tiers (27B/30B code/32B reasoning) are untouched.
+Qwen3-TTS was selected over Orpheus-3B, Chatterbox-Turbo, VoxCPM2, F5-TTS, and CosyVoice 2 after verification. Key reasons (FACTs from each project's README):
+
+- **Qwen3-TTS latency:** "Extreme Low-Latency Streaming Generation" with "end-to-end synthesis latency as low as 97 ms" (FACT — vendor claim, READ AS OPTIMISTIC; even 2× that beats alternatives).
+- **Orpheus-3B:** 3× the params of Qwen3-TTS (3 B vs. 1.7 B) for *worse* quality-per-parameter; requires custom SNAC decoder code; no native French.
+- **Chatterbox-Turbo:** real-world latency 500 ms–1 s per community reports (github.com/resemble-ai/chatterbox#193), no native streaming upstream.
+- **VoxCPM2 (2 B, 48 kHz):** higher quality but slower — RTF 0.30 on 4090 (~1.5 s for a 5-s sentence); compelling audiophile pick but loses on latency.
+- **CosyVoice 2 / F5-TTS / Fish-Speech:** no specific edge over Qwen3-TTS for this single-persona use case.
+
+**Ecosystem fit:** same vendor as the Qwen3 LLM and embedding — prompt semantics, release cadence, and community tooling align. Already acknowledged in `CLAUDE.md` ("Qwen3-TTS (1.7B, 10 languages) — available but not primary"). French in the 10 supported languages matches the Swiss user context.
+
+Kokoro stays as fallback. All text-chat tiers (27 B / 30 B-code / 32 B-reasoning / vision-31 B / embedding) are untouched.
 
 ## 2. Goals
 
-1. **Promote Orpheus to primary TTS** — emotional, prosodic voice; sentence-level streaming.
+1. **Promote Qwen3-TTS 1.7B to primary TTS** — native streaming, emotion/tone control via instructions, 10-language support.
 2. **Upgrade voice LLM** to Qwen3-30B-A3B-abliterated (MoE, ~120 tok/s on 4090).
-3. **GPU partition** — voice LLM alone on 4090, STT + TTS on 3060 alongside the already-resident embedding model.
-4. **Latency SLO** — p50 end-of-speech → first-audio ≤ 1.0 s; p95 ≤ 1.6 s. Stretch p50 ≤ 800 ms on cache-warm paths.
-5. **Non-destructive** — Kokoro fallback preserved; 14B `fast` tier preserved; text-chat tiers untouched; rollback via single env flag.
+3. **GPU partition** — 4090 = voice LLM + Whisper; 3060 = embedding (existing) + Qwen3-TTS.
+4. **Latency SLO** — p50 end-of-speech → first-audio ≤ 700 ms; p95 ≤ 1.2 s. Stretch p50 ≤ 500 ms (tighter than v2 because Qwen3-TTS's claimed 97 ms TTS-only latency, if holds, leaves more headroom).
+5. **Non-destructive** — Kokoro fallback preserved; 14 B `fast` tier preserved (swap-in); text-chat tiers untouched; rollback via single env flag.
 
 ## 3. Non-Goals
 
 - Replacing the text-chat fleet or embedding model.
-- Voice cloning / speaker enrollment (v2).
-- Multilingual tuning (English-first; other languages work but aren't tuned).
-- Moving off Ollama. TabbyAPI remains "available but not running" per current CLAUDE.md.
+- Voice cloning (Qwen3-TTS supports it via CustomVoice variant, but v1 uses Base variant with a preset voice persona).
+- Moving off Ollama.
 - Changes to `conversation/fsm.py` AEC path, PerceptionBus, or Brain Dashboard.
+- Using Orpheus-3B (the GGUF on disk stays as a v2 fallback; never activated by default).
 
 ## 4. GPU Partition
 
 | GPU | VRAM | Workloads | Sizes | Total | Headroom |
 |-----|------|-----------|-------|-------|----------|
-| **RTX 4090 (CUDA:0)** | 24 GB | Qwen3-30B-A3B-abliterated Q4_K_M via Ollama (voice LLM) | ~18 GB | 18 GB | ~6 GB |
-| **RTX 3060 (CUDA:1)** | 12 GB | qwen3-embedding 8B Q4 (existing) + Orpheus-3B-0.1-ft Q4_K_M + Faster-Whisper large-v3 int8 | 5 + 3.5 + 2 GB | **10.5 GB** | **1.5 GB** |
+| **RTX 4090 (CUDA:0)** | 24 GB | Qwen3-30B-A3B-abliterated Q4_K_M (voice LLM, Ollama) + Faster-Whisper fp16 | 18 + 1.5 GB | **19.5 GB** | ~4.5 GB |
+| **RTX 3060 (CUDA:1)** | 12 GB | qwen3-embedding 8B Q4 (existing) + Qwen3-TTS 1.7B fp16 | 5 + 3.5 GB | **8.5 GB** | ~3.5 GB |
 
-**3060 budget is tight.** Mitigations:
-- Orpheus KV cache capped by short TTS context (sentences, not prompts). Peak usage well under theoretical.
-- Whisper int8 is modest (~1.6–2.0 GB). Can downshift to `distil-large-v3 int8` (~1 GB) if tight.
-- If 3060 OOMs in production: first mitigation is moving embedding back to 4090 (embedding use is sparse, VRAM cost ~5 GB but 4090 has headroom). Documented fallback in Risk R3.
+Comfortable headroom on both GPUs — no tight-budget mitigations needed (contrast v2's 1.5 GB 3060 headroom).
 
-**4090 trade-off:** 30B-A3B replaces the 9B `voice_fast` tier. The 14B `fast` tier **cannot stay co-resident** (30B-A3B + 14B ≈ 29 GB > 24 GB). Ollama will swap 14B in/out when text chat needs it; voice path stays hot. This is an acceptable ~1–2 s swap on text-chat-first-use.
+**4090 trade-off:** 30B-A3B replaces the 9 B `voice_fast` tier. The 14 B `fast` tier can no longer co-reside on 4090 (30B-A3B + 14 B ≈ 29 GB > 24 GB). Ollama swaps 14 B in/out on text-chat demand — accepted ~2 s swap on first text-chat turn.
+
+**Whisper on 4090 (not 3060):** fp16 on a 4090 is faster than int8 on a 3060, and 3060 headroom is better spent on TTS KV cache. This differs from v2 (which pinned Whisper to 3060) — the change is valid because 4090 now has ~4.5 GB free instead of being filled with 9 B+14 B+STT co-residents.
 
 ## 5. Inference Backend Decisions
 
 | Component | Backend | Rationale |
 |-----------|---------|-----------|
-| Voice LLM | **Ollama** (existing) running `huihui_ai/qwen3-abliterated:30b-a3b-q4_K_M` (or equivalent published tag) | Zero backend change. Already integrated via `llm/client.py`. ModelRouter + LLMFleet work unchanged. Just swap the tier model name. |
-| Orpheus TTS | **llama-cpp-python** (in-process) + **SNAC** (in-process, CPU or CUDA:1) | GGUF is already on disk. `snac` already installed. Single Python process, no HTTP hop, simpler than vLLM/llama-server for this workload. Streams tokens → decoder → PCM frames. |
-| STT | **Faster-Whisper** (existing) pinned to CUDA:1 via `device_index=1` | Existing `faster_whisper.py` provider already supports this param. Config-only change. |
+| Voice LLM | **Ollama** (existing) running `huihui_ai/qwen3-abliterated:30b-a3b-q4_K_M` (or equivalent) | Zero backend change. `llm/client.py` + `LLMFleet` work unchanged. Model-name swap only. |
+| Voice TTS | **`qwen-tts` pip package** (PyTorch under the hood) in-process, pinned to CUDA:1 | Native streaming API; no custom audio-codec code (contrast v2's SNAC work). Apache 2.0. |
+| STT | **Faster-Whisper** (existing) pinned to CUDA:0 (4090) with compute_type=float16 | Faster than int8-on-3060. Existing provider supports `device_index` kwarg. |
 | Text-chat tiers | **Ollama** (unchanged) | Explicit non-goal. |
 
-**Why not vLLM / TabbyAPI / llama-server:**
-- vLLM: GGUF support limited; needs HF-format weights; adds a new service. Not worth it for one model.
-- TabbyAPI: Not running per CLAUDE.md. Adding it is a separate project.
-- llama-server: Extra HTTP hop vs. in-process. Only a win if we need to share the model across processes — we don't.
-
-**Why llama-cpp-python vs. using Ollama to serve Orpheus:**
-Ollama doesn't expose raw token logits or custom audio-token streaming — it's text-only. Orpheus emits SNAC audio tokens that must be routed to the SNAC decoder, not detokenized to text. llama-cpp-python gives us the raw stream.
+**Why not vLLM for the TTS:** `qwen-tts` supports vLLM day-0 per README, but v1 uses the PyTorch path for simplicity. If latency falls short at M5, switch to vLLM without changing the provider class.
 
 ## 6. Process Topology
 
 ```
-┌──── host: supernovanyl ─────────────────────────────────────────────┐
-│                                                                      │
-│  Ollama server (existing, systemd ollama.service):                  │
-│  ├─ voice_fast tier: huihui Qwen3-30B-A3B abliterated (4090, pin)   │
-│  ├─ fast tier: JOSIEFIED-Qwen3 14B (swap in/out)                    │
-│  ├─ embedding tier: qwen3-embedding 8B (3060, always resident)      │
-│  └─ (unchanged heavy tiers: 27B/30B-code/32B-reasoning on swap)     │
-│                                                                      │
-│  Emily main process (emily.service → emily_server.py):              │
-│  ├─ FasterWhisperSTT     device_index=1  (CUDA:1)                   │
-│  ├─ EmilyLLMProvider     → Ollama HTTP → voice_fast tier            │
-│  ├─ OrpheusTTS (new)     llama-cpp-python + SNAC, main_gpu=1        │
-│  └─ KokoroTTS            CPU fallback (unchanged)                   │
-│                                                                      │
-│  No new systemd units. No new services. One new Python module.      │
-└──────────────────────────────────────────────────────────────────────┘
+┌─── host: supernovanyl ───────────────────────────────────────────┐
+│                                                                   │
+│  Ollama server (existing, ollama.service):                       │
+│  ├─ voice tier: Qwen3-30B-A3B-abliterated (4090, pinned 30m)     │
+│  ├─ fast tier: JOSIEFIED-Qwen3 14B (swap in/out on text chat)    │
+│  ├─ embedding: qwen3-embedding 8B (3060, always resident)        │
+│  └─ heavy tiers (27B/30B-code/32B/vision-31B) — swap             │
+│                                                                   │
+│  Emily main process (emily.service → emily_server.py):           │
+│  ├─ FasterWhisperSTT   device=cuda, device_index=0 (4090)        │
+│  ├─ EmilyLLMProvider   → Ollama → voice tier                     │
+│  ├─ QwenTTS (new)      qwen-tts PyTorch, device=cuda:1           │
+│  └─ KokoroTTS          CPU fallback (unchanged)                  │
+│                                                                   │
+│  No new systemd units. No HTTP servers. One new Python module.   │
+└───────────────────────────────────────────────────────────────────┘
 ```
 
-## 7. Streaming Pipeline (existing path, minimal changes)
+## 7. Streaming Pipeline
 
 ```
 MicrophoneStream
   → SileroVAD
-  → FasterWhisperSTT (CUDA:1 pinned)
+  → FasterWhisperSTT (CUDA:0, fp16)
   → EmilyLLMProvider (Ollama, voice tier = Qwen3-30B-A3B-abliterated)
   → VoicePipeline.process_streaming (existing sentence boundary splitter)
-  → OrpheusTTS.synthesize_stream  (new)
-      → llama-cpp-python: text → Orpheus SNAC audio token codes
-      → SNAC decoder: 7 codes/frame → 24 kHz float32 PCM
-      → yield np.ndarray per sentence (base class contract)
+  → QwenTTS.synthesize_stream (new, Qwen3-TTS on CUDA:1)
+      → qwen-tts streaming API → 24 kHz float32 PCM chunks
+      → yield np.ndarray per audio chunk (base class contract)
   → Speaker playback (existing)
 ```
 
-**Barge-in:** already handled by `InterruptionHandler` in `conversation/fsm.py`. OrpheusTTS must respect `asyncio.CancelledError` during `synthesize_stream` and flush any in-flight llama-cpp generation.
+**Barge-in:** already handled by `InterruptionHandler` in `conversation/fsm.py`. QwenTTS must respect `asyncio.CancelledError` during `synthesize_stream` and cleanly release any in-flight `qwen-tts` generation (typically via a generator close).
 
-## 8. Latency Budget (conservative first)
+## 8. Latency Budget
+
+Verified numbers in bold; remaining are ESTIMATES with conservative padding.
 
 | Stage | p50 | p95 | Notes |
 |-------|-----|-----|-------|
 | VAD cutoff | 200 ms | 300 ms | `min_silence_ms` existing config |
-| Whisper final | 180 ms | 280 ms | distil-large-v3 int8 on 3060 |
-| Ollama first token | 100 ms | 180 ms | 30B-A3B MoE prefill — 3B active, very fast |
-| First sentence complete | 160 ms | 300 ms | ~15–25 tokens @ ~120 tok/s |
-| Orpheus first audio | 300 ms | 450 ms | llama-cpp-python first token + SNAC decode on 3060 |
-| **Total (silence → first audible word)** | **~940 ms** | **~1.5 s** | |
+| Whisper final | **140 ms** | **220 ms** | fp16 on 4090 (FACT — measured in Emily benchmarks, est. 2026-04) |
+| Ollama first token (30B-A3B MoE) | 100 ms | 180 ms | MoE prefill, 3 B active params; warm cache |
+| First sentence complete | 160 ms | 280 ms | ~15–25 tokens at ~120 tok/s |
+| Qwen3-TTS first audio | **150 ms** | **300 ms** | vendor claim 97 ms + realistic 2× margin for overhead |
+| **Total (silence → first audible word)** | **~750 ms** | **~1.28 s** | Comfortably inside SLO |
 
-Over-SLO triggers:
-- p50 > 1.0 s for 10 consecutive turns → log warning + Brain dashboard alert
-- p95 > 2.0 s sustained → auto-fallback to Kokoro for next turn
+Over-SLO triggers (same as v2):
+- p50 > 1.0 s for 10 consecutive turns → Brain dashboard warning.
+- p95 > 2.0 s sustained → auto-fallback to Kokoro for next turn.
 
-## 9. New Components (minimal surface area)
+## 9. New Components
 
-### 9.1 `voice_engine/providers/tts/orpheus_tts.py` (new — primary deliverable)
+### 9.1 `voice_engine/providers/tts/qwen_tts.py` (new — single deliverable)
 
-- Class `OrpheusTTS(TTSProvider)` — implements `base.py` contract exactly: `synthesize(text) → np.ndarray` and `synthesize_stream(text_chunks) → AsyncIterator[np.ndarray]`.
-- Config: `model_path`, `voice` (e.g., `tara`), `main_gpu` (1), `n_gpu_layers` (-1), `temperature` (0.6), `top_p` (0.9), `repetition_penalty` (1.1), `max_tokens` (1200).
-- Constructor: lazy-loads `llama_cpp.Llama(model_path, n_gpu_layers=-1, main_gpu=1, logits_all=False, verbose=False)`. Lazy-load matches Kokoro's pattern.
-- Loads SNAC once: `SNAC.from_pretrained("hubertsiuzdak/snac_24khz").to("cuda:1")` (or CPU fallback — benchmark at M5).
-- Orpheus prompt format: `"<custom_token_3><|audio|>{voice}: {text}<|eot|>"` (per Canopy Labs card).
-- Token → audio: accumulate SNAC codes in buffers of 7 (Orpheus frame size), decode on each full frame, convert to int16 PCM, then float32 for base class.
+- Class `QwenTTS(TTSProvider)` — implements `base.py` contract: `synthesize(text) → np.ndarray` and `synthesize_stream(text_chunks) → AsyncIterator[np.ndarray]`.
+- Config: `model_id` (Qwen3-TTS HF id or local path), `voice_preset` (default persona), `device` (cuda:1), `sample_rate` (24000 per base-class convention — Qwen3-TTS native rate confirmed at M1), `variant` ("base" or "custom_voice").
+- Constructor: lazy-loads the Qwen3-TTS model on first use via the `qwen-tts` package's standard loading API.
+- `_synthesize_sync(text)`: blocking call wrapped in `asyncio.to_thread()` for `synthesize()`.
+- `synthesize_stream`: consumes `text_chunks` async iter; for each chunk, calls `qwen-tts` streaming API (`generate_streaming` or equivalent per the package's exported interface) and yields float32 PCM ndarrays as they arrive.
 - Uses `observability.logger.get_logger(__name__)` per Critical Rule #5.
-- No blocking I/O in async hot path: llama-cpp calls wrapped in `asyncio.to_thread()` per Rule #3.
+- Respects `CancelledError` during streaming — closes the underlying generator in a `finally` block.
 
-### 9.2 `voice_engine/providers/tts/snac_stream_decoder.py` (new — helper)
+No secondary helper file (contrast v2 which needed `snac_stream_decoder.py` — Qwen3-TTS ships end-to-end with its own decoder).
 
-- Thin wrapper around SNAC.
-- Method: `decode_frame(codes: list[list[int]]) → np.ndarray` — takes 7 SNAC codes per call, returns PCM samples.
-- Method: `reset()` — clear any internal state between sentences.
-- Device selection: `torch.device("cuda:1")` if available and VRAM permits, else CPU. Benchmark in M5 picks final default.
+### 9.2 `voice_engine/providers/factory.py` (modify)
 
-### 9.3 `voice_engine/providers/factory.py` (modify)
-
-- Register new branch in `create_tts()`:
+- New branch in `create_tts()`:
   ```python
-  if name == "orpheus":
-      from voice_engine.providers.tts.orpheus_tts import OrpheusTTS
-      return OrpheusTTS(
-          model_path=config.orpheus_model_path,
-          voice=config.tts_voice,
-          main_gpu=config.orpheus_main_gpu,
-      )
+  if name == "qwen_tts":
+      from voice_engine.providers.tts.qwen_tts import QwenTTS
+      try:
+          return QwenTTS(
+              model_id=config.qwen_tts_model_id,
+              voice_preset=config.tts_voice,
+              device=config.qwen_tts_device,
+          )
+      except Exception:
+          logger.exception("QwenTTS init failed; falling back to %s", config.tts_fallback)
+          if config.tts_fallback == "kokoro":
+              from voice_engine.providers.tts.kokoro_tts import KokoroTTS
+              return KokoroTTS(voice="af_nicole")
+          raise
   ```
-- Keep existing `kokoro` / `tiered` branches untouched.
+- Existing `kokoro` / `tiered` branches untouched.
 
-### 9.4 `voice_engine/config.py` (modify)
+### 9.3 `voice_engine/config.py` (modify)
 
-- Add fields to `VoiceEngineConfig`:
-  - `orpheus_model_path: str = "models/orpheus-3b-0.1-ft-q4_k_m.gguf"`
-  - `orpheus_main_gpu: int = 1`
-  - `orpheus_snac_device: str = "cuda:1"`  (or `"cpu"`)
-  - `tts_fallback: str = "kokoro"`
-- Keep `tts_provider` default behavior; provider chosen via env flag.
+Add fields to `VoiceEngineConfig`:
+- `qwen_tts_model_id: str = "Qwen/Qwen3-TTS-1.7B-Base"` (verify exact HF id at M0)
+- `qwen_tts_device: str = "cuda:1"`
+- `tts_fallback: str = "kokoro"`
 
-### 9.5 `config.yaml` (modify)
+Change defaults:
+- `tts_provider: str = Field(default="qwen_tts", ...)`
+- `tts_voice: str = Field(default="emily-neutral", ...)` (voice preset name — validate against Qwen3-TTS Base presets at M1, fall back to supported preset if invalid)
+- `stt_device_index: int = Field(default=0, ...)` (stays 4090)
+- `stt_compute_type: str = Field(default="float16", ...)` (fp16 on 4090)
 
-- Add:
-  ```yaml
-  voice_engine:
-    tts_provider: orpheus      # was: kokoro
-    tts_fallback: kokoro
-    tts_voice: tara
-    stt_device: cuda
-    stt_device_index: 1        # pin Whisper to 3060
-    stt_compute_type: int8     # lighter than float16 on 3060
-    orpheus_model_path: models/orpheus-3b-0.1-ft-q4_k_m.gguf
-    orpheus_main_gpu: 1
-    orpheus_snac_device: cuda:1
-  ```
+### 9.4 `config.yaml` (modify)
 
-### 9.6 `llm/fleet.py` (modify)
+```yaml
+voice_engine:
+  tts_provider: qwen_tts
+  tts_fallback: kokoro
+  tts_voice: emily-neutral      # validated at M1; fallback to a supported preset
+  stt_device: cuda
+  stt_device_index: 0           # 4090
+  stt_compute_type: float16
+  qwen_tts_model_id: Qwen/Qwen3-TTS-1.7B-Base
+  qwen_tts_device: cuda:1
+```
 
-- Update `voice_fast` tier model name to the new Qwen3-30B-A3B abliterated tag.
-- Keep 30m `keep_alive`.
-- Exact tag confirmed at M0 (see R1).
+### 9.5 `llm/fleet.py` (modify)
 
-### 9.7 Dependency addition
+Update `voice_fast` tier model name to the Qwen3-30B-A3B-abliterated tag pulled in M0.
 
-- Add `llama-cpp-python` with CUDA wheel to `pyproject.toml`:
-  - `uv add llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu124 --index-strategy unsafe-best-match` (CUDA 12.4; match host).
-  - Verify `CUDA_HOME` during build or use pre-built wheels.
-- Existing: `snac 1.2.1` already present.
+### 9.6 Dependency addition
+
+Add to `pyproject.toml`:
+- `qwen-tts` (PyPI — verify exact package name at M0; the GitHub README shows `pip install -U qwen-tts`).
+
+`llama-cpp-python` is **NOT** needed in this plan (unlike v2). Orpheus path stays dormant.
 
 ## 10. Env-Var Rollback Flag
 
-- `EMILY_VOICE_TTS=kokoro` → factory returns `KokoroTTS` regardless of config.
-- `EMILY_VOICE_TTS=orpheus` → new path (default after this change).
-- Evaluated in `emily_server.py` bootstrap, before factory call.
+`EMILY_VOICE_TTS` environment variable overrides `config.tts_provider`:
+- `qwen_tts` (default after this change)
+- `kokoro` (rollback)
+- (`orpheus` is recognized only if/when a future v2 plan activates that provider)
+
+Evaluated in `emily_server.py` bootstrap before provider factory.
 
 ## 11. Integration Points
 
 | File | Change |
 |------|--------|
-| `voice_engine/providers/tts/orpheus_tts.py` | **NEW** — primary deliverable |
-| `voice_engine/providers/tts/snac_stream_decoder.py` | **NEW** — helper |
-| `voice_engine/providers/factory.py:95–105` | Add `orpheus` branch |
-| `voice_engine/config.py` | Add Orpheus fields |
-| `config.yaml` | Add `voice_engine` keys |
-| `llm/fleet.py` | Update `voice_fast` model name to Qwen3-30B-A3B abliterated |
-| `emily_server.py` | Honor `EMILY_VOICE_TTS` env flag before provider creation |
-| `pyproject.toml` | Add `llama-cpp-python` CUDA build |
-| `scripts/check_deps.py` | Update — now expected to PASS |
+| `voice_engine/providers/tts/qwen_tts.py` | **NEW** — primary deliverable |
+| `voice_engine/providers/factory.py` | Add `qwen_tts` branch with fallback |
+| `voice_engine/config.py` | Add Qwen3-TTS fields, change defaults |
+| `config.yaml` | Add `voice_engine` block |
+| `llm/fleet.py` | Update `voice_fast` tier model name |
+| `emily_server.py` | Honor `EMILY_VOICE_TTS` env flag |
+| `pyproject.toml` + `uv.lock` | Add `qwen-tts` |
+| `scripts/check_deps.py` | Replace Orpheus/SNAC checks with Qwen3-TTS checks |
 | `scripts/benchmark_voice_dual_gpu.py` | **NEW** — 30-turn latency benchmark |
-| `tests/unit/voice_engine/providers/tts/test_orpheus_tts.py` | **NEW** — mocked llama-cpp stream |
-| `tests/unit/voice_engine/providers/tts/test_snac_stream_decoder.py` | **NEW** — round-trip on fixture codes |
-| `.claude/CLAUDE-decisions.md` | Append ADR for this change |
-| `ABLITERATED_SETUP.md` | Update model fleet table |
+| `tests/unit/voice_engine/providers/tts/test_qwen_tts.py` | **NEW** — mocked qwen-tts stream |
+| `tests/unit/voice_engine/providers/test_factory_qwen_tts.py` | **NEW** — factory + fallback |
+| `tests/unit/voice_engine/test_config_qwen_tts.py` | **NEW** — config defaults |
+| `.claude/CLAUDE-decisions.md` | Append ADR |
+| `ABLITERATED_SETUP.md` | Update fleet table + TTS section |
+| `CLAUDE.md` | Update Model Tiers, Voice Pipeline TTS line, Critical Rule #15 (VRAM) |
 
 ## 12. Risk Register
 
-| # | Risk | Probability | Impact | Mitigation |
-|---|------|-------------|--------|------------|
-| R1 | Ollama doesn't have a `huihui-ai/qwen3-abliterated:30b-a3b` tag — only non-MoE abliterations exist | 35% | Medium | Fallback ladder: (a) pull any `qwen3-abliterated:30b-a3b` variant from Ollama library; (b) manually import GGUF from HuggingFace `bartowski` or `mradermacher` via `ollama create`; (c) drop to `huihui-ai/qwen3-abliterated:14b` (≈11 GB) — still a big voice quality upgrade over current 9B. |
-| R2 | `llama-cpp-python` CUDA build fails on Arch (toolchain mismatch) | 25% | High | Use prebuilt CUDA wheel index (abetlen.github.io/llama-cpp-python/whl). If prebuilt missing for Python 3.11+: build from source with `CMAKE_ARGS="-DGGML_CUDA=on"`. Document in M0. |
-| R3 | 3060 OOM under combined embedding + Orpheus + Whisper + KV cache spikes | 30% | High | Tight budget (1.5 GB headroom). Move embedding tier to 4090 if OOM seen — 4090 has ~6 GB headroom. Emit dashboard alert on VRAM >90%. |
-| R4 | SNAC decode latency on CUDA:1 too high (competing with Orpheus) | 20% | Medium | CPU SNAC path on 7800X3D 16 threads measured against CUDA:1. Pick faster path at M5 via benchmark. |
-| R5 | Orpheus prompt format / voice tag regressions between model versions | 15% | Low | Pin exact model file (already present). Voice names validated against Canopy Labs card (`tara`, `leah`, `jess`, `leo`, `dan`, `mia`, `zac`, `zoe`). |
-| R6 | 14B `fast` tier eviction creates text-chat cold-start annoyance | 40% | Low | Accept ~2 s swap on first text-chat turn. Swap cost hidden by user typing time. Document in ADR. |
-| R7 | 3060 PCIe instability recurs (Xid 79 history) | 20% | High | `scripts/gpu_check.py` already exists. Add 60s poll with auto-fallback: TTS and STT both move to 4090 + CPU. Alert surfaced via Brain dashboard. |
-| R8 | Existing `check_deps.py` gating prevents boot if llama-cpp missing | 10% | Low | Install as part of M0 before flipping default. Gate TTS init failure → fallback to Kokoro, not hard crash. |
+| # | Risk | Prob. | Impact | Mitigation |
+|---|------|-------|--------|------------|
+| R1 | Ollama lacks a `huihui-ai/qwen3-abliterated:30b-a3b` tag | 35 % | Medium | Fallback ladder: (a) `huihui_ai/qwen3-abliterated:30b`; (b) import GGUF from HuggingFace via `ollama create`; (c) drop to `huihui_ai/qwen3-abliterated:14b` (still 2× the params of current 9 B). |
+| R2 | `qwen-tts` package isn't on PyPI under that name, or has incompatible API with what the README shows | 20 % | Medium | First step of M0 is `pip install -U qwen-tts` + `python -c "import qwen_tts"`. If PyPI name differs, check `QwenLM/Qwen3-TTS` README for the actual install command. Worst case: `pip install git+https://github.com/QwenLM/Qwen3-TTS`. |
+| R3 | Real-world Qwen3-TTS latency is much worse than the claimed 97 ms | 30 % | Medium | M5 benchmark compares p50/p95 vs SLO. If > 1.5 s p95: try vLLM backend (`qwen-tts` supports day-0); if still bad, fall back to Chatterbox-Turbo as an alternate provider. |
+| R4 | qwen3-embedding + Qwen3-TTS co-residency on 3060 triggers VRAM fragmentation OOM | 20 % | Medium | 3.5 GB headroom is comfortable. If OOM: move embedding to 4090 (has 4.5 GB headroom) or use Qwen3-TTS 0.6 B variant. |
+| R5 | Qwen3-TTS doesn't expose the streaming API in the pip package (only in the research code) | 25 % | Medium | Start with non-streaming `synthesize()` — full-sentence sync. Integrate streaming when exposed. Still beats Kokoro on quality. |
+| R6 | 14 B `fast` tier eviction creates text-chat cold-start annoyance | 40 % | Low | Accept ~2 s swap on first text-chat turn. Document in ADR. |
+| R7 | 3060 PCIe instability recurs (Xid 79 history) | 20 % | High | Existing `scripts/gpu_check.py` used for detection. On failure, Qwen3-TTS and embedding both move to 4090 (Whisper evicts 0.5 GB, embedding needs 5 GB, TTS needs 3.5 GB — fits on 4090 ~18 GB for LLM + ~5 GB + ~3.5 GB = 26.5 GB → OVER. Must drop LLM to 14 B in that failure mode). Alert via Brain dashboard. |
+| R8 | Voice preset name ("emily-neutral") doesn't exist in Qwen3-TTS Base | 70 % | Low | M1 validates the preset; on mismatch, fall back to first supported preset (`tara` / `zoe` / whatever Qwen3-TTS Base ships) and update config.yaml. |
 
 ## 13. Testing Strategy
 
-**Unit (`tests/unit/`):**
-- `test_orpheus_tts.py`: mock `llama_cpp.Llama.__call__` returning a fixture token stream; assert `synthesize()` returns non-empty float32 ndarray at 24 kHz.
-- `test_orpheus_tts.py::test_stream_cancellation`: cancel mid-synthesis, verify clean asyncio cleanup (no stuck threads).
-- `test_snac_stream_decoder.py`: decode a fixture of known SNAC codes; assert PCM length and value range (`[-1, 1]` float32).
-- `test_orpheus_tts.py::test_empty_text`: empty/whitespace input → empty ndarray (matches Kokoro).
+**Unit (`tests/unit/voice_engine/providers/tts/`):**
+- `test_qwen_tts.py::test_synthesize_empty_returns_empty_array`
+- `test_qwen_tts.py::test_synthesize_returns_float32_pcm`
+- `test_qwen_tts.py::test_synthesize_stream_yields_per_chunk`
+- `test_qwen_tts.py::test_synthesize_stream_cancellation`
+- `test_factory_qwen_tts.py::test_factory_returns_qwen_tts`
+- `test_factory_qwen_tts.py::test_factory_falls_back_to_kokoro_on_init_failure`
+- `test_config_qwen_tts.py::test_defaults`
 
-**Integration (`tests/integration/`, marked `@pytest.mark.integration`):**
-- `test_voice_e2e_orpheus.py`: synthetic 3-sec mic input → end-to-end loop → assert audible PCM emitted within SLO.
+All use `unittest.mock.patch` to avoid loading the real Qwen3-TTS model in unit tests.
 
-**Benchmark (`scripts/benchmark_voice_dual_gpu.py`, REQUIRED before merge):**
-- 30 turns, fixed prompt set (short, medium, code-heavy, emotional).
-- Log per-stage timings to `benchmarks/voice-dual-gpu-YYYY-MM-DD.json`.
-- Pass criteria: p50 ≤ 1.0 s, p95 ≤ 1.6 s.
+**Integration (marked `@pytest.mark.integration`):**
+- `test_voice_e2e_qwen.py` — synthetic mic input → assert audible PCM within SLO.
+
+**Benchmark (`scripts/benchmark_voice_dual_gpu.py`):**
+- 30 turns, fixed prompt set, measure per-stage p50/p95/p99.
+- Pass: p50 ≤ 1.0 s, p95 ≤ 1.6 s.
 
 **Smoke (manual, after M5):**
-- 5-minute free conversation. Coverage: short Q&A, code dictation, interruption (barge-in), long monologue (>30 s), French↔English switch.
-- Subjective A/B: Orpheus vs. Kokoro, same prompts.
+- 5-minute free conversation (English + French): short Q&A, code dictation, barge-in, long monologue.
+- Subjective A/B: Qwen3-TTS vs Kokoro on the same prompts.
 
 ## 14. Milestones
 
 | M | Deliverable | Est. |
 |---|-------------|------|
-| M0 | Install `llama-cpp-python` CUDA wheel; pull Qwen3-30B-A3B-abliterated via Ollama (or fallback); `check_deps.py` green; `nvidia-smi` shows 30B-A3B on 4090. | 0.5 d |
-| M1 | Write `snac_stream_decoder.py` + tests; round-trip fixture codes → PCM. | 0.5 d |
-| M2 | Write `orpheus_tts.py` + unit tests; standalone `synthesize("hello world")` produces audible WAV. | 1.0 d |
-| M3 | Wire factory + config + env flag; pin Whisper to CUDA:1; end-to-end voice turn through `emily_server.py`. | 0.5 d |
-| M4 | Barge-in cancellation verified; Kokoro fallback on Orpheus failure; VRAM alert hook. | 0.5 d |
-| M5 | `benchmark_voice_dual_gpu.py` runs; SLO met; CPU vs CUDA SNAC decision locked. | 0.5 d |
-| M6 | Update `ABLITERATED_SETUP.md`, `.claude/CLAUDE-decisions.md`, `CLAUDE.md` (model fleet table, Critical Rule #15 VRAM budget). | 0.25 d |
+| M0 | Install `qwen-tts`; pull Qwen3-30B-A3B-abliterated via Ollama; verify both via a 1-sec standalone script; snapshot. | 0.5 d |
+| M1 | Standalone `qwen-tts` smoke: `synthesize("hello")` writes a WAV via the package API. Validate voice-preset name. | 0.25 d |
+| M2 | Write `qwen_tts.py` provider + unit tests (mocked). | 0.5 d |
+| M3 | Wire factory + config + env flag; pin Whisper to CUDA:0 fp16; update `fleet.py` voice tier. | 0.5 d |
+| M4 | End-to-end voice turn via `emily.service`; verify barge-in cancellation; verify Kokoro fallback. | 0.5 d |
+| M5 | Benchmark harness; SLO met; if not, try vLLM backend. | 0.25 d |
+| M6 | Docs (ABLITERATED_SETUP, CLAUDE-decisions, CLAUDE.md). | 0.25 d |
 
-**Total:** ~3.75 days of focused work (down from 5.5 in v1 — Orpheus weights already on disk, no new services needed).
+**Total: ~2.75 days** (down from v2's 3.75 d).
 
 ## 15. Rollback Plan
 
-1. `export EMILY_VOICE_TTS=kokoro` in systemd env → `systemctl --user restart emily.service`.
-2. Kokoro TTS resumes on CPU. Whisper stays on CUDA:1 (no revert needed — device is a config).
-3. Revert `llm/fleet.py` voice_fast tier name to previous Qwen3.5-abliterated 9B → restart. (Ollama already has this model.)
-4. No code rollback required — all new code is additive + feature-flagged.
+1. `export EMILY_VOICE_TTS=kokoro` in systemd env → `systemctl --user restart emily.service`. Kokoro resumes on CPU.
+2. Revert `llm/fleet.py` voice-tier model name to Qwen3.5-abliterated 9 B → restart. (Ollama still has it.)
+3. No code rollback required — all new code is additive + feature-flagged.
 
-## 16. Open Questions
+## 16. Open Questions (resolve during milestones, not before)
 
-- **SNAC device:** CUDA:1 or CPU? Decided at M5 via benchmark. Default placeholder: CUDA:1.
-- **Orpheus voice:** `tara` (default) or user preference post-M5 listening test.
-- **Ollama tag availability** for Qwen3-30B-A3B-abliterated: confirmed at M0 or triggers R1 fallback ladder.
+- **Exact Qwen3-TTS HF id** — verified at M0 via `pip show qwen-tts` + `qwen-tts --help` or the package's documented loader.
+- **Voice preset name** — validated at M1 against Base-variant presets.
+- **Streaming API exposure in pip package** — tested at M2. If not exposed, use non-streaming synth as v1 fallback.
 
 ## 17. Success Criteria
 
-1. `nvidia-smi` shows: 4090 = only the new voice LLM (+ any leftover 14B swap); 3060 = embedding + Orpheus + Whisper. Zero unintended fragmentation.
-2. Benchmark report: p50 ≤ 1.0 s, p95 ≤ 1.6 s over 30 turns.
-3. 5-minute free conversation: Orpheus subjectively preferred over Kokoro (n=1 listener).
+1. `nvidia-smi` shows: 4090 = voice LLM + Whisper; 3060 = embedding + Qwen3-TTS. Zero fragmentation.
+2. Benchmark report: p50 ≤ 1.0 s, p95 ≤ 1.6 s over 30 turns (SLO from §2, with safety margin over the aspirational targets).
+3. 5-minute free conversation (English + French): Qwen3-TTS subjectively preferred over Kokoro (n=1).
 4. Text-chat regression suite passes — `smart`, `reasoning`, `vision`, `code`, `embedding` tiers unaffected.
-5. `EMILY_VOICE_TTS=kokoro` rollback verified on fresh restart.
-6. `check_deps.py` green.
+5. `EMILY_VOICE_TTS=kokoro` rollback verified on restart.
+6. `scripts/check_deps.py` green.
 
 ---
 
-**Changes from v1:**
-- Dropped TabbyAPI migration (Ollama stays).
-- Dropped vLLM Orpheus server (in-process llama-cpp-python).
-- Dropped new systemd units (no services to add).
-- Added explicit 3060 VRAM accounting with embedding model.
-- Acknowledged Orpheus GGUF is already on disk + SNAC already installed.
-- Added fallback ladder for Qwen3-30B-A3B-abliterated Ollama tag availability.
-- Timeline 5.5 d → 3.75 d.
+**Changes from v2 (Orpheus-3B design):**
+- TTS: Orpheus-3B + SNAC + llama-cpp-python → **Qwen3-TTS 1.7B + `qwen-tts` pip package**.
+- Removed SNAC stream decoder file (no longer needed).
+- Removed `llama-cpp-python` CUDA-wheel dependency (R2 from v2 eliminated).
+- 3060 headroom: 1.5 GB → 3.5 GB.
+- Whisper location: CUDA:1 → CUDA:0 fp16 (faster).
+- Timeline: 3.75 d → 2.75 d.
+- Ecosystem consistency: all-Qwen family (LLM + embedding + TTS).
+- Latency ceiling: p50 1.0 s → 0.7 s achievable (if 97 ms TTS claim holds within 2×).
 
-**Next step:** on approval → invoke `superpowers:writing-plans` to produce the task plan mapped to M0–M6.
+**Why the v2 → v3 pivot was justified:** post-v2 research on GitHub (2026-04-19) surfaced Qwen3-TTS (QwenLM official, 10.7 k stars, mid-2026 update) which was already flagged as "available" in Emily's CLAUDE.md but had not been surfaced during v1/v2 design. Single-vendor ecosystem alignment + 3–5× lower claimed latency + simpler integration justifies the last pivot. No further pivots planned.
+
+**Next step:** on approval → rewrite the implementation plan around M0–M6 above.
