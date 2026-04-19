@@ -55,3 +55,9 @@ kimi-k2.5:cloud                                      6d1c3246c608    -         7
 ## Git HEAD
 0a1b149c748965b0177d46c7e19bae8cdc800064
 Branch: feat/emily-loop-integration
+
+## Chosen models (M0 results)
+- Voice LLM Ollama tag: huihui_ai/qwen3-abliterated:30b-a3b-q4_K_M
+  (Primary tag succeeded, no fallback needed)
+- Orpheus GGUF: models/orpheus-3b-0.1-ft-q4_k_m.gguf (2.4GB, on disk)
+- llama-cpp-python: build in progress (CUDA support being verified)
