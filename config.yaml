@@ -179,8 +179,8 @@ stt:
   no_speech_threshold: 0.6
 
 tts:
-  primary: "kokoro"
-  fallback: "none"
+  primary: "orpheus"  # 2026-04-19: Orpheus primary on 3060 via llama-cpp-python + SNAC
+  fallback: "kokoro"  # Kokoro on CPU if Orpheus init fails
   voice_preset: "en_US_female_1"
   xtts:
     model_name: "tts_models/multilingual/multi-dataset/xtts_v2"
@@ -190,6 +190,11 @@ tts:
   kokoro:
     voice: "af_nicole"
     speed: 0.88
+  orpheus:
+    model_path: "models/orpheus-3b-0.1-ft-q4_k_m.gguf"
+    voice: "tara"        # tara/leah/jess/leo/dan/mia/zac/zoe
+    main_gpu: 1          # CUDA:1 = RTX 3060
+    snac_device: "cuda:1"
   chatterbox:
     exaggeration: 0.5
     ref_audio: null  # path to reference audio for voice cloning

@@ -1,23 +1,16 @@
 """
 TTS streaming engine for Emily.
 
-Implements a multi-tier TTS system driven by ``config.yaml``:
-  - CSM    — Sesame Conversational Speech Model, highest conversational quality
-  - Kokoro  — ultra-fast (<50ms), high quality preset voices
-  - XTTS v2 — expressive, supports voice cloning, ~200ms first-audio
-
-Engine priority is determined by ``tts.primary`` and ``tts.fallback`` in
-config.  All engines yield **raw int16 PCM at 24 kHz** so downstream code
-never needs to care about format differences.
+Kokoro-only TTS with prosody control, breath injection, and expressive
+audio segments.  Engine yields **raw int16 PCM at 24 kHz**.
 
 Architecture:
-    text → ProsodyController → per-sentence TTSEngine.stream() → PCM bytes → speaker
+    text → ProsodyController → per-sentence KokoroEngine.stream() → PCM bytes → speaker
 """
 
 from __future__ import annotations
 
 import asyncio
-import io
 import sys
 import time
 from abc import ABC, abstractmethod
@@ -105,71 +98,6 @@ class TTSEngine(ABC):
     def name(self) -> str:
         """Engine name for logging and metrics."""
         ...
-
-
-class XTTSv2Engine(TTSEngine):
-    """
-    XTTS v2 TTS engine with streaming support.
-
-    Uses TTS library from Coqui. Model is loaded on demand and cached.
-    Supports voice cloning via speaker_wav parameter.
-    """
-
-    def __init__(self, config: TTSConfig) -> None:
-        self._config = config
-        self._tts: object | None = None
-        self._available = False
-
-    @property
-    def name(self) -> str:
-        return "xtts_v2"
-
-    async def load(self) -> None:
-        """Load XTTS v2 model into GPU memory."""
-        try:
-            from TTS.api import TTS  # type: ignore[import-untyped]
-
-            self._tts = await asyncio.to_thread(
-                TTS,
-                model_name=self._config.xtts.model_name,
-                gpu=True,
-            )
-            self._available = True
-            log.info("xtts_v2_loaded", model=self._config.xtts.model_name)
-        except ImportError:
-            log.warning("coqui_tts_not_installed")
-        except Exception as exc:
-            log.error("xtts_v2_load_failed", error=str(exc))
-
-    async def stream(self, text: str, prosody: ProsodyParams) -> AsyncIterator[bytes]:
-        """Stream XTTS v2 audio output."""
-        if not self._available or self._tts is None:
-            raise RuntimeError("XTTS v2 not available")
-
-        t0 = time.monotonic()
-
-        def _synthesize() -> bytes:
-            buf = io.BytesIO()
-            self._tts.tts_to_file(  # type: ignore[union-attr]
-                text=text,
-                speaker_wav=self._config.xtts.speaker_wav,
-                language=self._config.xtts.language,
-                file_path=buf,
-                speed=prosody.speed,
-            )
-            buf.seek(0)
-            return buf.read()
-
-        audio_bytes = await asyncio.to_thread(_synthesize)
-
-        latency_ms = (time.monotonic() - t0) * 1000.0
-        TTS_FIRST_AUDIO_LATENCY.labels(engine="xtts_v2").observe(latency_ms / 1000.0)
-        log.info("xtts_v2_synthesized", text_len=len(text), latency_ms=f"{latency_ms:.0f}")
-
-        chunk_size = self._config.streaming_chunk_size * 1024
-        for i in range(0, len(audio_bytes), chunk_size):
-            yield audio_bytes[i : i + chunk_size]
-            await asyncio.sleep(0)
 
 
 class KokoroEngine(TTSEngine):
@@ -361,127 +289,81 @@ class KokoroEngine(TTSEngine):
             await asyncio.sleep(0)
 
 
-class CSMEngine(TTSEngine):
-    """Sesame CSM (Conversational Speech Model) TTS engine.
+class OrpheusEngine(TTSEngine):
+    """Orpheus 3B TTS engine — emotional prosody, 3060-pinned via llama-cpp-python + SNAC.
 
-    Uses HuggingFace ``transformers`` with ``CsmForConditionalGeneration``.
-    Produces highly natural conversational speech at 24 kHz.  Requires
-    a CUDA GPU with sufficient VRAM (~4-6 GB for the 1B model in fp16).
+    Wraps the voice_engine OrpheusTTS provider so the production TTSManager path
+    (voice/tts.py) can dispatch to it. int16 PCM at 24 kHz per the TTSEngine contract.
     """
 
     def __init__(self, config: TTSConfig) -> None:
         self._config = config
-        self._model: object | None = None
-        self._processor: object | None = None
+        self._provider: object | None = None
         self._available = False
 
     @property
     def name(self) -> str:
-        return "csm"
+        return "orpheus"
 
     async def load(self) -> None:
-        """Load the CSM model and processor from HuggingFace."""
         try:
-            import torch
-            from transformers import (  # type: ignore[import-untyped]
-                AutoProcessor,
-                CsmForConditionalGeneration,
-            )
+            from voice_engine.providers.tts.orpheus_tts import OrpheusTTS
 
-            csm_cfg = self._config.csm
-            dtype_map = {"float16": torch.float16, "bfloat16": torch.bfloat16}
-            dtype = dtype_map.get(csm_cfg.dtype, torch.float16)
+            orpheus_cfg = getattr(self._config, "orpheus", None)
+            model_path = getattr(orpheus_cfg, "model_path", "models/orpheus-3b-0.1-ft-q4_k_m.gguf")
+            voice = getattr(orpheus_cfg, "voice", "tara")
+            main_gpu = getattr(orpheus_cfg, "main_gpu", 1)
+            snac_device = getattr(orpheus_cfg, "snac_device", "cuda:1")
 
-            def _load() -> tuple[object, object]:
-                processor = AutoProcessor.from_pretrained(csm_cfg.model_id)
-                model = CsmForConditionalGeneration.from_pretrained(
-                    csm_cfg.model_id,
-                    torch_dtype=dtype,
-                    device_map="cuda",
-                    low_cpu_mem_usage=True,
+            def _construct() -> object:
+                return OrpheusTTS(
+                    model_path=model_path,
+                    voice=voice,
+                    main_gpu=main_gpu,
+                    snac_device=snac_device,
                 )
-                # Compile for faster inference on CUDA (first call is slow, rest are fast)
-                if hasattr(torch, "compile"):
-                    try:
-                        model = torch.compile(model, mode="reduce-overhead")
-                        log.info("csm_torch_compiled")
-                    except Exception:
-                        pass  # torch.compile not supported on all setups
-                return model, processor
 
-            self._model, self._processor = await asyncio.to_thread(_load)
+            self._provider = await asyncio.to_thread(_construct)
+            await asyncio.to_thread(self._provider._ensure_loaded)  # type: ignore[attr-defined]
             self._available = True
-            log.info(
-                "csm_loaded",
-                model_id=csm_cfg.model_id,
-                dtype=csm_cfg.dtype,
-            )
-        except ImportError:
-            log.warning("csm_transformers_not_available")
+            log.info("orpheus_loaded", voice=voice, main_gpu=main_gpu)
         except Exception as exc:
-            log.error("csm_load_failed", error=str(exc)[:200])
+            log.warning("orpheus_load_failed", error=str(exc)[:200])
+
+    def set_voice(self, voice: str) -> None:
+        if self._provider is not None:
+            self._provider.set_voice(voice)  # type: ignore[attr-defined]
 
     async def stream(self, text: str, prosody: ProsodyParams) -> AsyncIterator[bytes]:
-        """Synthesize speech with CSM, yielding per-sentence PCM chunks.
-
-        Splits text into sentences and generates audio for each one
-        independently to keep first-audio latency low.
-        """
-        if not self._available or self._model is None or self._processor is None:
-            raise RuntimeError("CSM not available")
-
-        import torch
+        if not self._available or self._provider is None:
+            msg = "Orpheus not available"
+            raise RuntimeError(msg)
 
         t0 = time.monotonic()
-        speaker_id = self._config.csm.speaker_id
-        max_len = self._config.csm.max_audio_length
-
-        def _synthesize_one(sentence: str) -> np.ndarray | None:
-            prompt = f"[{speaker_id}]{sentence}"
-            inputs = self._processor(  # type: ignore[misc]
-                prompt, add_special_tokens=True
-            ).to(self._model.device)  # type: ignore[union-attr]
-
-            with torch.inference_mode():
-                audio_tensor = self._model.generate(  # type: ignore[union-attr]
-                    **inputs,
-                    output_audio=True,
-                    max_length=max_len,
-                )
-            if audio_tensor is None:
-                return None
-
-            audio_np = audio_tensor.squeeze().cpu().float().numpy()
-            if audio_np.size == 0:
-                return None
-            return audio_np
-
         sentences = ProsodyController.split_into_sentences(text)
         if not sentences:
             sentences = [text]
 
         first = True
         for sentence in sentences:
-            audio = await asyncio.to_thread(_synthesize_one, sentence)
-            if audio is None or len(audio) == 0:
+            audio_np = await self._provider.synthesize(sentence)  # type: ignore[attr-defined]
+            if audio_np is None or len(audio_np) == 0:
                 continue
 
             if first:
                 latency_ms = (time.monotonic() - t0) * 1000.0
-                TTS_FIRST_AUDIO_LATENCY.labels(engine="csm").observe(latency_ms / 1000.0)
-                log.info("csm_first_chunk", latency_ms=f"{latency_ms:.0f}")
+                TTS_FIRST_AUDIO_LATENCY.labels(engine="orpheus").observe(latency_ms / 1000.0)
+                log.info("orpheus_first_chunk", latency_ms=f"{latency_ms:.0f}")
                 first = False
 
-            audio_np = np.asarray(audio, dtype=np.float32)
             audio_int16 = (np.clip(audio_np, -1.0, 1.0) * 32767).astype(np.int16)
             yield audio_int16.tobytes()
             await asyncio.sleep(0)
 
 
 _ENGINE_CLASSES: dict[str, type[TTSEngine]] = {
-    "csm": CSMEngine,
-    "xtts_v2": XTTSv2Engine,
     "kokoro": KokoroEngine,
+    "orpheus": OrpheusEngine,
 }
 
 
@@ -523,13 +405,29 @@ class TTSManager:
     async def load(self) -> None:
         """Load all TTS engines and the breath injector concurrently."""
         self._breather = BreathInjector()
-        await asyncio.gather(
+        results = await asyncio.gather(
             *(eng.load() for eng in self._engine_list),
             self._breather.load(),
             return_exceptions=True,
         )
+
+        # Log any engine load failures (gather swallows them with return_exceptions)
+        for i, result in enumerate(results[:-1]):  # skip breather result
+            if isinstance(result, BaseException):
+                engine_name = self._engine_list[i].name if i < len(self._engine_list) else "unknown"
+                log.error("tts_engine_load_failed", engine=engine_name, error=str(result)[:200])
+
+        # Fail-fast if no engines loaded — silent success here guarantees a runtime crash
+        available = [eng for eng in self._engine_list if eng._available]
+        if not available:
+            raise RuntimeError(
+                "Kokoro TTS engine failed to load. "
+                "Install: pip install kokoro (and espeak-ng: sudo pacman -S espeak-ng)."
+            )
+
         log.info(
             "tts_manager_ready",
+            engines_available=[eng.name for eng in available],
             primary_available=self._engine_list[0]._available if self._engine_list else False,
             fallback_available=(
                 self._engine_list[1]._available if len(self._engine_list) > 1 else False
@@ -626,11 +524,9 @@ class TTSManager:
 
             if has_expressives:
                 for seg in segments:
-                    if isinstance(seg, AudioSegment) and len(seg.audio) > 0:
-                        # Yield pre-rendered expressive audio directly (float32 → int16)
-                        expr_int16 = (np.clip(seg.audio, -1.0, 1.0) * 32767).astype(np.int16)
-                        yield expr_int16.tobytes()
-                        log.info("expressive_played", label=seg.label, samples=len(seg.audio))
+                    if isinstance(seg, AudioSegment):
+                        # Skip expressive audio — just delete laugh/sigh/etc sounds
+                        log.debug("expressive_stripped", label=seg.label)
                     elif isinstance(seg, TextSegment) and seg.text.strip():
                         # Synthesize remaining text through the TTS engine
                         async for chunk in self._synth_with_fallback(engine, seg.text, prosody):
@@ -680,7 +576,12 @@ class TTSManager:
                     async for chunk in fallback.stream(text, prosody):
                         yield chunk
                     break
-                except Exception:
+                except Exception as fb_exc:
+                    log.error(
+                        "tts_fallback_also_failed",
+                        engine=fallback.name,
+                        error=str(fb_exc)[:200],
+                    )
                     continue
 
     def _select_engine(self, force: str | None) -> TTSEngine:
@@ -692,6 +593,4 @@ class TTSManager:
         for eng in self._engines:
             if eng._available:
                 return eng
-        raise RuntimeError(
-            "No TTS engine available. Install one of: transformers (csm), TTS (coqui), or kokoro."
-        )
+        raise RuntimeError("Kokoro TTS engine not available. Check installation.")

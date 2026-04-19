@@ -32,7 +32,7 @@ class LLMModels(BaseModel):
     code: str = ""
     vision: str = "huihui_ai/qwen3-vl-abliterated:8b"
     embedding: str = "bge-m3"
-    cloud_best: str = "claude-opus-4-6"
+    cloud_best: str = "claude-opus-4-7"
     cloud_fast: str = "claude-sonnet-4-6"
 
 
@@ -291,12 +291,22 @@ class CSMConfig(BaseModel):
     dtype: str = "float16"
 
 
+class OrpheusConfig(BaseModel):
+    """Orpheus 3B TTS (Canopy Labs) configuration — CUDA:1 pinned on 3060."""
+
+    model_path: str = "models/orpheus-3b-0.1-ft-q4_k_m.gguf"
+    voice: str = "tara"
+    main_gpu: int = 1
+    snac_device: str = "cuda:1"
+
+
 class TTSConfig(BaseModel):
-    primary: str = "kokoro"
-    fallback: str = "xtts_v2"
+    primary: str = "orpheus"  # 2026-04-19: Orpheus primary on 3060, Kokoro fallback on CPU
+    fallback: str = "kokoro"
     voice_preset: str = "en_US_female_1"
     xtts: XTTSConfig = Field(default_factory=XTTSConfig)
     kokoro: KokoroConfig = Field(default_factory=KokoroConfig)
+    orpheus: OrpheusConfig = Field(default_factory=OrpheusConfig)
     csm: CSMConfig = Field(default_factory=CSMConfig)
     streaming_chunk_size: int = 100
 
@@ -554,6 +564,10 @@ class APIConfig(BaseModel):
             "http://localhost:8001",
             "http://127.0.0.1:1420",
             "http://localhost:1420",
+            "http://127.0.0.1:1421",
+            "http://localhost:1421",
+            "http://127.0.0.1:1422",
+            "http://localhost:1422",
         ]
     )
     rate_limit_requests: int = 100
