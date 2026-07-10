@@ -1,5 +1,12 @@
 # Emily — Cognitive AI Operating System
 
+> [!NOTE]
+> **Archived prototype (frozen April 2026).** Emily was built and run locally through
+> early 2026, then frozen; its successor projects continued elsewhere. Published as a
+> reference architecture for a fully local voice-first assistant — not maintained,
+> issues won't be triaged. Everything documented below reflects the state at freeze.
+
+
 Emily is a self-evolving, multi-agent, neuromorphic-inspired AI voice OS that runs
 entirely on local hardware. She is a persistent cognitive entity that learns, plans,
 reasons, and improves herself over time — with zero cloud dependency and zero data egress.
@@ -157,7 +164,7 @@ cp .env.example .env
 ./scripts/start-emily.sh core
 
 # Voice core with Brain + Voice dashboards
-C
+./scripts/start-emily.sh dashboards
 
 # Desktop chat app (Qt)
 ./scripts/start-emily.sh chat
